@@ -5,6 +5,7 @@ import           Startlude
 import           Constants
 import           Foundation
 import           Handler.Types.Status
+import           Lib.Types.Semver
 
-getVersionR :: Handler AppVersionRes
-getVersionR = pure . AppVersionRes $ registryVersion
+getVersionR :: AppVersion -> Handler AppVersionRes
+getVersionR = pure . AppVersionRes -- $ registryVersion

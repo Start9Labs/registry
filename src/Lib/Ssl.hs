@@ -15,7 +15,7 @@ import           Constants
 -- openssl x509 -req -in certificate.csr -signkey key.pem -out certificate.pem
 
 sslBaseLocation :: FilePath
-sslBaseLocation = configBasePath </> "ssl"
+sslBaseLocation = configPath </> "ssl"
 
 sslKeyLocation :: FilePath
 sslKeyLocation = sslBaseLocation </> "key.pem"

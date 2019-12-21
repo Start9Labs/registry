@@ -8,6 +8,7 @@ import Data.Text
 import Yesod.Core.Content
 
 import Lib.Types.ServerApp
+import Lib.Types.Semver
 
 data ServerRes = ServerRes
     { serverStatus  :: AppStatus
