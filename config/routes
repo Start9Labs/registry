@@ -1,0 +1,4 @@
+--authed
+/version                         VersionR           GET
+
+-- /v0/authorizedKeys AuthorizeKeyR  POST

@@ -1,0 +1,116 @@
+flags:
+  library-only:
+    manual: false
+    default: false
+    description: Build for use with "yesod devel"
+  dev:
+    manual: false
+    default: false
+    description: Turn on development settings, like auto-reload templates.
+library:
+  source-dirs: src
+  when:
+  - then:
+      cpp-options: -DDEVELOPMENT
+      ghc-options:
+      - -Wall
+      - -fwarn-tabs
+      - -O0
+      - -fdefer-typed-holes
+    else:
+      ghc-options:
+      - -Wall
+      - -fwarn-tabs
+      - -O2
+      - -fdefer-typed-holes
+    condition: (flag(dev)) || (flag(library-only))
+tests:
+  start9-registry-test:
+    source-dirs: test
+    main: Spec.hs
+    ghc-options:
+    - -Wall
+    - -fdefer-typed-holes
+    dependencies:
+    - start9-registry
+    - hspec >=2.0.0
+    - yesod-test
+
+dependencies:
+- base >=4.9.1.0 && <5
+- aeson >=1.4 && <1.5
+- bytestring
+- casing
+- comonad
+- conduit
+- conduit-extra
+- cryptonite
+- data-default
+- directory
+- dns
+- either
+- errors
+- fast-logger >=2.2 && <2.5
+- file-embed
+- filepath
+- http-client
+- http-conduit
+- http-types
+- interpolate
+- iso8601-time
+- jose-jwt
+- lens
+- lens-aeson
+- memory
+- monad-logger >=0.3 && <0.4
+- monad-loops
+- persistent
+- persistent-sqlite
+- persistent-template
+- process
+- protolude
+- safe
+- secp256k1-haskell
+- template-haskell
+- text >=0.11 && <2.0
+- time
+- transformers
+- unix
+- unordered-containers
+- vault
+- vector
+- wai
+- wai-cors
+- wai-extra >=3.0 && <3.1
+- wai-logger >=2.2 && <2.4
+- warp >=3.0 && <3.3
+- warp-tls
+- yaml >=0.11 && <0.12
+- yesod >=1.6 && <1.7
+- yesod-core >=1.6 && <1.7
+- yesod-persistent >= 1.6 && < 1.7
+
+default-extensions:
+- NoImplicitPrelude
+- GeneralizedNewtypeDeriving
+- LambdaCase
+- MultiWayIf
+- NamedFieldPuns
+- NumericUnderscores
+- OverloadedStrings
+name: start9-registry
+version: 0.0.0
+executables:
+  start9-registry:
+    source-dirs: src
+    main: Main.hs
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    - -fdefer-typed-holes
+    dependencies:
+    - start9-registry
+    when:
+    - buildable: false
+      condition: flag(library-only)
