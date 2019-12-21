@@ -45,7 +45,6 @@ instance FromJSON AppSettings where
         appHost                   <- fromString <$> o .: "host"
         appPort                   <- o .: "port"
         appIpFromHeader           <- o .: "ip-from-header"
-
         appDetailedRequestLogging <- o .:? "detailed-logging" .!= True
         appShouldLogAll           <- o .:? "should-log-all" .!= False
 

@@ -9,7 +9,7 @@ import           Paths_start9_registry (version)
 import           Startlude
 
 configBasePath :: FilePath
-configBasePath = "/root/registry"
+configBasePath = "./config"
 
 registryVersion :: AppVersion
 registryVersion = fromJust . parseMaybe parseJSON . String . toS . showVersion $ version
