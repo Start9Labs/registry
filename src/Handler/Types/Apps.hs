@@ -7,6 +7,7 @@ import           Data.Aeson
 import           Data.Time.ISO8601
 import           Yesod.Core.Content
 
+import           Lib.Types.Semver
 import           Lib.Types.ServerApp
 
 newtype AvailableAppsRes = AvailableAppsRes
