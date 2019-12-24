@@ -11,7 +11,7 @@ import           Startlude
 import           Control.Monad.Logger (LogSource)
 import           Data.IORef
 import           Database.Persist.Sql
-import           Lib.Types.Semver
+import           Lib.Registry
 import           Yesod.Core
 import           Yesod.Core.Types     (Logger)
 import qualified Yesod.Core.Unsafe    as Unsafe

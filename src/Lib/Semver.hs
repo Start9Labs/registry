@@ -30,7 +30,7 @@ hasGiven :: (AppVersion -> Word16) -> AppVersion -> AppVersion -> Bool
 hasGiven projection av = (== projection av) . projection
 
 getSpecifiedAppVersion :: HasAppVersion a => AppVersionSpecification -> [a] -> Maybe a
-getSpecifiedAppVersion avSpec = appVersionMax . filter (<|| avSpec) --  get the largest thing satisfying the spec.
+getSpecifiedAppVersion avSpec = appVersionMax . filter (<|| avSpec)
 
 class HasAppVersion a where
     version :: a -> AppVersion

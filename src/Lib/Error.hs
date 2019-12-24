@@ -46,8 +46,8 @@ toStatus :: S9Error -> Status
 toStatus = \case
     PersistentE _ -> status500
 
-respondStatusException :: MonadHandler m => S9ErrT m a -> m a
-respondStatusException action = runExceptT action >>= \case
+handleS9ErrT :: MonadHandler m => S9ErrT m a -> m a
+handleS9ErrT action = runExceptT action >>= \case
     Left e -> toStatus >>= sendResponseStatus $ e
     Right a -> pure a
 

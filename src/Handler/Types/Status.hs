@@ -1,37 +1,31 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NamedFieldPuns    #-}
 module Handler.Types.Status where
 
-import Startlude
+import           Startlude
 
-import Data.Aeson
-import Data.Text
-import Yesod.Core.Content
+import           Data.Aeson
+import           Yesod.Core.Content
 
-import Lib.Types.ServerApp
-import Lib.Types.Semver
+import           Lib.Types.Semver
 
-data ServerRes = ServerRes
-    { serverStatus  :: AppStatus
-    , serverVersion :: AppVersion
-    , serverSpecs   :: Value
-    } deriving (Eq, Show)
-instance ToJSON ServerRes where
-    toJSON ServerRes{..} = object
-        [ "status" .= toUpper (show serverStatus)
-        , "versionInstalled" .= serverVersion
-        , "specs" .= serverSpecs
-        , "versionLatest" .= serverVersion -- TODO: change this.
-        ]
-instance ToTypedContent ServerRes where
-    toTypedContent = toTypedContent . toJSON
-instance ToContent ServerRes where
-    toContent = toContent . toJSON
-
-newtype AppVersionRes = AppVersionRes
-    { unAppVersionRes :: AppVersion } deriving (Eq, Show)
+newtype AppVersionRes = AppVersionRes { unAppVersionRes ::AppVersion } deriving (Eq, Show)
 instance ToJSON AppVersionRes where
-    toJSON AppVersionRes{unAppVersionRes} = object ["version" .= unAppVersionRes]
+    toJSON AppVersionRes{ unAppVersionRes } = object ["version" .= unAppVersionRes]
+
 instance ToContent AppVersionRes where
     toContent = toContent . toJSON
 instance ToTypedContent AppVersionRes where
     toTypedContent = toTypedContent . toJSON
+
+-- Ugh
+instance ToContent (Maybe AppVersionRes) where
+    toContent = toContent . toJSON
+instance ToTypedContent (Maybe AppVersionRes) where
+    toTypedContent = toTypedContent . toJSON
+
+querySpec :: Maybe Text -> Maybe AppVersionSpecification
+querySpec = (readMaybe . toS =<<)
+
+querySpecD :: AppVersionSpecification -> Maybe Text -> AppVersionSpecification
+querySpecD defaultSpec = fromMaybe defaultSpec . querySpec
