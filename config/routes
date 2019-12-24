@@ -1,6 +1,6 @@
 --authed
-/version/#AppVersion                         VersionR           GET
--- /apps                            AppsManifestR      GET --get current apps listing
+/version                            VersionR           GET
+/apps                               AppsManifestR      GET --get current apps listing
 -- /apps/#Text/#AppVersion          AppR               GET --install new app
 -- /sys/agent/#AppVersion           AgentR             GET --install new agent version
 -- /sys/appmgr/#AppVersion          AppMgrR            GET --install new appmgr version
