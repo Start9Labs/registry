@@ -91,6 +91,9 @@ instance FromJSON AppVersionSpecification where
         requestModifier <- parseJSON . String $ svMod
         pure $ AppVersionSpecification {..}
 
+mostRecentVersion :: AppVersionSpecification
+mostRecentVersion = AppVersionSpecification SVGreaterThanEq $ AppVersion (0,0,0)
+
 ------------------------------------------------------------------------------------------------------------------------
 -- Semver RequestModifier
 ------------------------------------------------------------------------------------------------------------------------

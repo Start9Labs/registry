@@ -71,6 +71,7 @@ dependencies:
 - protolude
 - safe
 - secp256k1-haskell
+- split
 - template-haskell
 - text >=0.11 && <2.0
 - time

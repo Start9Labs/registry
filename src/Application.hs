@@ -51,7 +51,7 @@ import           Yesod.Persist.Core
 -- Don't forget to add new modules to your cabal file!
 import           Foundation
 import           Handler.Apps
-import           Handler.Status
+import           Handler.Version
 import           Lib.Ssl
 import           Model
 import           Settings
