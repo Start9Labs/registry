@@ -12,7 +12,7 @@ configPath :: FilePath
 configPath = "./config"
 
 resourcesPath :: FilePath
-resourcesPath = "./resources"
+resourcesPath = "/var/www/html/resources"
 
 registryVersion :: AppVersion
 registryVersion = fromJust . parseMaybe parseJSON . String . toS . showVersion $ version
