@@ -1,7 +1,7 @@
 module Live.UpdateAgent where
 
 import           Application
-import           Lib.Types.ServerApp
+import           Lib.Types.StoreApp
 import           Lib.UpdateAgent
 import           Startlude
 
