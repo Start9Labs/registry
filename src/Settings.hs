@@ -7,8 +7,7 @@
 -- declared in the Foundation.hs file.
 module Settings where
 
-import           Crypto.Hash
-import           Startlude                hiding (hash)
+import           Startlude
 
 import qualified Control.Exception        as Exception
 import           Data.Aeson
@@ -49,14 +48,6 @@ instance FromJSON AppSettings where
         appShouldLogAll           <- o .:? "should-log-all" .!= False
 
         return AppSettings { .. }
-
-apNameFromPass :: Text -> Text
-apNameFromPass password = prefix <> toS (take 4 hashStr)
-  where
-    bs      = encodeUtf8 password
-    hashed  = hash bs :: Digest SHA256
-    hashStr = show hashed :: String
-    prefix  = "start9-"
 
 -- | Raw bytes at compile time of @config/settings.yml@
 configSettingsYmlBS :: ByteString
