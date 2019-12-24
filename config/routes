@@ -1,8 +1,11 @@
---authed
-/version                            VersionR           GET
-/apps                               AppsManifestR      GET --get current apps listing
--- /apps/#Text/#AppVersion          AppR               GET --install new app
--- /sys/agent/#AppVersion           AgentR             GET --install new agent version
--- /sys/appmgr/#AppVersion          AppMgrR            GET --install new appmgr version
 
--- /v0/authorizedKeys AuthorizeKeyR  POST
+
+/                                       AppsManifestR      GET --get current apps listing
+/version                                VersionR           GET
+-- /version/:appId                         VersionAppR        GET --get most recent appId version
+-- /sys/version/agent                      VersionAgentR      GET --get most recent agent version
+-- /sys/version/appmgr                     VersionAppMgrR     GET --get most recent appmgr version
+
+-- /{:appId}.s9pk    AppR               GET --get most recent appId at appversion spec, defaults to >=0.0.0 -- ?version={semver-spec}
+-- /sys/agent.s9pk   AgentR             GET --get most recent agent at appversion -- ?version={semver-spec}
+-- /sys/appmgr.s9pk  AppMgrR            GET --get most recent appmgr at appversion -- ?version={semver-spec}

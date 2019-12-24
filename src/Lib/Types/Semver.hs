@@ -14,6 +14,10 @@ import           Data.String.Interpolate
 import           Data.Text
 import           Yesod.Core
 
+------------------------------------------------------------------------------------------------------------------------
+-- Semver AppVersion
+------------------------------------------------------------------------------------------------------------------------
+
 newtype AppVersion = AppVersion
     { unAppVersion :: (Word16, Word16, Word16) } deriving (Eq, Ord)
 
@@ -55,10 +59,26 @@ instance ToContent AppVersion where
     where
         d `diffy` d1 = fromIntegral . abs $ (fromIntegral d :: Integer) - (fromIntegral d1 :: Integer)
 
+------------------------------------------------------------------------------------------------------------------------
+-- Semver AppVersionSpecification
+------------------------------------------------------------------------------------------------------------------------
+
 data AppVersionSpecification = AppVersionSpecification
     { requestModifier :: SemverRequestModifier
     , baseVersion     :: AppVersion
     }
+
+instance Read AppVersionSpecification where
+    readsPrec _ s =
+        case (readMaybe . toS $ svMod, readMaybe . toS $ version) of
+            (Just m, Just av) -> [(AppVersionSpecification m av, "")]
+            _                 -> []
+        where
+            (svMod, version) = break isDigit . toS $ s
+
+instance PathPiece AppVersionSpecification where
+    fromPathPiece = readMaybe . toS
+    toPathPiece = show
 
 instance Show AppVersionSpecification where
     show (AppVersionSpecification r b) = show r <> show b
@@ -71,6 +91,10 @@ instance FromJSON AppVersionSpecification where
         requestModifier <- parseJSON . String $ svMod
         pure $ AppVersionSpecification {..}
 
+------------------------------------------------------------------------------------------------------------------------
+-- Semver RequestModifier
+------------------------------------------------------------------------------------------------------------------------
+
 data SemverRequestModifier = SVEquals | SVLessThan | SVGreaterThan | SVGreatestWithMajor | SVGreatestWithMajorMinor | SVLessThanEq | SVGreaterThanEq deriving (Eq, Bounded, Enum)
 instance Show SemverRequestModifier where
     show SVEquals                 = "="
@@ -82,13 +106,19 @@ instance Show SemverRequestModifier where
     show SVGreaterThanEq          = ">="
 
 instance FromJSON SemverRequestModifier where
-    parseJSON = withText "semver request modifier" $ \case
-        ""   -> pure SVGreatestWithMajorMinor
-        "="  -> pure SVEquals
-        "<"  -> pure SVLessThan
-        ">"  -> pure SVGreaterThan
-        "~"  -> pure SVGreatestWithMajor
-        "^"  -> pure SVGreatestWithMajorMinor
-        "<=" -> pure SVLessThanEq
-        ">=" -> pure SVGreaterThanEq
-        _    -> fail "invalid semver request modifier"
+    parseJSON = withText "semver request modifier" $ \t ->
+        case readMaybe . toS $ t of
+            Just m  -> pure m
+            Nothing -> fail "invalid semver request modifier"
+
+instance Read SemverRequestModifier where
+    readsPrec _ = \case
+        ""   -> [(SVGreatestWithMajorMinor, "")]
+        "="  -> [(SVEquals, "")]
+        "<"  -> [(SVLessThan, "")]
+        ">"  -> [(SVGreaterThan, "")]
+        "~"  -> [(SVGreatestWithMajor, "")]
+        "^"  -> [(SVGreatestWithMajorMinor, "")]
+        "<=" -> [(SVLessThanEq, "")]
+        ">=" -> [(SVGreaterThanEq, "")]
+        _    -> []
