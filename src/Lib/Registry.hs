@@ -11,6 +11,7 @@ import           Yesod.Core
 
 import           Data.Text         (isSuffixOf)
 
+import           Constants
 import           Lib.Semver
 import           Lib.Types.Semver
 import           Util.Function
@@ -31,10 +32,10 @@ instance PathPiece S9PK where
     toPathPiece = show
 
 appResourceDir :: FilePath
-appResourceDir = "./resources/apps"
+appResourceDir = resourcesPath </> "apps"
 
 sysResourceDir :: FilePath
-sysResourceDir = "./resources/sys"
+sysResourceDir = resourcesPath </> "sys"
 
 appManifestPath :: FilePath
 appManifestPath = appResourceDir </> "apps.yaml"
