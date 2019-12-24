@@ -13,6 +13,7 @@ import           Data.Text         (isSuffixOf)
 
 import           Lib.Semver
 import           Lib.Types.Semver
+import           Util.Function
 
 newtype S9PK = S9PK String deriving (Eq)
 instance Show S9PK where
@@ -63,15 +64,27 @@ loadRegistry rootDirectory = liftIO $ do
         ( \registry appId -> do
             subdirs <- getSubDirectories (rootDirectory </> appId)
             let validVersions = mapMaybe readMaybe subdirs
-            let versionedApps = fromList . fmap (id &&& fullS9pk rootDirectory appId) $ validVersions
-            pure $ insert appId versionedApps registry
+            versionApps <- for validVersions $ \v ->
+                getAppFileFromDir rootDirectory appId v
+                    >>= \case
+                        Nothing      -> pure Nothing
+                        Just appFile -> pure . Just $ (v, rootDirectory </> appId </> show v </> appFile)
+            pure $ insert appId (fromList . catMaybes $ versionApps) registry
         ) empty appDirectories
     where
         getSubDirectories path = listDirectory path >>= filterM (fmap not . doesFileExist)
-        fullS9pk root appId' appVersion = root </> appId' </> show appVersion </> s9pkExt appId'
+
+
+getAppFileFromDir :: String -> String -> AppVersion -> IO (Maybe FilePath)
+getAppFileFromDir rootDirectory appId v = do
+    dirContents <- listDirectory (rootDirectory </> appId </> show v)
+    pure $ find (isPrefixOf appId) dirContents
 
 getAppFile :: String -> Registry -> AppVersion -> Maybe FilePath
 getAppFile appId r av = lookup av <=< lookup appId $ r
 
 registeredAppVersions :: String -> Registry -> [RegisteredAppVersion]
 registeredAppVersions appId r = maybe [] (fmap RegisteredAppVersion . toList) (lookup appId r)
+
+findM :: Monad m => (a -> m Bool) -> [a] -> m (Maybe a)
+findM = fmap headMay .* filterM

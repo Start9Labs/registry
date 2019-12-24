@@ -12,6 +12,7 @@ import           Data.Aeson
 import qualified Data.ByteString.Lazy as BS
 import           Data.Conduit
 import qualified Data.Conduit.Binary  as CB
+import qualified GHC.Show             (Show (..))
 import           System.Directory
 import           Yesod.Core
 
@@ -20,6 +21,7 @@ import           Handler.Types.Status
 import           Lib.Registry
 import           Lib.Semver
 import           Lib.Types.Semver
+import           System.FilePath      ((<.>))
 
 pureLog :: Show a => a -> Handler a
 pureLog = liftA2 (*>) ($logInfo . show) pure
@@ -27,20 +29,28 @@ pureLog = liftA2 (*>) ($logInfo . show) pure
 logRet :: ToJSON a => Handler a -> Handler a
 logRet = (>>= liftA2 (*>) ($logInfo . decodeUtf8 . BS.toStrict . encode) pure)
 
+data FileExtension = FileExtension FilePath (Maybe String)
+instance Show FileExtension where
+    show (FileExtension f Nothing)  = f
+    show (FileExtension f (Just e)) = f <.> e
+
+getImageR :: Handler TypedContent
+getImageR = getApp sysResourceDir "image"
+
 getAppsManifestR :: Handler TypedContent
 getAppsManifestR = respondSource typePlain $ CB.sourceFile appManifestPath .| awaitForever sendChunkBS
 
 getAgentR :: Handler TypedContent
-getAgentR = getApp sysResourceDir $ S9PK "agent"
+getAgentR = getApp sysResourceDir "agent"
 
 getAppMgrR :: Handler TypedContent
-getAppMgrR = getApp sysResourceDir $ S9PK "appmgr"
+getAppMgrR = getApp sysResourceDir "appmgr"
 
 getAppR :: S9PK -> Handler TypedContent
-getAppR = getApp appResourceDir
+getAppR (S9PK appId) = getApp appResourceDir appId
 
-getApp :: FilePath -> S9PK -> Handler TypedContent
-getApp rootDir (S9PK appId) = do
+getApp :: FilePath -> FilePath -> Handler TypedContent
+getApp rootDir appId = do
     spec <- querySpecD mostRecentVersion <$> lookupGetParam "spec"
     appVersions <- registeredAppVersions appId <$> loadRegistry rootDir
     case getSpecifiedAppVersion spec appVersions of

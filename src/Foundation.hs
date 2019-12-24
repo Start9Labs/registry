@@ -38,6 +38,7 @@ setWebProcessThreadId tid a = writeIORef (appWebServerThreadId a) . Just $ tid
 -- explanation of the syntax, please see:
 -- http://www.yesodweb.com/book/routing-and-handlers
 --
+
 -- Note that this is really half the story; in Application.hs, mkYesodDispatch
 -- generates the rest of the code. Please see the following documentation
 -- for an explanation for this split:
