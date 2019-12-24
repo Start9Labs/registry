@@ -7,5 +7,5 @@ import           Foundation
 import           Handler.Types.Status
 import           Lib.Types.Semver
 
-getVersionR :: AppVersion -> Handler AppVersionRes
-getVersionR = pure . AppVersionRes -- $ registryVersion
+getVersionR :: Handler AppVersionRes
+getVersionR = pure . AppVersionRes $ registryVersion
