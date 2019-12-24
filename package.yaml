@@ -44,20 +44,18 @@ dependencies:
 - comonad
 - conduit
 - conduit-extra
-- cryptonite
 - data-default
 - directory
 - dns
 - either
 - errors
-- fast-logger >=2.2 && <2.5
 - file-embed
+- fast-logger >=2.2 && <2.5
 - filepath
 - http-client
 - http-conduit
 - http-types
 - interpolate
-- iso8601-time
 - jose-jwt
 - lens
 - lens-aeson
@@ -70,16 +68,13 @@ dependencies:
 - process
 - protolude
 - safe
-- secp256k1-haskell
 - split
 - template-haskell
 - text >=0.11 && <2.0
 - time
 - transformers
-- unix
 - unordered-containers
-- vault
-- vector
+- unix
 - wai
 - wai-cors
 - wai-extra >=3.0 && <3.1
