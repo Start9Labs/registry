@@ -14,17 +14,14 @@ import           Constants
 -- openssl req -new -key key.pem -out certificate.csr
 -- openssl x509 -req -in certificate.csr -signkey key.pem -out certificate.pem
 
-sslBaseLocation :: FilePath
-sslBaseLocation = configPath </> "ssl"
-
 sslKeyLocation :: FilePath
-sslKeyLocation = sslBaseLocation </> "key.pem"
+sslKeyLocation = sslPath </> "key.pem"
 
 sslCsrLocation :: FilePath
-sslCsrLocation = sslBaseLocation </> "certificate.csr"
+sslCsrLocation = sslPath </> "certificate.csr"
 
 sslCertLocation :: FilePath
-sslCertLocation = sslBaseLocation </> "certificate.pem"
+sslCertLocation = sslPath </> "certificate.pem"
 
 checkForSslCert :: IO Bool
 checkForSslCert =
@@ -55,7 +52,7 @@ setupSsl :: IO ()
 setupSsl = do
     exists <- checkForSslCert
     unless exists $ do
-        void $ system $ "mkdir -p " <> sslBaseLocation
+        void $ system $ "mkdir -p " <> sslPath
         void generateSslKey
         void $ generateSslCert getRegistryHostname
         void selfSignSslCert

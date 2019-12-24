@@ -10,11 +10,11 @@ import           Lib.Types.Semver
 (<||) a (AppVersionSpecification SVGreaterThan av1)   = version a > av1
 (<||) a (AppVersionSpecification SVLessThanEq av1)    = version a <= av1
 (<||) a (AppVersionSpecification SVGreaterThanEq av1) = version a >= av1
-(<||) a (AppVersionSpecification SVGreatestWithMajor av1)
+(<||) a (AppVersionSpecification SVGreatestWithMajor av1) -- "maj.*"
     = major av == major av1 && av >= av1
     where
         av = version a
-(<||) a (AppVersionSpecification SVGreatestWithMajorMinor av1)
+(<||) a (AppVersionSpecification SVGreatestWithMajorMinor av1) -- "maj.min.*"
     = major av == major av1 && minor av == minor av1 && av >= av1
     where
         av = version a
