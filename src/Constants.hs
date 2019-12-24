@@ -8,8 +8,8 @@ import           Lib.Types.Semver
 import           Paths_start9_registry (version)
 import           Startlude
 
-configPath :: FilePath
-configPath = "./config"
+sslPath :: FilePath
+sslPath = "/var/ssl"
 
 resourcesPath :: FilePath
 resourcesPath = "/var/www/html/resources"
