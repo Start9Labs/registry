@@ -2,12 +2,13 @@
 
 /apps                                   AppsManifestR      GET --get current apps listing
 /version                                VersionR           GET
+
 /apps/version/#Text                     VersionAppR        GET --get most recent appId version
 /sys/version/agent                      VersionAgentR      GET --get most recent agent version
 /sys/version/appmgr                     VersionAppMgrR     GET --get most recent appmgr version
 
+!/apps/#S9PK                            AppR               GET --get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
 /sys/agent                              AgentR             GET --get most recent agent at appversion -- ?spec={semver-spec}
 /sys/appmgr                             AppMgrR            GET --get most recent appmgr at appversion -- ?spec={semver-spec}
-!/apps/#S9PK                            AppR               GET --get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
 
 /sys.tar.gz                             ImageR             GET --get most recent iso image, ?spec={semver-spec}
