@@ -75,7 +75,7 @@ loadRegistry rootDirectory = liftIO $ do
             pure $ insert appId (fromList . catMaybes $ versionApps) registry
         ) empty appDirectories
     where
-        getSubDirectories path = listDirectory path >>= filterM (fmap not . doesFileExist)
+        getSubDirectories path = listDirectory path >>= filterM doesDirectoryExist
 
 
 getAppFileFromDir :: String -> String -> AppVersion -> IO (Maybe FilePath)
