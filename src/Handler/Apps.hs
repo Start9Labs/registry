@@ -52,7 +52,10 @@ getAppR (S9PK appId) = getApp appResourceDir appId
 getApp :: FilePath -> FilePath -> Handler TypedContent
 getApp rootDir appId = do
     spec <- querySpecD mostRecentVersion <$> lookupGetParam "spec"
-    appVersions <- registeredAppVersions appId <$> loadRegistry rootDir
+    reg <- loadRegistry rootDir
+    putStrLn ("got registry" :: String)
+    let appVersions = registeredAppVersions appId reg
+    putStrLn $ "valid appversion for " <> appId <> ": " <> show (fmap version appVersions)
     case getSpecifiedAppVersion spec appVersions of
         Nothing -> respondSource typePlain sendFlush
         Just (RegisteredAppVersion (_, filePath)) -> do

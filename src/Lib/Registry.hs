@@ -38,10 +38,10 @@ sysResourceDir :: FilePath
 sysResourceDir = resourcesPath </> "sys"
 
 appManifestPath :: FilePath
-appManifestPath = appResourceDir </> "apps.yaml"
+appManifestPath = appResourceDir </> appManifestFile
 
 appManifestFile :: FilePath
-appManifestFile = "apps.yml"
+appManifestFile = "apps.yaml"
 
 s9pkExt :: String -> FilePath
 s9pkExt = show . S9PK
@@ -61,9 +61,11 @@ loadSysRegistry = loadRegistry sysResourceDir
 loadRegistry :: MonadIO m => FilePath -> m Registry
 loadRegistry rootDirectory = liftIO $ do
     appDirectories <- getSubDirectories rootDirectory
+    putStrLn $ "got appDirectories for " <> rootDirectory <> ": " <> show appDirectories
     foldM
         ( \registry appId -> do
             subdirs <- getSubDirectories (rootDirectory </> appId)
+            putStrLn $ "got appDirectories for " <> (rootDirectory </> appId) <> ": " <> show subdirs
             let validVersions = mapMaybe readMaybe subdirs
             versionApps <- for validVersions $ \v ->
                 getAppFileFromDir rootDirectory appId v
