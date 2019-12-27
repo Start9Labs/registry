@@ -24,6 +24,9 @@ getVersionAgentR = getVersionWSpec sysResourceDir "agent"
 getVersionAppMgrR :: Handler (Maybe AppVersionRes)
 getVersionAppMgrR = getVersionWSpec sysResourceDir "appmgr"
 
+getVersionTorrcR :: Handler (Maybe AppVersionRes)
+getVersionTorrcR = getVersionWSpec sysResourceDir "torrc"
+
 getVersionWSpec :: FilePath -> Text -> Handler (Maybe AppVersionRes)
 getVersionWSpec rootDir appId = do
     spec <- querySpecD mostRecentVersion <$> lookupGetParam "spec"
