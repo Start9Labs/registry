@@ -46,6 +46,9 @@ getAgentR = getApp sysResourceDir "agent"
 getAppMgrR :: Handler TypedContent
 getAppMgrR = getApp sysResourceDir "appmgr"
 
+getTorrcR :: Handler TypedContent
+getTorrcR = getApp sysResourceDir "torrc"
+
 getAppR :: S9PK -> Handler TypedContent
 getAppR (S9PK appId) = getApp appResourceDir appId
 
