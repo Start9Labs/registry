@@ -60,11 +60,11 @@ getApp rootDir appId = do
     let appVersions = registeredAppVersions appId reg
     putStrLn $ "valid appversion for " <> appId <> ": " <> show (fmap version appVersions)
     case getSpecifiedAppVersion spec appVersions of
-        Nothing -> respondSource typePlain sendFlush
+        Nothing -> notFound
         Just (RegisteredAppVersion (_, filePath)) -> do
             exists <- liftIO $ doesFileExist filePath
             if exists
                 then respondSource typePlain $ CB.sourceFile filePath .| awaitForever sendChunkBS
-                else respondSource typePlain sendFlush
+                else notFound
 
 
