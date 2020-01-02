@@ -11,8 +11,8 @@ import           Startlude
 sslPath :: FilePath
 sslPath = "/var/ssl"
 
-resourcesPath :: FilePath
-resourcesPath = "/var/www/html/resources"
+resourcesDir :: FilePath
+resourcesDir = "/var/www/html/resources"
 
 registryVersion :: AppVersion
 registryVersion = fromJust . parseMaybe parseJSON . String . toS . showVersion $ version
