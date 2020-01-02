@@ -24,6 +24,7 @@ import           Settings
 -- starts running, such as database connections. Every handler will have
 -- access to the data present here.
 
+
 data AgentCtx = AgentCtx
     { appSettings          :: AppSettings
     , appConnPool          :: ConnectionPool -- ^ Database connection pool.

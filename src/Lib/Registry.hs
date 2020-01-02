@@ -1,6 +1,11 @@
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+
 module Lib.Registry where
 
-import           Startlude         hiding (empty, toList)
+import           Startlude
 
 import           Data.HashMap.Lazy hiding (mapMaybe)
 import qualified GHC.Read          (Read (..))
@@ -14,22 +19,6 @@ import           Data.Text         (isSuffixOf)
 import           Constants
 import           Lib.Semver
 import           Lib.Types.Semver
-import           Util.Function
-
-newtype S9PK = S9PK String deriving (Eq)
-instance Show S9PK where
-    show (S9PK t) = t <.> "s9pk"
-
-instance Read S9PK where
-    readsPrec _ s = [(S9PK . take (m - n) $ s, "") | toS s9pk `isSuffixOf` toS s]
-        where
-            m = length s
-            s9pk = ".s9pk" :: String
-            n = length s9pk
-
-instance PathPiece S9PK where
-    fromPathPiece = readMaybe . toS
-    toPathPiece = show
 
 appResourceDir :: FilePath
 appResourceDir = resourcesPath </> "apps"
@@ -37,57 +26,65 @@ appResourceDir = resourcesPath </> "apps"
 sysResourceDir :: FilePath
 sysResourceDir = resourcesPath </> "sys"
 
+iconsResourceDir :: FilePath
+iconsResourceDir = resourcesPath </> "icons"
+
 appManifestPath :: FilePath
 appManifestPath = appResourceDir </> appManifestFile
 
 appManifestFile :: FilePath
 appManifestFile = "apps.yaml"
 
-s9pkExt :: String -> FilePath
-s9pkExt = show . S9PK
-
 type Registry = HashMap String (HashMap AppVersion FilePath)
 
-newtype RegisteredAppVersion = RegisteredAppVersion (AppVersion, FilePath)
+newtype RegisteredAppVersion = RegisteredAppVersion (AppVersion, FilePath) deriving (Eq, Show)
 instance HasAppVersion RegisteredAppVersion where
     version (RegisteredAppVersion (av, _)) = av
 
-loadAppRegistry :: MonadIO m => m Registry
-loadAppRegistry = loadRegistry appResourceDir
-
-loadSysRegistry :: MonadIO m => m Registry
-loadSysRegistry = loadRegistry sysResourceDir
-
-loadRegistry :: MonadIO m => FilePath -> m Registry
-loadRegistry rootDirectory = liftIO $ do
-    appDirectories <- getSubDirectories rootDirectory
-    putStrLn $ "got appDirectories for " <> rootDirectory <> ": " <> show appDirectories
-    foldM
-        ( \registry appId -> do
-            subdirs <- getSubDirectories (rootDirectory </> appId)
-            putStrLn $ "got appDirectories for " <> (rootDirectory </> appId) <> ": " <> show subdirs
-            let validVersions = mapMaybe readMaybe subdirs
-            versionApps <- for validVersions $ \v ->
-                getAppFileFromDir rootDirectory appId v
-                    >>= \case
-                        Nothing      -> pure Nothing
-                        Just appFile -> pure . Just $ (v, rootDirectory </> appId </> show v </> appFile)
-            pure $ insert appId (fromList . catMaybes $ versionApps) registry
-        ) empty appDirectories
+getAvailableAppVersions :: KnownSymbol a => FilePath -> Extension a -> IO [RegisteredAppVersion]
+getAvailableAppVersions rootDirectory ext@(Extension appId) = do
+    versions <- mapMaybe readMaybe <$> getSubDirectories (rootDirectory </> appId)
+    fmap catMaybes . for versions $ \v ->
+        getVersionedFileFromDir rootDirectory ext v
+            >>= \case
+                Nothing      -> pure Nothing
+                Just appFile -> pure . Just $ RegisteredAppVersion (v, appFile)
     where
-        getSubDirectories path = listDirectory path >>= filterM (doesDirectoryExist . (path </>))
+        getSubDirectories path = (fmap (fromRight []) . try @SomeException $ listDirectory path) >>= filterM (doesDirectoryExist . (path </>))
 
+-- /root/appId/version/appId.ext
+getVersionedFileFromDir :: KnownSymbol a => FilePath -> Extension a -> AppVersion -> IO (Maybe FilePath)
+getVersionedFileFromDir rootDirectory ext@(Extension appId) v = getUnversionedFileFromDir (rootDirectory </> appId </> show v) ext
 
-getAppFileFromDir :: String -> String -> AppVersion -> IO (Maybe FilePath)
-getAppFileFromDir rootDirectory appId v = do
-    dirContents <- listDirectory (rootDirectory </> appId </> show v)
-    pure $ find (isPrefixOf appId) dirContents
+-- /root/appId.ext
+getUnversionedFileFromDir :: KnownSymbol a => FilePath -> Extension a -> IO (Maybe FilePath)
+getUnversionedFileFromDir rootDirectory appExt = fmap (join . hush) . try @SomeException $ do
+    dirContents <- listDirectory rootDirectory
+    pure . fmap (rootDirectory </>) $ find (== show appExt) dirContents
 
-getAppFile :: String -> Registry -> AppVersion -> Maybe FilePath
-getAppFile appId r av = lookup av <=< lookup appId $ r
+newtype Extension (a :: Symbol) = Extension String deriving (Eq)
+type S9PK = Extension "s9pk"
+type PNG = Extension "png"
 
-registeredAppVersions :: String -> Registry -> [RegisteredAppVersion]
-registeredAppVersions appId r = maybe [] (fmap RegisteredAppVersion . toList) (lookup appId r)
+instance IsString (Extension a) where
+    fromString = Extension
 
-findM :: Monad m => (a -> m Bool) -> [a] -> m (Maybe a)
-findM = fmap headMay .* filterM
+def :: Extension a
+def = Extension ""
+
+extension :: KnownSymbol a => Extension a -> String
+extension = symbolVal
+
+instance KnownSymbol a => Show (Extension a) where
+    show e@(Extension file) = file <.> extension e
+
+instance KnownSymbol a => Read (Extension a) where
+    readsPrec _ s = [(Extension . take (m - n - 1) $ s, "") | toS ext' `isSuffixOf` toS s]
+        where
+            m = length s
+            ext' = extension (def :: Extension a)
+            n = length ext'
+
+instance KnownSymbol a => PathPiece (Extension a) where
+    fromPathPiece = readMaybe . toS
+    toPathPiece = show
