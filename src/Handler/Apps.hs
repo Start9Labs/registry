@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE QuasiQuotes      #-}
 {-# LANGUAGE RecordWildCards  #-}
 {-# LANGUAGE TemplateHaskell  #-}
@@ -34,31 +35,29 @@ instance Show FileExtension where
     show (FileExtension f Nothing)  = f
     show (FileExtension f (Just e)) = f <.> e
 
-getImageR :: Handler TypedContent
-getImageR = getApp sysResourceDir "image"
-
 getAppsManifestR :: Handler TypedContent
 getAppsManifestR = respondSource typePlain $ CB.sourceFile appManifestPath .| awaitForever sendChunkBS
 
+getImageR :: Handler TypedContent
+getImageR = getApp sysResourceDir ("image" :: Extension "")
+
 getAgentR :: Handler TypedContent
-getAgentR = getApp sysResourceDir "agent"
+getAgentR = getApp sysResourceDir ("agent" :: Extension "")
 
 getAppMgrR :: Handler TypedContent
-getAppMgrR = getApp sysResourceDir "appmgr"
+getAppMgrR = getApp sysResourceDir ("appmgr" :: Extension "")
 
 getTorrcR :: Handler TypedContent
-getTorrcR = getApp sysResourceDir "torrc"
+getTorrcR = getApp sysResourceDir ("torrc" :: Extension "")
 
-getAppR :: S9PK -> Handler TypedContent
-getAppR (S9PK appId) = getApp appResourceDir appId
+getAppR :: Extension "s9pk" -> Handler TypedContent
+getAppR = getApp appResourceDir
 
-getApp :: FilePath -> FilePath -> Handler TypedContent
-getApp rootDir appId = do
+getApp :: KnownSymbol a => FilePath -> Extension a -> Handler TypedContent
+getApp rootDir ext = do
     spec <- querySpecD mostRecentVersion <$> lookupGetParam "spec"
-    reg <- loadRegistry rootDir
-    putStrLn ("got registry" :: String)
-    let appVersions = registeredAppVersions appId reg
-    putStrLn $ "valid appversion for " <> appId <> ": " <> show (fmap version appVersions)
+    appVersions <- liftIO $ getAvailableAppVersions rootDir ext
+    putStrLn $ "valid appversion for " <> (show ext :: String) <> ": " <> show appVersions
     case getSpecifiedAppVersion spec appVersions of
         Nothing -> notFound
         Just (RegisteredAppVersion (_, filePath)) -> do
