@@ -21,13 +21,13 @@ import           Lib.Semver
 import           Lib.Types.Semver
 
 appResourceDir :: FilePath
-appResourceDir = resourcesPath </> "apps"
+appResourceDir = resourcesDir </> "apps"
 
 sysResourceDir :: FilePath
-sysResourceDir = resourcesPath </> "sys"
+sysResourceDir = resourcesDir </> "sys"
 
 iconsResourceDir :: FilePath
-iconsResourceDir = resourcesPath </> "icons"
+iconsResourceDir = resourcesDir </> "icons"
 
 appManifestPath :: FilePath
 appManifestPath = appResourceDir </> appManifestFile

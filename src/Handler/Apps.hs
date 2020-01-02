@@ -17,6 +17,7 @@ import qualified GHC.Show             (Show (..))
 import           System.Directory
 import           Yesod.Core
 
+import           Constants
 import           Foundation
 import           Handler.Types.Status
 import           Lib.Registry
@@ -39,7 +40,7 @@ getAppsManifestR :: Handler TypedContent
 getAppsManifestR = respondSource typePlain $ CB.sourceFile appManifestPath .| awaitForever sendChunkBS
 
 getImageR :: Handler TypedContent
-getImageR = getApp sysResourceDir ("image" :: Extension "")
+getImageR = getApp resourcesDir ("sys" :: Extension "tar.gz")
 
 getAgentR :: Handler TypedContent
 getAgentR = getApp sysResourceDir ("agent" :: Extension "")
