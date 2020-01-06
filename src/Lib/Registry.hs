@@ -14,8 +14,6 @@ import           System.Directory
 import           System.FilePath
 import           Yesod.Core
 
-import           Data.Text         (isSuffixOf)
-
 import           Constants
 import           Lib.Semver
 import           Lib.Types.Semver
@@ -80,13 +78,16 @@ instance KnownSymbol a => Show (Extension a) where
     show e@(Extension file) = file <.> extension e
 
 instance KnownSymbol a => Read (Extension a) where
-    readsPrec _ s = [(Extension . take (m - n - 1) $ s, "") | toS ext' `isSuffixOf` toS s]
+    readsPrec _ s = [(Extension fileName, "") | ("" <.> fileExt) == ("" <.> ext')]
         where
-            m = length s
+            (fileName, fileExt) = splitExtension s
             ext' = extension (def :: Extension a)
-            n = if length ext' == 0
-                    then -1
-                    else length ext'
+
+withPeriod :: String -> String
+withPeriod word@(a:_) = case a of
+    '.' -> word
+    _   -> "." <> word
+withPeriod word = word
 
 instance KnownSymbol a => PathPiece (Extension a) where
     fromPathPiece = readMaybe . toS
