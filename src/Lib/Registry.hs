@@ -64,6 +64,7 @@ getUnversionedFileFromDir rootDirectory appExt = fmap (join . hush) . try @SomeE
 
 newtype Extension (a :: Symbol) = Extension String deriving (Eq)
 type S9PK = Extension "s9pk"
+type SYS_EXTENSIONLESS = Extension ""
 type PNG = Extension "png"
 
 instance IsString (Extension a) where
@@ -83,7 +84,9 @@ instance KnownSymbol a => Read (Extension a) where
         where
             m = length s
             ext' = extension (def :: Extension a)
-            n = length ext'
+            n = if length ext' == 0
+                    then -1
+                    else length ext'
 
 instance KnownSymbol a => PathPiece (Extension a) where
     fromPathPiece = readMaybe . toS
