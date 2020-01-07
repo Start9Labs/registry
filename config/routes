@@ -4,14 +4,10 @@
 /version                                VersionR           GET
 
 /apps/version/#Text                     VersionAppR        GET --get most recent appId version
-/sys/version/agent                      VersionAgentR      GET --get most recent agent version
-/sys/version/appmgr                     VersionAppMgrR     GET --get most recent appmgr version
-/sys/version/torrc                      VersionTorrcR      GET --get most recent torrc version
+/sys/version/#Text                      VersionSysR        GET --get most recent sys app version
 
 /icons/#PNG                             IconsR             GET -- get icons
 !/apps/#S9PK                            AppR               GET --get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
-/sys/agent                              AgentR             GET --get most recent agent at appversion -- ?spec={semver-spec}
-/sys/appmgr                             AppMgrR            GET --get most recent appmgr at appversion -- ?spec={semver-spec}
-/sys/torrc                              TorrcR             GET --get most recent torrc at appversion -- ?spec={semver-spec}
+!/sys/#SYS_EXTENSIONLESS                SysR               GET --get most recent sys app -- ?spec={semver-spec}
 
 /sys.tar.gz                             ImageR             GET --get most recent iso image, ?spec={semver-spec}
