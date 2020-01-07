@@ -21,14 +21,10 @@ getVersionAppR appId = getVersionWSpec appResourceDir appExt
     where
         appExt = Extension (toS appId) :: Extension "s9pk"
 
-getVersionAgentR :: Handler (Maybe AppVersionRes)
-getVersionAgentR = getVersionWSpec sysResourceDir ("agent" :: Extension "")
-
-getVersionAppMgrR :: Handler (Maybe AppVersionRes)
-getVersionAppMgrR = getVersionWSpec sysResourceDir ("appmgr" :: Extension "")
-
-getVersionTorrcR :: Handler (Maybe AppVersionRes)
-getVersionTorrcR = getVersionWSpec sysResourceDir ("torrc" :: Extension "")
+getVersionSysR :: Text -> Handler (Maybe AppVersionRes)
+getVersionSysR sysAppId = getVersionWSpec sysResourceDir sysExt
+    where
+        sysExt = Extension (toS sysAppId) :: Extension ""
 
 getVersionWSpec :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe AppVersionRes)
 getVersionWSpec rootDir ext = do

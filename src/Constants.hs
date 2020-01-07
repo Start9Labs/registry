@@ -12,7 +12,7 @@ sslPath :: FilePath
 sslPath = "/var/ssl"
 
 resourcesDir :: FilePath
-resourcesDir = "/var/www/html/resources"
+resourcesDir = "/var/www/html/resources" -- "./resources" --
 
 registryVersion :: AppVersion
 registryVersion = fromJust . parseMaybe parseJSON . String . toS . showVersion $ version

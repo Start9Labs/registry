@@ -42,14 +42,8 @@ getAppsManifestR = respondSource typePlain $ CB.sourceFile appManifestPath .| aw
 getImageR :: Handler TypedContent
 getImageR = getApp resourcesDir ("sys" :: Extension "tar.gz")
 
-getAgentR :: Handler TypedContent
-getAgentR = getApp sysResourceDir ("agent" :: Extension "")
-
-getAppMgrR :: Handler TypedContent
-getAppMgrR = getApp sysResourceDir ("appmgr" :: Extension "")
-
-getTorrcR :: Handler TypedContent
-getTorrcR = getApp sysResourceDir ("torrc" :: Extension "")
+getSysR :: Extension "" -> Handler TypedContent
+getSysR = getApp sysResourceDir
 
 getAppR :: Extension "s9pk" -> Handler TypedContent
 getAppR = getApp appResourceDir
