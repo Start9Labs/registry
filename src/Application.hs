@@ -28,22 +28,25 @@ module Application
 
 import           Startlude
 
-import           Control.Monad.Logger                 (liftLoc, runLoggingT)
+import           Control.Monad.Logger                  (liftLoc, runLoggingT)
 import           Data.Default
 import           Data.IORef
 import           Database.Persist.Sql
-import           Database.Persist.Sqlite              (createSqlitePool, runSqlPool, sqlDatabase, sqlPoolSize)
-import           Language.Haskell.TH.Syntax           (qLocation)
+import           Database.Persist.Sqlite               (createSqlitePool, runSqlPool, sqlDatabase, sqlPoolSize)
+import           Language.Haskell.TH.Syntax            (qLocation)
 import           Network.Wai
-import           Network.Wai.Handler.Warp             (Settings, defaultSettings, defaultShouldDisplayException,
-                                                       getPort, setHost, setOnException, setPort)
+import           Network.Wai.Handler.Warp              (Settings, defaultSettings, defaultShouldDisplayException,
+                                                        getPort, setHost, setOnException, setPort)
 import           Network.Wai.Handler.WarpTLS
-import           Network.Wai.Middleware.Cors          (CorsResourcePolicy (..), cors, simpleCorsResourcePolicy)
-import           Network.Wai.Middleware.RequestLogger (Destination (Logger), IPAddrSource (..), OutputFormat (..),
-                                                       destination, mkRequestLogger, outputFormat)
-import           System.Log.FastLogger                (defaultBufSize, newStdoutLoggerSet, toLogStr)
+import           Network.Wai.Middleware.AcceptOverride
+import           Network.Wai.Middleware.Autohead
+import           Network.Wai.Middleware.Cors           (CorsResourcePolicy (..), cors, simpleCorsResourcePolicy)
+import           Network.Wai.Middleware.MethodOverride
+import           Network.Wai.Middleware.RequestLogger  (Destination (Logger), IPAddrSource (..), OutputFormat (..),
+                                                        destination, mkRequestLogger, outputFormat)
+import           System.Log.FastLogger                 (defaultBufSize, newStdoutLoggerSet, toLogStr)
 import           Yesod.Core
-import           Yesod.Core.Types                     hiding (Logger)
+import           Yesod.Core.Types                      hiding (Logger)
 import           Yesod.Default.Config2
 import           Yesod.Persist.Core
 
@@ -109,7 +112,7 @@ makeApplication foundation = do
     let authWare = makeAuthWare foundation
     -- Create the WAI application and apply middlewares
     appPlain <- toWaiAppPlain foundation
-    pure . logWare . cors (const . Just $ policy) . authWare . defaultMiddlewaresNoLogging $ appPlain
+    pure . logWare . cors (const . Just $ policy) . authWare . acceptOverride . autohead . methodOverride $ appPlain
     where
         policy = simpleCorsResourcePolicy { corsMethods = ["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE"], corsRequestHeaders = ["app-version", "Content-Type", "Authorization"] }
 
