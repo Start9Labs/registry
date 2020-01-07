@@ -24,6 +24,7 @@ import           Lib.Registry
 import           Lib.Semver
 import           Lib.Types.Semver
 import           System.FilePath      ((<.>))
+import           System.Posix.Files   (fileSize, getFileStatus)
 
 pureLog :: Show a => a -> Handler a
 pureLog = liftA2 (*>) ($logInfo . show) pure
@@ -58,7 +59,10 @@ getApp rootDir ext = do
         Just (RegisteredAppVersion (_, filePath)) -> do
             exists <- liftIO $ doesFileExist filePath
             if exists
-                then respondSource typePlain $ CB.sourceFile filePath .| awaitForever sendChunkBS
+                then do
+                    sz <- liftIO $ fileSize <$> getFileStatus filePath
+                    addHeader "Content-Length" (show sz)
+                    respondSource typePlain $ CB.sourceFile filePath .| awaitForever sendChunkBS
                 else notFound
 
 
