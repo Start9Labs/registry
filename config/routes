@@ -9,5 +9,3 @@
 /icons/#PNG                             IconsR             GET -- get icons
 !/apps/#S9PK                            AppR               GET --get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
 !/sys/#SYS_EXTENSIONLESS                SysR               GET --get most recent sys app -- ?spec={semver-spec}
-
-/sys.tar.gz                             ImageR             GET --get most recent iso image, ?spec={semver-spec}
