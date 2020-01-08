@@ -17,7 +17,6 @@ import qualified GHC.Show             (Show (..))
 import           System.Directory
 import           Yesod.Core
 
-import           Constants
 import           Foundation
 import           Handler.Types.Status
 import           Lib.Registry
