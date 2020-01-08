@@ -39,9 +39,6 @@ instance Show FileExtension where
 getAppsManifestR :: Handler TypedContent
 getAppsManifestR = respondSource typePlain $ CB.sourceFile appManifestPath .| awaitForever sendChunkBS
 
-getImageR :: Handler TypedContent
-getImageR = getApp resourcesDir ("sys" :: Extension "tar.gz")
-
 getSysR :: Extension "" -> Handler TypedContent
 getSysR = getApp sysResourceDir
 
