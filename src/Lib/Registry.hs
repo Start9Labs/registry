@@ -79,10 +79,11 @@ instance KnownSymbol a => Show (Extension a) where
     show e@(Extension file) = file <.> extension e
 
 instance KnownSymbol a => Read (Extension a) where
-    readsPrec _ s = [(Extension fileName, "") | ("" <.> fileExt) == ("" <.> ext')]
+    readsPrec _ s = case (symbolVal $ Proxy @a) of
+        ""    -> [(Extension s, "")]
+        other -> [(Extension file, "") | ext' == "" <.> other]
         where
-            (fileName, fileExt) = splitExtension s
-            ext' = extension (def :: Extension a)
+            (file, ext') = splitExtension s
 
 withPeriod :: String -> String
 withPeriod word@(a:_) = case a of
