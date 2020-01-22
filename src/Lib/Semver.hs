@@ -20,11 +20,13 @@ import           Lib.Types.Semver
         av = version a
 
 major :: AppVersion -> Word16
-major (AppVersion (a, _, _)) = a
+major (AppVersion (a, _, _, _)) = a
 minor :: AppVersion -> Word16
-minor (AppVersion (_, a, _)) = a
+minor (AppVersion (_, a, _, _)) = a
 patch :: AppVersion -> Word16
-patch (AppVersion (_, _, a)) = a
+patch (AppVersion (_, _, a, _)) = a
+build :: AppVersion -> Word16
+build (AppVersion (_, _, _, a)) = a
 
 hasGiven :: (AppVersion -> Word16) -> AppVersion -> AppVersion -> Bool
 hasGiven projection av = (== projection av) . projection
