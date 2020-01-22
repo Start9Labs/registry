@@ -21,10 +21,6 @@ import           Yesod.Core
 newtype AppVersion = AppVersion
     { unAppVersion :: (Word16, Word16, Word16, Word16) } deriving (Eq, Ord)
 
-instance Hashable AppVersion where
-    hash (AppVersion (a, b, c, d)) = (2 ^ a) * (3 ^ b) * (5 ^ c) * (7 ^ d)
-    hashWithSalt _ = hash
-
 instance Read AppVersion where
     readsPrec _ s = case traverse (readMaybe . toS) $ splitOn "+" <=< splitOn "." $ (toS s) of
         Just [major, minor, patch, build] -> [(AppVersion (major, minor, patch, build), "")]
