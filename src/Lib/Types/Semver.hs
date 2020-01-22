@@ -19,45 +19,43 @@ import           Yesod.Core
 ------------------------------------------------------------------------------------------------------------------------
 
 newtype AppVersion = AppVersion
-    { unAppVersion :: (Word16, Word16, Word16) } deriving (Eq, Ord)
+    { unAppVersion :: (Word16, Word16, Word16, Word16) } deriving (Eq, Ord)
 
 instance Hashable AppVersion where
-    hash (AppVersion (a, b, c)) = (2 ^ c) * (3 ^ b) * (5 ^ a)
+    hash (AppVersion (a, b, c, d)) = (2 ^ a) * (3 ^ b) * (5 ^ c) * (7 ^ d)
     hashWithSalt _ = hash
 
 instance Read AppVersion where
-    readsPrec _ s = case traverse (readMaybe . toS) $ split (=='.') (toS s) of
-        Just [major, minor, patch] -> [(AppVersion (major, minor, patch), "")]
-        _                          -> []
+    readsPrec _ s = case traverse (readMaybe . toS) $ splitOn "+" <=< splitOn "." $ (toS s) of
+        Just [major, minor, patch, build] -> [(AppVersion (major, minor, patch, build), "")]
+        Just [major, minor, patch]        -> [(AppVersion (major, minor, patch,     0), "")]
+        _                                 -> []
 instance PathPiece AppVersion where
     fromPathPiece = readMaybe . toS
     toPathPiece = show
 
 instance Show AppVersion where
-    show (AppVersion (a, b, c)) = [i|#{a}.#{b}.#{c}|]
+    show (AppVersion (a, b, c, d))
+        | d == 0 = [i|#{a}.#{b}.#{c}|]
+        | otherwise = [i|#{a}.#{b}.#{c}+#{d}|]
+
 instance IsString AppVersion where
-    fromString s = case traverse (readMaybe . toS) $ split (=='.') (toS s) of
-        Just [major, minor, patch] -> AppVersion (major, minor, patch)
+    fromString s = case traverse (readMaybe . toS) $ splitOn "+" <=< splitOn "." $ (toS s) of
+        Just [major, minor, patch, build] -> AppVersion (major, minor, patch, build)
+        Just [major, minor, patch] -> AppVersion (major, minor, patch, 0)
         _                          -> panic . toS $ "Invalid App Version: " <> s
 instance ToJSON AppVersion where
-    toJSON av = String . toS $ let (a,b,c) = unAppVersion av in [i|#{a}.#{b}.#{c}|]
+    toJSON = String . show
 instance FromJSON AppVersion where
     parseJSON = withText "app version" $ \t ->
-        case splitOn "." t of
-            [a, b, c] ->
-                case traverse (decode . toS) [a, b, c] of
-                    Just [a', b', c'] -> pure $ AppVersion (a', b', c')
-                    _                 -> fail "non word16 versioning"
+        case traverse (decode . toS) $ splitOn "+" <=< splitOn "." $ t  of
+            Just [a, b, c, d] -> pure $ AppVersion (a, b, c, d)
+            Just [a, b, c]    -> pure $ AppVersion (a, b, c, 0)
             _ -> fail "unknown versioning"
 instance ToTypedContent AppVersion where
     toTypedContent = toTypedContent . toJSON
 instance ToContent AppVersion where
     toContent = toContent . toJSON
-
-(\\) :: AppVersion -> AppVersion -> (Word16, Word16, Word16)
-(\\) (AppVersion (a, b, c)) (AppVersion (a1, b1, c1)) = (a `diffy` a1, b `diffy` b1, c `diffy` c1)
-    where
-        d `diffy` d1 = fromIntegral . abs $ (fromIntegral d :: Integer) - (fromIntegral d1 :: Integer)
 
 ------------------------------------------------------------------------------------------------------------------------
 -- Semver AppVersionSpecification
@@ -92,7 +90,7 @@ instance FromJSON AppVersionSpecification where
         pure $ AppVersionSpecification {..}
 
 mostRecentVersion :: AppVersionSpecification
-mostRecentVersion = AppVersionSpecification SVGreaterThanEq $ AppVersion (0,0,0)
+mostRecentVersion = AppVersionSpecification SVGreaterThanEq $ AppVersion (0,0,0,0)
 
 ------------------------------------------------------------------------------------------------------------------------
 -- Semver RequestModifier
