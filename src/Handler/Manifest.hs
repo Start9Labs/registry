@@ -7,7 +7,7 @@ import           Startlude
 import           Control.Lens.Combinators
 import qualified Data.HashMap.Strict      as HM
 import           Data.Yaml                as Yaml
-import Network.HTTP.Types
+import           Network.HTTP.Types
 import           System.FilePath
 import           Yesod.Core
 
