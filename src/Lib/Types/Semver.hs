@@ -38,8 +38,8 @@ instance Show AppVersion where
 instance IsString AppVersion where
     fromString s = case traverse (readMaybe . toS) $ splitOn "+" <=< splitOn "." $ (toS s) of
         Just [major, minor, patch, build] -> AppVersion (major, minor, patch, build)
-        Just [major, minor, patch] -> AppVersion (major, minor, patch, 0)
-        _                          -> panic . toS $ "Invalid App Version: " <> s
+        Just [major, minor, patch]        -> AppVersion (major, minor, patch, 0)
+        _                                 -> panic . toS $ "Invalid App Version: " <> s
 instance ToJSON AppVersion where
     toJSON = String . show
 instance FromJSON AppVersion where
@@ -47,7 +47,7 @@ instance FromJSON AppVersion where
         case traverse (decode . toS) $ splitOn "+" <=< splitOn "." $ t  of
             Just [a, b, c, d] -> pure $ AppVersion (a, b, c, d)
             Just [a, b, c]    -> pure $ AppVersion (a, b, c, 0)
-            _ -> fail "unknown versioning"
+            _                 -> fail "unknown versioning"
 instance ToTypedContent AppVersion where
     toTypedContent = toTypedContent . toJSON
 instance ToContent AppVersion where
@@ -60,7 +60,7 @@ instance ToContent AppVersion where
 data AppVersionSpecification = AppVersionSpecification
     { requestModifier :: SemverRequestModifier
     , baseVersion     :: AppVersion
-    }
+    } deriving (Eq)
 
 instance Read AppVersionSpecification where
     readsPrec _ s =
@@ -69,6 +69,12 @@ instance Read AppVersionSpecification where
             _                 -> []
         where
             (svMod, version) = break isDigit . toS $ s
+
+instance IsString AppVersionSpecification where
+    fromString s = case readMaybe s of
+        Nothing -> panic $ "Invalid AppVersionSpecification: " <> toS s
+        Just x  -> x
+
 
 instance PathPiece AppVersionSpecification where
     fromPathPiece = readMaybe . toS

@@ -55,6 +55,7 @@ import           Yesod.Persist.Core
 import           Foundation
 import           Handler.Apps
 import           Handler.Icons
+import           Handler.Manifest
 import           Handler.Version
 import           Lib.Ssl
 import           Model

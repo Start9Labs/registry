@@ -36,9 +36,6 @@ instance Show FileExtension where
     show (FileExtension f Nothing)  = f
     show (FileExtension f (Just e)) = f <.> e
 
-getAppsManifestR :: Handler TypedContent
-getAppsManifestR = respondSource typePlain $ CB.sourceFile appManifestPath .| awaitForever sendChunkBS
-
 getSysR :: Extension "" -> Handler TypedContent
 getSysR = getApp sysResourceDir
 

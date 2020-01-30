@@ -27,12 +27,6 @@ sysResourceDir = resourcesDir </> "sys"
 iconsResourceDir :: FilePath
 iconsResourceDir = resourcesDir </> "icons"
 
-appManifestPath :: FilePath
-appManifestPath = appResourceDir </> appManifestFile
-
-appManifestFile :: FilePath
-appManifestFile = "apps.yaml"
-
 type Registry = HashMap String (HashMap AppVersion FilePath)
 
 newtype RegisteredAppVersion = RegisteredAppVersion (AppVersion, FilePath) deriving (Eq, Show)
