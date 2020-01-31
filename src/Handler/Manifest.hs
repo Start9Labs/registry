@@ -5,6 +5,8 @@ module Handler.Manifest where
 import           Startlude
 
 import           Control.Lens.Combinators
+import qualified Data.ByteString.Char8    as BS
+import qualified Data.CaseInsensitive     as CI
 import qualified Data.HashMap.Strict      as HM
 import           Data.Yaml                as Yaml
 import           Network.HTTP.Types
@@ -92,12 +94,14 @@ getAppsManifestR = do
     -- respondSource typePlain $ CB.sourceFile appManifestPath .| awaitForever sendChunkBS
     where
         orDefaultTo :: (Monad m, Read a) => m [ByteString] -> a -> m a
-        orDefaultTo m a = do
-            m >>= \case
-                [] -> pure a
-                (h:_) -> case readMaybe (toS h) of
-                    Nothing -> pure a
-                    Just x -> pure x
+        orDefaultTo m a =
+            m <&> \case
+                [] -> a
+                (h:_) -> case BS.split '/' h of
+                    [userAgent,version'] -> case (CI.mk userAgent == "MeshOS", readMaybe $ toS version') of
+                        (True, Just v) -> v
+                        _ -> a
+                    _ -> a
 
 compressManifest :: AppVersion -> AppManifest -> AppManifest
 compressManifest v = filterApps . filterVersions v
