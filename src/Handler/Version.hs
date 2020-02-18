@@ -1,9 +1,14 @@
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell     #-}
 module Handler.Version where
 
 import           Startlude
 
+import           Control.Monad.Trans.Maybe
+import           Data.String.Interpolate.IsString
+import           Network.HTTP.Types
 import           Yesod.Core
 
 import           Constants
@@ -14,7 +19,7 @@ import           Lib.Semver
 import           Lib.Types.Semver
 
 getVersionR :: Handler AppVersionRes
-getVersionR = pure . AppVersionRes $ registryVersion
+getVersionR = pure . AppVersionRes registryVersion $ Nothing
 
 getVersionAppR :: Text -> Handler (Maybe AppVersionRes)
 getVersionAppR appId = getVersionWSpec appResourceDir appExt
@@ -22,7 +27,12 @@ getVersionAppR appId = getVersionWSpec appResourceDir appExt
         appExt = Extension (toS appId) :: Extension "s9pk"
 
 getVersionSysR :: Text -> Handler (Maybe AppVersionRes)
-getVersionSysR sysAppId = getVersionWSpec sysResourceDir sysExt
+getVersionSysR sysAppId = runMaybeT $ do
+    avr <- MaybeT $ getVersionWSpec sysResourceDir sysExt
+    minComp <- lift $ case sysAppId of
+        "agent" -> Just <$> meshCompanionCompatibility (appVersionVersion avr)
+        _       -> pure Nothing
+    pure $ avr { appVersionMinCompanion = minComp }
     where
         sysExt = Extension (toS sysAppId) :: Extension ""
 
@@ -30,4 +40,13 @@ getVersionWSpec :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe Ap
 getVersionWSpec rootDir ext = do
     spec <- querySpecD mostRecentVersion <$> lookupGetParam "spec"
     appVersions <- liftIO $ getAvailableAppVersions rootDir ext
-    pure . fmap (AppVersionRes . version) $ getSpecifiedAppVersion spec appVersions
+    let av = version <$> getSpecifiedAppVersion spec appVersions
+    pure $ liftA2 AppVersionRes av (pure Nothing)
+
+meshCompanionCompatibility :: AppVersion -> Handler AppVersion
+meshCompanionCompatibility (AppVersion (0,1,0,_)) = pure $ AppVersion (1,0,0,0)
+meshCompanionCompatibility (AppVersion (0,1,1,_)) = pure $ AppVersion (1,0,0,0)
+meshCompanionCompatibility (AppVersion (0,1,2,_)) = pure $ AppVersion (1,1,0,0)
+meshCompanionCompatibility other = do
+    $logError [i|MESH DEPLOYMENT "#{other}" HAS NO COMPATIBILITY ENTRY! FIX IMMEDIATELY|]
+    sendResponseStatus status500 ("Internal Server Error" :: Text)

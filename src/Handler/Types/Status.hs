@@ -9,9 +9,12 @@ import           Yesod.Core.Content
 
 import           Lib.Types.Semver
 
-newtype AppVersionRes = AppVersionRes { unAppVersionRes ::AppVersion } deriving (Eq, Show)
+data AppVersionRes = AppVersionRes
+    { appVersionVersion      :: AppVersion
+    , appVersionMinCompanion :: Maybe AppVersion
+    } deriving (Eq, Show)
 instance ToJSON AppVersionRes where
-    toJSON AppVersionRes{ unAppVersionRes } = object ["version" .= unAppVersionRes]
+    toJSON AppVersionRes{ appVersionVersion } = object ["version" .= appVersionVersion]
 
 instance ToContent AppVersionRes where
     toContent = toContent . toJSON
