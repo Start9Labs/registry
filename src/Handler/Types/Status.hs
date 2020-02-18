@@ -14,7 +14,10 @@ data AppVersionRes = AppVersionRes
     , appVersionMinCompanion :: Maybe AppVersion
     } deriving (Eq, Show)
 instance ToJSON AppVersionRes where
-    toJSON AppVersionRes{ appVersionVersion } = object ["version" .= appVersionVersion]
+    toJSON AppVersionRes{ appVersionVersion, appVersionMinCompanion } = object $
+        ["version" .= appVersionVersion] <> case appVersionMinCompanion of
+            Nothing -> []
+            Just x  -> ["minCompanion" .= x]
 
 instance ToContent AppVersionRes where
     toContent = toContent . toJSON
