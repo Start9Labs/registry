@@ -23,16 +23,14 @@ module Application
     , getAppSettings
     -- * for GHCI
     , handler
-    , db
     ) where
 
 import           Startlude
 
-import           Control.Monad.Logger                  (liftLoc, runLoggingT)
+import           Control.Monad.Logger                  (liftLoc)
+import           Data.Aeson
 import           Data.Default
 import           Data.IORef
-import           Database.Persist.Sql
-import           Database.Persist.Sqlite               (createSqlitePool, runSqlPool, sqlDatabase, sqlPoolSize)
 import           Language.Haskell.TH.Syntax            (qLocation)
 import           Network.Wai
 import           Network.Wai.Handler.Warp              (Settings, defaultSettings, defaultShouldDisplayException,
@@ -48,7 +46,6 @@ import           System.Log.FastLogger                 (defaultBufSize, newStdou
 import           Yesod.Core
 import           Yesod.Core.Types                      hiding (Logger)
 import           Yesod.Default.Config2
-import           Yesod.Persist.Core
 
 -- Import all relevant handler modules here.
 -- Don't forget to add new modules to your cabal file!
@@ -57,7 +54,6 @@ import           Handler.Apps
 import           Handler.Icons
 import           Handler.Version
 import           Lib.Ssl
-import           Model
 import           Settings
 import           System.Posix.Process
 
@@ -79,30 +75,22 @@ makeFoundation appSettings = do
 
     appWebServerThreadId <- newIORef Nothing
 
+    appCompatibilityMap <- decode . toS <$> readFile (appCompatibilityPath appSettings) >>= \case
+        Nothing -> panic "invalid compatibility config"
+        Just x -> pure x
+
     -- We need a log function to create a connection pool. We need a connection
     -- pool to create our foundation. And we need our foundation to get a
     -- logging function. To get out of this loop, we initially create a
     -- temporary foundation without a real connection pool, get a log function
     -- from there, and then create the real foundation.
-    let mkFoundation appConnPool = AgentCtx {..}
+    let mkFoundation = AgentCtx {..}
         -- The AgentCtx {..} syntax is an example of record wild cards. For more
         -- information, see:
         -- https://ocharles.org.uk/blog/posts/2014-12-04-record-wildcards.html
-        tempFoundation = mkFoundation $ panic "connPool forced in tempFoundation"
-        logFunc = messageLoggerSource tempFoundation appLogger
-
-    -- Create the database connection pool
-    pool <- flip runLoggingT logFunc $ createSqlitePool
-            (sqlDatabase $ appDatabaseConf appSettings)
-            (sqlPoolSize $ appDatabaseConf appSettings)
-    -- Perform database migration using our application's logging settings.
-    runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
-
-    -- TODO :: compute and seed the Tor address into the db, possibly grabbing it from settings
-    -- seedTorAddress appSettings
 
     -- Return the foundation
-    return $ mkFoundation pool
+    return $ mkFoundation
 
 -- | Convert our foundation to a WAI Application by calling @toWaiAppPlain@ and
 -- applying some additional middlewares.
@@ -229,7 +217,3 @@ shutdownApp _ = return ()
 -- | Run a handler
 handler :: Handler a -> IO a
 handler h = getAppSettings >>= makeFoundation >>= flip unsafeHandler h
-
--- | Run DB queries
-db :: ReaderT SqlBackend Handler a -> IO a
-db = handler . runDB
