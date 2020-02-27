@@ -5,8 +5,6 @@ module Handler.Types.Status where
 import           Startlude
 
 import           Data.Aeson
-import           Data.Char
-import qualified Data.Text          as T
 import           Yesod.Core.Content
 
 import           Lib.Types.Semver
@@ -31,9 +29,3 @@ instance ToContent (Maybe AppVersionRes) where
     toContent = toContent . toJSON
 instance ToTypedContent (Maybe AppVersionRes) where
     toTypedContent = toTypedContent . toJSON
-
--- querySpec :: Text -> Maybe AppVersionSpecification
--- querySpec = readMaybe . toS . T.filter (not . isSpace)
-
--- querySpecD :: AppVersionSpecification -> Maybe Text -> AppVersionSpecification
--- querySpecD defaultSpec = fromMaybe defaultSpec . querySpec

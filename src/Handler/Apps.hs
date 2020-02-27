@@ -21,10 +21,8 @@ import           System.Directory
 import           Yesod.Core
 
 import           Foundation
-import           Handler.Types.Status
 import           Lib.Registry
 import           Lib.Semver
-import           Lib.Types.Semver
 import           System.FilePath      ((<.>))
 import           System.Posix.Files   (fileSize, getFileStatus)
 

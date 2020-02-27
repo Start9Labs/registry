@@ -5,6 +5,7 @@ import           Startlude
 import           Lib.Types.Semver
 
 (<||) :: HasAppVersion a => a -> AppVersionSpecification -> Bool
+(<||) a AppVersionAny                                 = True
 (<||) a (AppVersionSpecification SVEquals av1)        = version a == av1
 (<||) a (AppVersionSpecification SVLessThan av1)      = version a < av1
 (<||) a (AppVersionSpecification SVGreaterThan av1)   = version a > av1
