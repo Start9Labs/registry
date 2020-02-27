@@ -42,7 +42,7 @@ instance HasAppVersion RegisteredAppVersion where
 -- retrieve all valid semver folder names with queried for file: rootDirectory/appId/[0.0.0 ...]/appId.extension
 getAvailableAppVersions :: KnownSymbol a => FilePath -> Extension a -> IO [RegisteredAppVersion]
 getAvailableAppVersions rootDirectory ext@(Extension appId) = do
-    versions <- mapMaybe readMaybe <$> getSubDirectories (rootDirectory </> appId)
+    versions <- mapMaybe (readMaybe . toS) <$> getSubDirectories (rootDirectory </> appId)
     fmap catMaybes . for versions $ \v ->
         getVersionedFileFromDir rootDirectory ext v
             >>= \case

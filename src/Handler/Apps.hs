@@ -11,9 +11,12 @@ import           Startlude
 import           Control.Monad.Logger
 import           Data.Aeson
 import qualified Data.ByteString.Lazy as BS
+import           Data.Char
 import           Data.Conduit
 import qualified Data.Conduit.Binary  as CB
+import qualified Data.Text            as T
 import qualified GHC.Show             (Show (..))
+import           Network.HTTP.Types
 import           System.Directory
 import           Yesod.Core
 
@@ -47,7 +50,10 @@ getAppR = getApp appResourceDir
 
 getApp :: KnownSymbol a => FilePath -> Extension a -> Handler TypedContent
 getApp rootDir ext = do
-    spec <- querySpecD mostRecentVersion <$> lookupGetParam "spec"
+    specString <- T.filter (not . isSpace) . fromMaybe "*" <$> lookupGetParam "spec"
+    spec <- case readMaybe specString of
+        Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
+        Just t  -> pure t
     appVersions <- liftIO $ getAvailableAppVersions rootDir ext
     putStrLn $ "valid appversion for " <> (show ext :: String) <> ": " <> show appVersions
     case getSpecifiedAppVersion spec appVersions of
