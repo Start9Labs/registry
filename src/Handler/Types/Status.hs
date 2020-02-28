@@ -29,9 +29,3 @@ instance ToContent (Maybe AppVersionRes) where
     toContent = toContent . toJSON
 instance ToTypedContent (Maybe AppVersionRes) where
     toTypedContent = toTypedContent . toJSON
-
-querySpec :: Maybe Text -> Maybe AppVersionSpecification
-querySpec = (readMaybe . toS =<<)
-
-querySpecD :: AppVersionSpecification -> Maybe Text -> AppVersionSpecification
-querySpecD defaultSpec = fromMaybe defaultSpec . querySpec
