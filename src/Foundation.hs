@@ -9,14 +9,15 @@ module Foundation where
 import           Startlude
 
 import           Control.Monad.Logger (LogSource)
+import qualified Data.HashMap.Strict  as HM
 import           Data.IORef
 import           Database.Persist.Sql
 import           Lib.Registry
 import           Yesod.Core
 import           Yesod.Core.Types     (Logger)
 import qualified Yesod.Core.Unsafe    as Unsafe
-import           Yesod.Persist.Core
 
+import           Lib.Types.Semver
 import           Settings
 
 -- | The foundation datatype for your application. This can be a good place to
@@ -27,9 +28,9 @@ import           Settings
 
 data AgentCtx = AgentCtx
     { appSettings          :: AppSettings
-    , appConnPool          :: ConnectionPool -- ^ Database connection pool.
     , appLogger            :: Logger
     , appWebServerThreadId :: IORef (Maybe ThreadId)
+    , appCompatibilityMap  :: HM.HashMap AppVersion AppVersion
     }
 
 setWebProcessThreadId :: ThreadId -> AgentCtx -> IO ()
@@ -83,16 +84,6 @@ instance Yesod AgentCtx where
 
     makeLogger :: AgentCtx -> IO Logger
     makeLogger = return . appLogger
-
--- How to run database actions.
-instance YesodPersist AgentCtx where
-    type YesodPersistBackend AgentCtx = SqlBackend
-    runDB :: SqlPersistT Handler a -> Handler a
-    runDB action = runSqlPool action . appConnPool =<< getYesod
-
-instance YesodPersistRunner AgentCtx where
-    getDBRunner :: Handler (DBRunner AgentCtx, Handler ())
-    getDBRunner = defaultGetDBRunner appConnPool
 
 unsafeHandler :: AgentCtx -> Handler a -> IO a
 unsafeHandler = Unsafe.fakeHandlerGetLogger appLogger
