@@ -13,7 +13,6 @@ import qualified Control.Exception        as Exception
 import           Data.Aeson
 import           Data.FileEmbed           (embedFile)
 import           Data.Yaml                (decodeEither')
-import           Database.Persist.Sqlite  (SqliteConf (..))
 import           Network.Wai.Handler.Warp (HostPreference)
 import           Yesod.Default.Config2    (applyEnvValue, configSettingsYml)
 
@@ -21,10 +20,7 @@ import           Yesod.Default.Config2    (applyEnvValue, configSettingsYml)
 -- loaded from various sources: defaults, environment variables, config files,
 -- theoretically even a database.
 data AppSettings = AppSettings
-    { appDatabaseConf           :: SqliteConf
-    -- ^ Configuration settings for accessing the database.
-
-    , appHost                   :: HostPreference
+    { appHost                   :: HostPreference
     -- ^ Host/interface the server should bind to.
     , appPort                   :: Word16
     -- ^ Port to listen on
@@ -36,16 +32,17 @@ data AppSettings = AppSettings
     -- ^ Use detailed request logging system
     , appShouldLogAll           :: Bool
     -- ^ Should all log messages be displayed?
+    , appCompatibilityPath      :: FilePath
     }
 
 instance FromJSON AppSettings where
     parseJSON = withObject "AppSettings" $ \o -> do
-        appDatabaseConf           <-  o .: "database"
         appHost                   <- fromString <$> o .: "host"
         appPort                   <- o .: "port"
         appIpFromHeader           <- o .: "ip-from-header"
         appDetailedRequestLogging <- o .:? "detailed-logging" .!= True
         appShouldLogAll           <- o .:? "should-log-all" .!= False
+        appCompatibilityPath      <- o .: "app-compatibility-path"
 
         return AppSettings { .. }
 

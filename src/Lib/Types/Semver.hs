@@ -19,7 +19,7 @@ import           Yesod.Core
 ------------------------------------------------------------------------------------------------------------------------
 
 newtype AppVersion = AppVersion
-    { unAppVersion :: (Word16, Word16, Word16, Word16) } deriving (Eq, Ord)
+    { unAppVersion :: (Word16, Word16, Word16, Word16) } deriving (Eq, Ord, Hashable)
 
 instance Read AppVersion where
     readsPrec _ s = case traverse (readMaybe . toS) $ splitOn "+" <=< splitOn "." $ (toS s) of
@@ -52,6 +52,11 @@ instance ToTypedContent AppVersion where
     toTypedContent = toTypedContent . toJSON
 instance ToContent AppVersion where
     toContent = toContent . toJSON
+
+instance FromJSONKey AppVersion where
+    fromJSONKey = FromJSONKeyTextParser $ \t -> case readMaybe (toS t) of
+        Nothing -> fail "invalid app version"
+        Just x -> pure x
 
 ------------------------------------------------------------------------------------------------------------------------
 -- Semver AppVersionSpecification

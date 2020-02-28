@@ -8,6 +8,7 @@ import           Startlude
 
 import           Control.Monad.Trans.Maybe
 import           Data.Char
+import qualified Data.HashMap.Strict as HM
 import           Data.String.Interpolate.IsString
 import qualified Data.Text                        as T
 import           Network.HTTP.Types
@@ -49,9 +50,9 @@ getVersionWSpec rootDir ext = do
     pure $ liftA2 AppVersionRes av (pure Nothing)
 
 meshCompanionCompatibility :: AppVersion -> Handler AppVersion
-meshCompanionCompatibility (AppVersion (0,1,0,_)) = pure $ AppVersion (1,0,0,0)
-meshCompanionCompatibility (AppVersion (0,1,1,_)) = pure $ AppVersion (1,0,0,0)
-meshCompanionCompatibility (AppVersion (0,1,2,_)) = pure $ AppVersion (1,1,0,0)
-meshCompanionCompatibility other = do
-    $logError [i|MESH DEPLOYMENT "#{other}" HAS NO COMPATIBILITY ENTRY! FIX IMMEDIATELY|]
-    sendResponseStatus status500 ("Internal Server Error" :: Text)
+meshCompanionCompatibility av = getsYesod appCompatibilityMap >>= \hm -> do
+    case HM.lookup av hm of
+        Nothing -> do
+            $logError [i|MESH DEPLOYMENT "#{av}" HAS NO COMPATIBILITY ENTRY! FIX IMMEDIATELY|]
+            sendResponseStatus status500 ("Internal Server Error" :: Text)
+        Just x -> pure x
