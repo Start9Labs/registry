@@ -38,8 +38,8 @@ instance Show AppVersion where
 instance IsString AppVersion where
     fromString s = case traverse (readMaybe . toS) $ splitOn "+" <=< splitOn "." $ (toS s) of
         Just [major, minor, patch, build] -> AppVersion (major, minor, patch, build)
-        Just [major, minor, patch] -> AppVersion (major, minor, patch, 0)
-        _                          -> panic . toS $ "Invalid App Version: " <> s
+        Just [major, minor, patch]        -> AppVersion (major, minor, patch, 0)
+        _                                 -> panic . toS $ "Invalid App Version: " <> s
 instance ToJSON AppVersion where
     toJSON = String . show
 instance FromJSON AppVersion where
@@ -47,7 +47,7 @@ instance FromJSON AppVersion where
         case traverse (decode . toS) $ splitOn "+" <=< splitOn "." $ t  of
             Just [a, b, c, d] -> pure $ AppVersion (a, b, c, d)
             Just [a, b, c]    -> pure $ AppVersion (a, b, c, 0)
-            _ -> fail "unknown versioning"
+            _                 -> fail "unknown versioning"
 instance ToTypedContent AppVersion where
     toTypedContent = toTypedContent . toJSON
 instance ToContent AppVersion where
@@ -62,16 +62,17 @@ instance FromJSONKey AppVersion where
 -- Semver AppVersionSpecification
 ------------------------------------------------------------------------------------------------------------------------
 
-data AppVersionSpecification = AppVersionSpecification
-    { requestModifier :: SemverRequestModifier
-    , baseVersion     :: AppVersion
-    }
+data AppVersionSpecification =
+      AppVersionAny
+    | AppVersionSpecification SemverRequestModifier AppVersion
 
 instance Read AppVersionSpecification where
     readsPrec _ s =
-        case (readMaybe . toS $ svMod, readMaybe . toS $ version) of
-            (Just m, Just av) -> [(AppVersionSpecification m av, "")]
-            _                 -> []
+        if s == "*"
+            then [(AppVersionAny, "")]
+            else case (readMaybe . toS $ svMod, readMaybe . toS $ version) of
+                (Just m, Just av) -> [(AppVersionSpecification m av, "")]
+                _                 -> []
         where
             (svMod, version) = break isDigit . toS $ s
 
@@ -80,15 +81,19 @@ instance PathPiece AppVersionSpecification where
     toPathPiece = show
 
 instance Show AppVersionSpecification where
+    show AppVersionAny                 = "*"
     show (AppVersionSpecification r b) = show r <> show b
 instance ToJSON AppVersionSpecification where
     toJSON = String . show
 instance FromJSON AppVersionSpecification where
-    parseJSON = withText "app version spec" $ \t -> do
-        let (svMod, version) = break isDigit t
-        baseVersion <- parseJSON . String $ version
-        requestModifier <- parseJSON . String $ svMod
-        pure $ AppVersionSpecification {..}
+    parseJSON = withText "app version spec" $ \t ->
+        if t == "*"
+            then pure AppVersionAny
+            else do
+                let (svMod, version) = break isDigit t
+                baseVersion <- parseJSON . String $ version
+                requestModifier <- parseJSON . String $ svMod
+                pure $ AppVersionSpecification requestModifier baseVersion
 
 mostRecentVersion :: AppVersionSpecification
 mostRecentVersion = AppVersionSpecification SVGreaterThanEq $ AppVersion (0,0,0,0)
