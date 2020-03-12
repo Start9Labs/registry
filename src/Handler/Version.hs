@@ -2,6 +2,8 @@
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE RecordWildCards  #-}
+
 module Handler.Version where
 
 import           Startlude
@@ -14,24 +16,30 @@ import qualified Data.Text                        as T
 import           Network.HTTP.Types
 import           Yesod.Core
 
-import           Constants
 import           Foundation
 import           Handler.Types.Status
 import           Lib.Registry
 import           Lib.Semver
 import           Lib.Types.Semver
+import           Settings
+import           System.FilePath ((</>))
 
 getVersionR :: Handler AppVersionRes
-getVersionR = pure . AppVersionRes registryVersion $ Nothing
+getVersionR = do
+    AppSettings{..} <- appSettings <$> getYesod
+    pure . AppVersionRes registryVersion $ Nothing
 
 getVersionAppR :: Text -> Handler (Maybe AppVersionRes)
-getVersionAppR appId = getVersionWSpec appResourceDir appExt
+getVersionAppR appId = do
+    AppSettings{..} <- appSettings <$> getYesod
+    getVersionWSpec (resourcesDir </> "apps") appExt
     where
         appExt = Extension (toS appId) :: Extension "s9pk"
 
 getVersionSysR :: Text -> Handler (Maybe AppVersionRes)
 getVersionSysR sysAppId = runMaybeT $ do
-    avr <- MaybeT $ getVersionWSpec sysResourceDir sysExt
+    AppSettings{..} <- appSettings <$> getYesod
+    avr <- MaybeT $ getVersionWSpec (resourcesDir </> "sys") sysExt
     minComp <- lift $ case sysAppId of
         "agent" -> Just <$> meshCompanionCompatibility (appVersionVersion avr)
         _       -> pure Nothing
