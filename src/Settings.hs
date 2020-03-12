@@ -10,11 +10,17 @@ module Settings where
 import           Startlude
 
 import qualified Control.Exception        as Exception
+import           Data.Maybe
 import           Data.Aeson
+import           Data.Aeson.Types
+import           Data.Version          (showVersion)
 import           Data.FileEmbed           (embedFile)
 import           Data.Yaml                (decodeEither')
 import           Network.Wai.Handler.Warp (HostPreference)
 import           Yesod.Default.Config2    (applyEnvValue, configSettingsYml)
+import           Paths_start9_registry (version)
+import           Lib.Types.Semver
+import           System.FilePath ((</>))
 
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
@@ -33,6 +39,13 @@ data AppSettings = AppSettings
     , appShouldLogAll           :: Bool
     -- ^ Should all log messages be displayed?
     , appCompatibilityPath      :: FilePath
+    , resourcesDir              :: FilePath
+    , sslPath                   :: FilePath
+    , registryHostname          :: Text
+    , registryVersion           :: AppVersion
+    , sslKeyLocation            :: FilePath
+    , sslCsrLocation :: FilePath
+    , sslCertLocation :: FilePath
     }
 
 instance FromJSON AppSettings where
@@ -43,7 +56,15 @@ instance FromJSON AppSettings where
         appDetailedRequestLogging <- o .:? "detailed-logging" .!= True
         appShouldLogAll           <- o .:? "should-log-all" .!= False
         appCompatibilityPath      <- o .: "app-compatibility-path"
-
+        resourcesDir              <- o .: "resources-path"
+        sslPath                   <- o .: "ssl-path"
+        registryHostname          <- o .: "registry-hostname"
+        
+        let sslKeyLocation = sslPath </> "key.pem"
+        let sslCsrLocation = sslPath </> "certificate.csr"
+        let sslCertLocation = sslPath </> "certificate.pem"
+        let registryVersion = fromJust . parseMaybe parseJSON . String . toS . showVersion $ version
+        
         return AppSettings { .. }
 
 -- | Raw bytes at compile time of @config/settings.yml@
