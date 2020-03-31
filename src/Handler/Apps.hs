@@ -41,7 +41,7 @@ instance Show FileExtension where
 getAppsManifestR :: Handler TypedContent
 getAppsManifestR = do
     AppSettings{..} <- appSettings <$> getYesod
-    let appResourceDir = resourcesDir </> "apps" </> "apps.yaml"
+    let appResourceDir = (resourcesDir . appSettings <$> getYesod) </> "apps" </> "apps.yaml"
     respondSource typePlain $ CB.sourceFile appResourceDir .| awaitForever sendChunkBS
 
 getSysR :: Extension "" -> Handler TypedContent
