@@ -27,3 +27,4 @@ stack.yaml.lock
 agent_*
 agent.*
 version
+hie.yaml

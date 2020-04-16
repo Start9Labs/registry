@@ -26,20 +26,20 @@ import           System.FilePath ((</>))
 
 getVersionR :: Handler AppVersionRes
 getVersionR = do
-    AppSettings{..} <- appSettings <$> getYesod
-    pure . AppVersionRes registryVersion $ Nothing
+    rv <- AppVersionRes . registryVersion . appSettings <$> getYesod
+    pure . rv $ Nothing
 
 getVersionAppR :: Text -> Handler (Maybe AppVersionRes)
 getVersionAppR appId = do
-    AppSettings{..} <- appSettings <$> getYesod
-    getVersionWSpec (resourcesDir </> "apps") appExt
+    appsDir <- (</> "apps") . resourcesDir . appSettings <$> getYesod
+    getVersionWSpec appsDir appExt
     where
         appExt = Extension (toS appId) :: Extension "s9pk"
 
 getVersionSysR :: Text -> Handler (Maybe AppVersionRes)
 getVersionSysR sysAppId = runMaybeT $ do
-    AppSettings{..} <- appSettings <$> getYesod
-    avr <- MaybeT $ getVersionWSpec (resourcesDir </> "sys") sysExt
+    sysDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
+    avr <- MaybeT $ getVersionWSpec sysDir sysExt
     minComp <- lift $ case sysAppId of
         "agent" -> Just <$> meshCompanionCompatibility (appVersionVersion avr)
         _       -> pure Nothing
@@ -58,7 +58,7 @@ getVersionWSpec rootDir ext = do
     pure $ liftA2 AppVersionRes av (pure Nothing)
 
 meshCompanionCompatibility :: AppVersion -> Handler AppVersion
-meshCompanionCompatibility av = getsYesod appCompatibilityMap >>= \hm -> do
+meshCompanionCompatibility av = getsYesod appCompatibilityMap >>= \hm ->
     case HM.lookup av hm of
         Nothing -> do
             $logError [i|MESH DEPLOYMENT "#{av}" HAS NO COMPATIBILITY ENTRY! FIX IMMEDIATELY|]

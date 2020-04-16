@@ -1,40 +1,14 @@
-flags:
-  library-only:
-    manual: false
-    default: false
-    description: Build for use with "yesod devel"
-  dev:
-    manual: false
-    default: false
-    description: Turn on development settings, like auto-reload templates.
-library:
-  source-dirs: src
-  when:
-  - then:
-      cpp-options: -DDEVELOPMENT
-      ghc-options:
-      - -Wall
-      - -fwarn-tabs
-      - -O0
-      - -fdefer-typed-holes
-    else:
-      ghc-options:
-      - -Wall
-      - -fwarn-tabs
-      - -O2
-      - -fdefer-typed-holes
-    condition: (flag(dev)) || (flag(library-only))
-tests:
-  start9-registry-test:
-    source-dirs: test
-    main: Spec.hs
-    ghc-options:
-    - -Wall
-    - -fdefer-typed-holes
-    dependencies:
-    - start9-registry
-    - hspec >=2.0.0
-    - yesod-test
+name: start9-registry
+version: 0.0.0
+
+default-extensions:
+- NoImplicitPrelude
+- GeneralizedNewtypeDeriving
+- LambdaCase
+- MultiWayIf
+- NamedFieldPuns
+- NumericUnderscores
+- OverloadedStrings
 
 dependencies:
 - base >=4.9.1.0 && <5
@@ -88,27 +62,58 @@ dependencies:
 - yesod-static
 - yesod-persistent >= 1.6 && < 1.7
 
-default-extensions:
-- NoImplicitPrelude
-- GeneralizedNewtypeDeriving
-- LambdaCase
-- MultiWayIf
-- NamedFieldPuns
-- NumericUnderscores
-- OverloadedStrings
-name: start9-registry
-version: 0.0.0
+library:
+  source-dirs: src
+  when:
+    - condition: (flag(dev)) || (flag(library-only))
+      then:
+        cpp-options: -DDEVELOPMENT
+        ghc-options:
+          - -Wall
+          - -fwarn-tabs
+          - -O0
+          - -fdefer-typed-holes
+      else:
+        ghc-options:
+          - -Wall
+          - -fwarn-tabs
+          - -O2
+          - -fdefer-typed-holes
+
 executables:
   start9-registry:
     source-dirs: app
     main: main.hs
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    - -fdefer-typed-holes
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+      - -fdefer-typed-holes
     dependencies:
-    - start9-registry
+      - start9-registry
     when:
-    - buildable: false
-      condition: flag(library-only)
+      - condition: flag(library-only)
+        buildable: false
+
+tests:
+  start9-registry-test:
+    source-dirs: test
+    main: Main.hs
+    ghc-options:
+      - -Wall
+      - -fdefer-typed-holes
+    dependencies:
+      - start9-registry
+      - hspec
+      - yesod-test
+      - hedgehog
+
+flags:
+  library-only:
+    manual: false
+    default: false
+    description: Build for use with "yesod devel"
+  dev:
+    manual: false
+    default: false
+    description: Turn on development settings, like auto-reload templates.
