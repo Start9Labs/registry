@@ -23,8 +23,9 @@ import           Yesod.Core
 import           Foundation
 import           Lib.Registry
 import           Lib.Semver
-import           System.FilePath      ((<.>))
+import           System.FilePath      ((<.>), (</>))
 import           System.Posix.Files   (fileSize, getFileStatus)
+import           Settings
 
 pureLog :: Show a => a -> Handler a
 pureLog = liftA2 (*>) ($logInfo . show) pure
@@ -38,13 +39,19 @@ instance Show FileExtension where
     show (FileExtension f (Just e)) = f <.> e
 
 getAppsManifestR :: Handler TypedContent
-getAppsManifestR = respondSource typePlain $ CB.sourceFile appManifestPath .| awaitForever sendChunkBS
+getAppsManifestR = do
+    appResourceDir <- (</> "apps" </> "apps.yaml") . resourcesDir . appSettings <$> getYesod 
+    respondSource typePlain $ CB.sourceFile appResourceDir .| awaitForever sendChunkBS
 
 getSysR :: Extension "" -> Handler TypedContent
-getSysR = getApp sysResourceDir
+getSysR e = do
+    sysResourceDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
+    getApp sysResourceDir e
 
 getAppR :: Extension "s9pk" -> Handler TypedContent
-getAppR = getApp appResourceDir
+getAppR e = do
+    appResourceDir <- (</> "apps" </> "apps.yaml") . resourcesDir . appSettings <$> getYesod
+    getApp appResourceDir e
 
 getApp :: KnownSymbol a => FilePath -> Extension a -> Handler TypedContent
 getApp rootDir ext = do

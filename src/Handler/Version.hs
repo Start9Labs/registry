@@ -2,6 +2,8 @@
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE RecordWildCards  #-}
+
 module Handler.Version where
 
 import           Startlude
@@ -14,24 +16,30 @@ import qualified Data.Text                        as T
 import           Network.HTTP.Types
 import           Yesod.Core
 
-import           Constants
 import           Foundation
 import           Handler.Types.Status
 import           Lib.Registry
 import           Lib.Semver
 import           Lib.Types.Semver
+import           Settings
+import           System.FilePath ((</>))
 
 getVersionR :: Handler AppVersionRes
-getVersionR = pure . AppVersionRes registryVersion $ Nothing
+getVersionR = do
+    rv <- AppVersionRes . registryVersion . appSettings <$> getYesod
+    pure . rv $ Nothing
 
 getVersionAppR :: Text -> Handler (Maybe AppVersionRes)
-getVersionAppR appId = getVersionWSpec appResourceDir appExt
+getVersionAppR appId = do
+    appsDir <- (</> "apps") . resourcesDir . appSettings <$> getYesod
+    getVersionWSpec appsDir appExt
     where
         appExt = Extension (toS appId) :: Extension "s9pk"
 
 getVersionSysR :: Text -> Handler (Maybe AppVersionRes)
 getVersionSysR sysAppId = runMaybeT $ do
-    avr <- MaybeT $ getVersionWSpec sysResourceDir sysExt
+    sysDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
+    avr <- MaybeT $ getVersionWSpec sysDir sysExt
     minComp <- lift $ case sysAppId of
         "agent" -> Just <$> meshCompanionCompatibility (appVersionVersion avr)
         _       -> pure Nothing
@@ -50,7 +58,7 @@ getVersionWSpec rootDir ext = do
     pure $ liftA2 AppVersionRes av (pure Nothing)
 
 meshCompanionCompatibility :: AppVersion -> Handler AppVersion
-meshCompanionCompatibility av = getsYesod appCompatibilityMap >>= \hm -> do
+meshCompanionCompatibility av = getsYesod appCompatibilityMap >>= \hm ->
     case HM.lookup av hm of
         Nothing -> do
             $logError [i|MESH DEPLOYMENT "#{av}" HAS NO COMPATIBILITY ENTRY! FIX IMMEDIATELY|]

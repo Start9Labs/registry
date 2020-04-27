@@ -14,24 +14,8 @@ import           System.Directory
 import           System.FilePath
 import           Yesod.Core
 
-import           Constants
 import           Lib.Semver
 import           Lib.Types.Semver
-
-appResourceDir :: FilePath
-appResourceDir = resourcesDir </> "apps"
-
-sysResourceDir :: FilePath
-sysResourceDir = resourcesDir </> "sys"
-
-iconsResourceDir :: FilePath
-iconsResourceDir = resourcesDir </> "icons"
-
-appManifestPath :: FilePath
-appManifestPath = appResourceDir </> appManifestFile
-
-appManifestFile :: FilePath
-appManifestFile = "apps.yaml"
 
 type Registry = HashMap String (HashMap AppVersion FilePath)
 
