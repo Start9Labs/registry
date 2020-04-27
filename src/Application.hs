@@ -165,16 +165,15 @@ startApp :: AgentCtx -> IO ()
 startApp foundation = do
     -- set up ssl certificates
     putStrLn @Text "Setting up SSL"
-    setupSsl
+    _ <- setupSsl <$> getAppSettings
     putStrLn @Text "SSL Setup Complete"
-
     startWeb foundation
 
 startWeb :: AgentCtx -> IO ()
 startWeb foundation = do
     app <- makeApplication foundation
-
-    putStrLn @Text $ "Launching Web Server on port " <> show (appPort $ appSettings foundation)
+    let AppSettings{..} = appSettings foundation
+    putStrLn @Text $ "Launching Web Server on port " <> show appPort
     action <- async $ runTLS
         (tlsSettings sslCertLocation sslKeyLocation)
         (warpSettings foundation)

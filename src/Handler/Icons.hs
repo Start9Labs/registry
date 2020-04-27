@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RecordWildCards  #-}
 
 module Handler.Icons where
 
@@ -12,10 +13,13 @@ import           Yesod.Core
 
 import           Foundation
 import           Lib.Registry
+import           Settings
+import           System.FilePath ((</>))
 
 getIconsR :: Extension "png" -> Handler TypedContent
 getIconsR ext = do
-    mPng <- liftIO $ getUnversionedFileFromDir iconsResourceDir ext
+    AppSettings{..} <- appSettings <$> getYesod
+    mPng <- liftIO $ getUnversionedFileFromDir (resourcesDir </> "icons") ext
     case mPng of
         Nothing -> notFound
         Just pngPath -> do

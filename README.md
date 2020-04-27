@@ -28,6 +28,15 @@ stack exec -- yesod devel
 
 As your code changes, your site will be automatically recompiled and redeployed to localhost.
 
+### Development tools
+
+`ghcid "-c=stack ghci --test"`
+
+- Clone [HIE](https://github.com/haskell/haskell-ide-engine)
+- Checkout latest reslease ie. `git checkout tags/1.3`
+- Follow github instructions to install for specific GHC version ie. `stack ./install.hs hie`
+- Install VSCode Haskell Language Server Extension
+
 ## Tests
 
 ```
@@ -35,6 +44,13 @@ stack test --flag start9-companion-server:library-only --flag start9-companion-s
 ```
 
 (Because `yesod devel` passes the `library-only` and `dev` flags, matching those flags means you don't need to recompile between tests and development, and it disables optimization to speed up your test compile times).
+
+### Tests with HIE Setup
+- install hspec-discover globally `cabal install hspec-discover` (requires cabal installation)
+- Current [issue](https://github.com/haskell/haskell-ide-engine/issues/1564) open for error pertaining to obtaining flags for test files
+	- recommended to setup hie.yaml
+	- recommended to run `stack build --test --no-run-tests` *before* any test files are open and that test files compile without error 
+	- helps to debug a specific file: `hie --debug test/Main.hs`
 
 ## Documentation
 
