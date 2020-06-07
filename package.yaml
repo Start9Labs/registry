@@ -38,6 +38,7 @@ dependencies:
 - monad-loops
 - persistent
 - persistent-sqlite
+- persistent-postgresql
 - persistent-template
 - process
 - protolude

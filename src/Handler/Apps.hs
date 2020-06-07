@@ -19,6 +19,8 @@ import qualified GHC.Show             (Show (..))
 import           Network.HTTP.Types
 import           System.Directory
 import           Yesod.Core
+import           Yesod.Persist.Core
+
 
 import           Foundation
 import           Lib.Registry
@@ -26,6 +28,9 @@ import           Lib.Semver
 import           System.FilePath      ((<.>), (</>))
 import           System.Posix.Files   (fileSize, getFileStatus)
 import           Settings
+import           Database.Queries
+import qualified Data.HashMap.Strict as HM
+import           Database.Persist
 
 pureLog :: Show a => a -> Handler a
 pureLog = liftA2 (*>) ($logInfo . show) pure
@@ -54,7 +59,7 @@ getAppR e = do
     getApp appResourceDir e
 
 getApp :: KnownSymbol a => FilePath -> Extension a -> Handler TypedContent
-getApp rootDir ext = do
+getApp rootDir ext@(Extension appId) = do
     specString <- T.filter (not . isSpace) . fromMaybe "*" <$> lookupGetParam "spec"
     spec <- case readMaybe specString of
         Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
@@ -63,13 +68,25 @@ getApp rootDir ext = do
     putStrLn $ "valid appversion for " <> (show ext :: String) <> ": " <> show appVersions
     case getSpecifiedAppVersion spec appVersions of
         Nothing -> notFound
-        Just (RegisteredAppVersion (_, filePath)) -> do
+        Just (RegisteredAppVersion (appVersion, filePath)) -> do
             exists <- liftIO $ doesFileExist filePath
             if exists
                 then do
+                    let appId' = T.pack appId
+                    ai <- runDB $ fetchApp appId' appVersion
+                    _ <- case ai of
+                        Nothing -> do
+                            -- save the app if it does not yet exist in db at particular version (automatic eventual transfer from using app.yaml to db record)
+                            rd <- resourcesDir . appSettings <$> getYesod
+                            manifest <- liftIO $ getAppManifest rd
+                            deets <- case HM.lookup appId' $ unAppManifest manifest of
+                                Nothing -> sendResponseStatus status400 ("App not present in manifest" :: Text)
+                                Just x -> pure x
+                            appKey <- runDB $ createApp appId' deets
+                            -- log app download
+                            runDB $ createMetric (Just appKey) appId'
+                        Just a -> runDB $ createMetric (Just $ entityKey a) appId'
                     sz <- liftIO $ fileSize <$> getFileStatus filePath
                     addHeader "Content-Length" (show sz)
                     respondSource typePlain $ CB.sourceFile filePath .| awaitForever sendChunkBS
                 else notFound
-
-
