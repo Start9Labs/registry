@@ -27,10 +27,11 @@ module Application
 
 import           Startlude
 
-import           Control.Monad.Logger                  (liftLoc)
+import           Control.Monad.Logger                  (liftLoc, runLoggingT)
 import           Data.Aeson
 import           Data.Default
 import           Data.IORef
+import           Database.Persist.Postgresql           (createPostgresqlPool, pgConnStr, pgPoolSize)
 import           Language.Haskell.TH.Syntax            (qLocation)
 import           Network.Wai
 import           Network.Wai.Handler.Warp              (Settings, defaultSettings, defaultShouldDisplayException,
@@ -56,7 +57,6 @@ import           Handler.Version
 import           Lib.Ssl
 import           Settings
 import           System.Posix.Process
-
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
@@ -84,13 +84,20 @@ makeFoundation appSettings = do
     -- logging function. To get out of this loop, we initially create a
     -- temporary foundation without a real connection pool, get a log function
     -- from there, and then create the real foundation.
-    let mkFoundation = AgentCtx {..}
+    let mkFoundation appConnPool = AgentCtx {..}
         -- The AgentCtx {..} syntax is an example of record wild cards. For more
         -- information, see:
         -- https://ocharles.org.uk/blog/posts/2014-12-04-record-wildcards.html
+        tempFoundation = mkFoundation $ panic "connPool forced in tempFoundation"
+        logFunc = messageLoggerSource tempFoundation appLogger
+
+    -- Create the database connection pool
+    pool <- flip runLoggingT logFunc $ createPostgresqlPool
+        (pgConnStr $ appDatabaseConf appSettings)
+        (pgPoolSize . appDatabaseConf $ appSettings)
 
     -- Return the foundation
-    return $ mkFoundation
+    return $ mkFoundation pool
 
 -- | Convert our foundation to a WAI Application by calling @toWaiAppPlain@ and
 -- applying some additional middlewares.
