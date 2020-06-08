@@ -11,6 +11,7 @@ import           Startlude
 import           Control.Monad.Logger
 import           Data.Aeson
 import qualified Data.ByteString.Lazy as BS
+import qualified Data.List.NonEmpty as NE
 import           Data.Char
 import           Data.Conduit
 import qualified Data.Conduit.Binary  as CB
@@ -55,7 +56,7 @@ getSysR e = do
 
 getAppR :: Extension "s9pk" -> Handler TypedContent
 getAppR e = do
-    appResourceDir <- (</> "apps" </> "apps.yaml") . resourcesDir . appSettings <$> getYesod
+    appResourceDir <- (</> "apps") . resourcesDir . appSettings <$> getYesod
     getApp appResourceDir e
 
 getApp :: KnownSymbol a => FilePath -> Extension a -> Handler TypedContent
@@ -76,15 +77,28 @@ getApp rootDir ext@(Extension appId) = do
                     ai <- runDB $ fetchApp appId' appVersion
                     _ <- case ai of
                         Nothing -> do
-                            -- save the app if it does not yet exist in db at particular version (automatic eventual transfer from using app.yaml to db record)
-                            rd <- resourcesDir . appSettings <$> getYesod
-                            manifest <- liftIO $ getAppManifest rd
+                            -- save the app if it does not yet exist in db at particular version (automatic eventual transfer from using apps.yaml to db record)
+                            manifest <- liftIO $ getAppManifest rootDir
                             deets <- case HM.lookup appId' $ unAppManifest manifest of
                                 Nothing -> sendResponseStatus status400 ("App not present in manifest" :: Text)
-                                Just x -> pure x
+                                Just StoreApp{..} -> do
+                                    -- look up at specfic version
+                                    VersionInfo{..} <- case NE.filter (\v -> appVersion == semver v) storeAppSemver of
+                                                            [] -> sendResponseStatus status400 ("App version not present in manifest" :: Text)
+                                                            x : _ -> pure x
+                                    pure $ AppSeed
+                                        { title = storeAppTitle
+                                        , descShort = storeAppDescShort
+                                        , descLong = storeAppDescLong
+                                        , appVersion = semver
+                                        , releaseNotes' = releaseNotes
+                                        , iconType = storeAppIconType
+                                        }
+                            -- create metric based off these app details
                             appKey <- runDB $ createApp appId' deets
-                            -- log app download
-                            runDB $ createMetric (Just appKey) appId'
+                            case appKey of
+                                Nothing -> $logWarn $ "app at this version already exists in db, no need to insert"
+                                Just k -> runDB $ createMetric (Just k) appId' -- log app download
                         Just a -> runDB $ createMetric (Just $ entityKey a) appId'
                     sz <- liftIO $ fileSize <$> getFileStatus filePath
                     addHeader "Content-Length" (show sz)
