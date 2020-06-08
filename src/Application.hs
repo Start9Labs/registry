@@ -31,7 +31,7 @@ import           Control.Monad.Logger                  (liftLoc, runLoggingT)
 import           Data.Aeson
 import           Data.Default
 import           Data.IORef
-import           Database.Persist.Postgresql           (createPostgresqlPool, pgConnStr, pgPoolSize)
+import           Database.Persist.Postgresql           (createPostgresqlPool, pgConnStr, pgPoolSize, runSqlPool, runMigration)
 import           Language.Haskell.TH.Syntax            (qLocation)
 import           Network.Wai
 import           Network.Wai.Handler.Warp              (Settings, defaultSettings, defaultShouldDisplayException,
@@ -56,6 +56,7 @@ import           Handler.Icons
 import           Handler.Version
 import           Lib.Ssl
 import           Settings
+import           Model
 import           System.Posix.Process
 
 -- This line actually creates our YesodDispatch instance. It is the second half
@@ -95,6 +96,9 @@ makeFoundation appSettings = do
     pool <- flip runLoggingT logFunc $ createPostgresqlPool
         (pgConnStr $ appDatabaseConf appSettings)
         (pgPoolSize . appDatabaseConf $ appSettings)
+
+    -- Preform database migration using application logging settings
+    runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
 
     -- Return the foundation
     return $ mkFoundation pool

@@ -10,6 +10,7 @@ module Settings where
 import           Startlude
 
 import qualified Control.Exception        as Exception
+import           Control.Monad.Fail               (fail)
 import           Data.Maybe
 import           Data.Aeson
 import           Data.Aeson.Types
@@ -90,20 +91,28 @@ compileTimeAppSettings =
 
 getAppManifest :: FilePath -> IO AppManifest
 getAppManifest resourcesDir = do
-    let appResourceDir = (</> "apps" </> "apps.yaml") $ resourcesDir
-    loadYamlSettings [appResourceDir] [] useEnv
+    let appFile = (</> "apps.yaml") $ resourcesDir
+    loadYamlSettings [appFile] [] useEnv
 
 type AppIdentifier = Text
 data AppSeed = AppSeed 
     { title :: Text
     , descShort :: Text
     , descLong :: Text
-    , semver :: AppVersion
-    , releaseNotes :: Text
+    , appVersion :: AppVersion
+    , releaseNotes' :: Text
     , iconType :: Text
     } deriving (Show)
+    
+data StoreApp = StoreApp 
+    { storeAppTitle :: Text
+    , storeAppDescShort :: Text
+    , storeAppDescLong :: Text
+    , storeAppSemver :: NonEmpty VersionInfo -- TODO rename
+    , storeAppIconType :: Text
+    } deriving (Show)
 
-newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap AppIdentifier AppSeed}
+newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap AppIdentifier StoreApp}
     deriving (Show)
 
 instance FromJSON AppManifest where
@@ -111,35 +120,23 @@ instance FromJSON AppManifest where
         apps <- for (HM.toList o) $ \(appId', c) -> do
             appId <- parseJSON $ String appId'
             config <- parseJSON c
-            title <- config .: "title"
-            iconType <- config .: "icon-type"
-            desc <- config .: "description"
-            ver <- config .: "version-info"
-            let descShort = short desc
-            let descLong = long desc
-            let semver = version' ver
-            let releaseNotes = notes ver
-            return $ (appId, AppSeed {..})
+            storeAppTitle <- config .: "title"
+            storeAppIconType <- config .: "icon-type"
+            storeAppDescShort <- config .: "description" >>= (.: "short")
+            storeAppDescLong <- config .: "description" >>= (.: "long")
+            storeAppSemver <- config .: "version-info" >>= \case
+                [] -> fail "No Valid Version Info"
+                (x:xs) -> pure $ x :| xs
+            return $ (appId, StoreApp {..})
         return $ AppManifest (HM.fromList apps)
 
 data VersionInfo = VersionInfo 
-    { version' :: AppVersion
-    , notes :: Text
-    } deriving (Show)
+    { semver :: AppVersion
+    , releaseNotes :: Text
+    } deriving (Eq, Ord, Show)
 
 instance FromJSON VersionInfo where
     parseJSON = withObject "version info" $ \o -> do
-        version' <- o .: "version"
-        notes <- o .: "release-notes"
+        semver <- o .: "version"
+        releaseNotes <- o .: "release-notes"
         pure VersionInfo {..}
-
-data AppDescription = AppDescription
-    { short :: Text
-    , long :: Text
-    } deriving (Show)
-
-instance FromJSON AppDescription where
-    parseJSON = withObject "app desc" $ \o -> do
-        short <- o .: "short"
-        long <- o .: "long"
-        pure AppDescription {..}

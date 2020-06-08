@@ -22,6 +22,7 @@ App
     semver AppVersion
     releaseNotes Text
     iconType Text
+    UniqueSemver semver
     deriving Eq
     deriving Show
 
