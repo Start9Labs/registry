@@ -96,19 +96,19 @@ getAppManifest resourcesDir = do
 
 type AppIdentifier = Text
 data AppSeed = AppSeed 
-    { title :: Text
-    , descShort :: Text
-    , descLong :: Text
-    , appVersion :: AppVersion
-    , releaseNotes' :: Text
-    , iconType :: Text
+    { appSeedTitle :: Text
+    , appSeedDescShort :: Text
+    , appSeedDescLong :: Text
+    , appSeedVersion :: AppVersion
+    , appSeedReleaseNotes :: Text
+    , appSeedIconType :: Text
     } deriving (Show)
     
 data StoreApp = StoreApp 
     { storeAppTitle :: Text
     , storeAppDescShort :: Text
     , storeAppDescLong :: Text
-    , storeAppSemver :: NonEmpty VersionInfo -- TODO rename
+    , storeAppVersionInfo :: NonEmpty VersionInfo
     , storeAppIconType :: Text
     } deriving (Show)
 
@@ -124,19 +124,19 @@ instance FromJSON AppManifest where
             storeAppIconType <- config .: "icon-type"
             storeAppDescShort <- config .: "description" >>= (.: "short")
             storeAppDescLong <- config .: "description" >>= (.: "long")
-            storeAppSemver <- config .: "version-info" >>= \case
+            storeAppVersionInfo <- config .: "version-info" >>= \case
                 [] -> fail "No Valid Version Info"
                 (x:xs) -> pure $ x :| xs
             return $ (appId, StoreApp {..})
         return $ AppManifest (HM.fromList apps)
 
 data VersionInfo = VersionInfo 
-    { semver :: AppVersion
-    , releaseNotes :: Text
+    { version' :: AppVersion
+    , releaseNotes' :: Text
     } deriving (Eq, Ord, Show)
 
 instance FromJSON VersionInfo where
     parseJSON = withObject "version info" $ \o -> do
-        semver <- o .: "version"
-        releaseNotes <- o .: "release-notes"
+        version' <- o .: "version"
+        releaseNotes' <- o .: "release-notes"
         pure VersionInfo {..}

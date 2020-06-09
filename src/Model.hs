@@ -12,23 +12,23 @@ import           Lib.Types.Semver
 
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
-App
+SApp
     createdAt UTCTime
     updatedAt UTCTime Maybe
     title Text
     appId Text
     descShort Text
     descLong Text
-    semver AppVersion
+    version AppVersion
     releaseNotes Text
     iconType Text
-    UniqueSemver semver
+    UniqueVersion version
     deriving Eq
     deriving Show
 
 Metric
     createdAt UTCTime
-    appId AppId Maybe default=null
+    appId SAppId Maybe default=null
     event Text
     deriving Eq
     deriving Show
