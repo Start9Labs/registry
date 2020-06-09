@@ -83,22 +83,22 @@ getApp rootDir ext@(Extension appId) = do
                                 Nothing -> sendResponseStatus status400 ("App not present in manifest" :: Text)
                                 Just StoreApp{..} -> do
                                     -- look up at specfic version
-                                    VersionInfo{..} <- case NE.filter (\v -> appVersion == semver v) storeAppSemver of
+                                    VersionInfo{..} <- case NE.filter (\v -> appVersion == version' v) storeAppVersionInfo of
                                                             [] -> sendResponseStatus status400 ("App version not present in manifest" :: Text)
                                                             x : _ -> pure x
                                     pure $ AppSeed
-                                        { title = storeAppTitle
-                                        , descShort = storeAppDescShort
-                                        , descLong = storeAppDescLong
-                                        , appVersion = semver
-                                        , releaseNotes' = releaseNotes
-                                        , iconType = storeAppIconType
+                                        { appSeedTitle = storeAppTitle
+                                        , appSeedDescShort = storeAppDescShort
+                                        , appSeedDescLong = storeAppDescLong
+                                        , appSeedVersion = version'
+                                        , appSeedReleaseNotes = releaseNotes'
+                                        , appSeedIconType = storeAppIconType
                                         }
-                            -- create metric based off these app details
                             appKey <- runDB $ createApp appId' deets
                             case appKey of
-                                Nothing -> $logWarn $ "app at this version already exists in db, no need to insert"
-                                Just k -> runDB $ createMetric (Just k) appId' -- log app download
+                                Nothing -> $logWarn $ "app at this version already exists in db, no need to insert" -- unreachable
+                                -- log app download
+                                Just k -> runDB $ createMetric (Just k) appId'
                         Just a -> runDB $ createMetric (Just $ entityKey a) appId'
                     sz <- liftIO $ fileSize <$> getFileStatus filePath
                     addHeader "Content-Length" (show sz)

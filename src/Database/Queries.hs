@@ -10,24 +10,24 @@ import Database.Persist.Sql
 import Model
 import Settings
 
-fetchApp :: MonadIO m => AppIdentifier -> AppVersion -> ReaderT SqlBackend m (Maybe (Entity App))
-fetchApp appId appVersion = selectFirst [AppAppId ==. appId, AppSemver ==. appVersion] [] 
+fetchApp :: MonadIO m => AppIdentifier -> AppVersion -> ReaderT SqlBackend m (Maybe (Entity SApp))
+fetchApp appId appVersion = selectFirst [SAppAppId ==. appId, SAppVersion ==. appVersion] [] 
 
-createApp :: MonadIO m => AppIdentifier -> AppSeed -> ReaderT SqlBackend m (Maybe (Key App))
+createApp :: MonadIO m => AppIdentifier -> AppSeed -> ReaderT SqlBackend m (Maybe (Key SApp))
 createApp appId AppSeed{..} = do
-    time <- liftIO $ getCurrentTime 
-    insertUnique $ App
+    time <- liftIO $ getCurrentTime
+    insertUnique $ SApp
         time
         Nothing
-        title
+        appSeedTitle
         appId
-        descShort
-        descLong
-        appVersion
-        releaseNotes'
-        iconType
+        appSeedDescShort
+        appSeedDescLong
+        appSeedVersion
+        appSeedReleaseNotes
+        appSeedIconType
 
-createMetric :: MonadIO m => Maybe (Key App) -> AppIdentifier -> ReaderT SqlBackend m ()
+createMetric :: MonadIO m => Maybe (Key SApp) -> AppIdentifier -> ReaderT SqlBackend m ()
 createMetric appId event = do
     time <- liftIO $ getCurrentTime 
     insert_ $ Metric
@@ -41,15 +41,15 @@ createAllAppVersions app appId = do
     -- inseryt new records and replace existing records (matching any unique constraint)
     putMany $ toList $ storeAppToSeed time appId app
 
-storeAppToSeed :: UTCTime -> AppIdentifier -> StoreApp -> NonEmpty App
-storeAppToSeed time appId StoreApp{..} = map (\b -> App
+storeAppToSeed :: UTCTime -> AppIdentifier -> StoreApp -> NonEmpty SApp
+storeAppToSeed time appId StoreApp{..} = map (\b -> SApp
         time
         Nothing
         storeAppTitle
         appId
         storeAppDescShort
         storeAppDescLong
-        (semver b)
-        (releaseNotes b)
+        (version' b)
+        (releaseNotes' b)
         storeAppIconType
-    ) storeAppSemver
+    ) storeAppVersionInfo
