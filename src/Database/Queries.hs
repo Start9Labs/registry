@@ -16,10 +16,10 @@ fetchApp appId = selectFirst [SAppAppId ==. appId] []
 fetchAppVersion :: MonadIO m => AppVersion -> Key SApp -> ReaderT SqlBackend m (Maybe (Entity Version))
 fetchAppVersion appVersion appId = selectFirst [VersionNumber ==. appVersion, VersionAppId ==. appId] [] 
 
-createApp :: MonadIO m => AppIdentifier -> StoreApp -> ReaderT SqlBackend m (Key SApp)
+createApp :: MonadIO m => AppIdentifier -> StoreApp -> ReaderT SqlBackend m (Maybe (Key SApp))
 createApp appId StoreApp{..} = do
     time <- liftIO getCurrentTime
-    insert $ SApp
+    insertUnique $ SApp
         time
         Nothing
         storeAppTitle
@@ -28,10 +28,10 @@ createApp appId StoreApp{..} = do
         storeAppDescLong
         storeAppIconType
     
-createAppVersion :: MonadIO m => Key SApp -> VersionInfo -> ReaderT SqlBackend m (Key Version)
+createAppVersion :: MonadIO m => Key SApp -> VersionInfo -> ReaderT SqlBackend m (Maybe (Key Version))
 createAppVersion sId VersionInfo{..} = do
     time <- liftIO getCurrentTime
-    insert $ Version
+    insertUnique $ Version
         time
         Nothing
         sId

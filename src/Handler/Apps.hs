@@ -86,19 +86,24 @@ getApp rootDir ext@(Extension appId) = do
                     sa <- runDB $ fetchApp appId'
                     (appKey, versionKey) <- case sa of
                         Nothing -> do
-                            ak <- runDB $ createApp appId' storeApp
-                            vk <- runDB $ createAppVersion ak versionInfo
-                            pure (ak, vk)
+                            appKey' <- runDB $ createApp appId' storeApp >>= errOnNothing status500 "duplicate app created"
+                            versionKey' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing status500 "duplicate app version created"
+                            pure (appKey', versionKey')
                         Just a -> do
                             let appKey' = entityKey a
-                            maybeVer <- runDB $ fetchAppVersion appVersion appKey'
-                            case maybeVer of
+                            existingVersion <- runDB $ fetchAppVersion appVersion appKey'
+                            case existingVersion of
                                 Nothing -> do
-                                    av <- runDB $ createAppVersion appKey' versionInfo
-                                    pure (appKey', av)
+                                    appVersion' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing status500 "duplicate app version created"
+                                    pure (appKey', appVersion')
                                 Just v -> pure (appKey', entityKey v)
                     runDB $ createMetric appKey versionKey
                     sz <- liftIO $ fileSize <$> getFileStatus filePath
                     addHeader "Content-Length" (show sz)
                     respondSource typePlain $ CB.sourceFile filePath .| awaitForever sendChunkBS
                 else notFound
+
+errOnNothing :: MonadHandler m => Status -> Text -> Maybe a -> m a 
+errOnNothing status res entity = case entity of
+    Nothing -> sendResponseStatus status res
+    Just a -> pure a
