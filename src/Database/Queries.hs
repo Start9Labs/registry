@@ -38,11 +38,10 @@ createAppVersion sId VersionInfo{..} = do
         versionInfoVersion
         versionInfoReleaseNotes
 
-createMetric :: MonadIO m => Maybe (Key SApp) -> Maybe (Key Version) -> AppIdentifier -> ReaderT SqlBackend m ()
-createMetric appId versionId event = do
+createMetric :: MonadIO m => Key SApp -> Key Version -> ReaderT SqlBackend m ()
+createMetric appId versionId = do
     time <- liftIO $ getCurrentTime 
     insert_ $ Metric
         time
         appId
         versionId
-        event
