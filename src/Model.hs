@@ -19,16 +19,26 @@ SApp
     appId Text
     descShort Text
     descLong Text
-    version AppVersion
-    releaseNotes Text
     iconType Text
-    UniqueVersion version
+    UniqueAppId appId
     deriving Eq
     deriving Show
+
+Version
+    createdAt UTCTime
+    updatedAt UTCTime Maybe
+    appId SAppId
+    number AppVersion
+    releaseNotes Text
+    UniqueNumber number
+    deriving Eq
+    deriving Show
+
 
 Metric
     createdAt UTCTime
     appId SAppId Maybe default=null
+    version VersionId Maybe default=null
     event Text
     deriving Eq
     deriving Show

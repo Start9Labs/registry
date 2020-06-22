@@ -44,7 +44,7 @@ getTables = do
         AND table_type = 'BASE TABLE';
     |] []
 
-    return $ map unSingle tables
+    return $ fmap unSingle tables
 
 wipeDB :: AgentCtx -> IO ()
 wipeDB app = runDBWithApp app $ do
@@ -52,7 +52,7 @@ wipeDB app = runDBWithApp app $ do
     sqlBackend <- ask
 
     let escapedTables = map (T.unpack . connEscapeName sqlBackend . DBName) tables
-        query = "TRUNCATE TABLE " ++ (intercalate ", " $ escapedTables)
+        query = "TRUNCATE TABLE " ++ (intercalate ", " escapedTables)
     rawExecute (T.pack query) []
 
 runDBtest :: SqlPersistM a -> YesodExample AgentCtx a
@@ -63,6 +63,6 @@ runDBtest query = do
 runDBWithApp :: AgentCtx -> SqlPersistM a -> IO a
 runDBWithApp app query = runSqlPersistMPool query (appConnPool app)
 
--- A convenient synonym for database access functions.
+-- A convenient synonym for database access functions
 type DB a = forall (m :: * -> *).
     (MonadUnliftIO m) => ReaderT SqlBackend m a

@@ -11,7 +11,6 @@ import           Startlude
 import           Control.Monad.Logger
 import           Data.Aeson
 import qualified Data.ByteString.Lazy as BS
-import qualified Data.List.NonEmpty as NE
 import           Data.Char
 import           Data.Conduit
 import qualified Data.Conduit.Binary  as CB
@@ -21,7 +20,6 @@ import           Network.HTTP.Types
 import           System.Directory
 import           Yesod.Core
 import           Yesod.Persist.Core
-
 
 import           Foundation
 import           Lib.Registry
@@ -67,6 +65,7 @@ getApp rootDir ext@(Extension appId) = do
         Just t  -> pure t
     appVersions <- liftIO $ getAvailableAppVersions rootDir ext
     putStrLn $ "valid appversion for " <> (show ext :: String) <> ": " <> show appVersions
+    -- this always returns the max version, not the one specified in query param, why?
     case getSpecifiedAppVersion spec appVersions of
         Nothing -> notFound
         Just (RegisteredAppVersion (appVersion, filePath)) -> do
@@ -74,32 +73,31 @@ getApp rootDir ext@(Extension appId) = do
             if exists
                 then do
                     let appId' = T.pack appId
-                    ai <- runDB $ fetchApp appId' appVersion
-                    _ <- case ai of
-                        Nothing -> do
-                            -- save the app if it does not yet exist in db at particular version (automatic eventual transfer from using apps.yaml to db record)
-                            manifest <- liftIO $ getAppManifest rootDir
-                            deets <- case HM.lookup appId' $ unAppManifest manifest of
+                    manifest <- liftIO $ getAppManifest rootDir
+                    (storeApp, versionInfo) <- case HM.lookup appId' $ unAppManifest manifest of
                                 Nothing -> sendResponseStatus status400 ("App not present in manifest" :: Text)
-                                Just StoreApp{..} -> do
+                                Just sa -> do
                                     -- look up at specfic version
-                                    VersionInfo{..} <- case NE.filter (\v -> appVersion == version' v) storeAppVersionInfo of
-                                                            [] -> sendResponseStatus status400 ("App version not present in manifest" :: Text)
-                                                            x : _ -> pure x
-                                    pure $ AppSeed
-                                        { appSeedTitle = storeAppTitle
-                                        , appSeedDescShort = storeAppDescShort
-                                        , appSeedDescLong = storeAppDescLong
-                                        , appSeedVersion = version'
-                                        , appSeedReleaseNotes = releaseNotes'
-                                        , appSeedIconType = storeAppIconType
-                                        }
-                            appKey <- runDB $ createApp appId' deets
-                            case appKey of
-                                Nothing -> $logWarn $ "app at this version already exists in db, no need to insert" -- unreachable
-                                -- log app download
-                                Just k -> runDB $ createMetric (Just k) appId'
-                        Just a -> runDB $ createMetric (Just $ entityKey a) appId'
+                                    vi <- case find ((appVersion ==) . versionInfoVersion) (storeAppVersionInfo sa) of
+                                            Nothing -> sendResponseStatus status400 ("App version not present in manifest" :: Text)
+                                            Just x -> pure x
+                                    pure (sa, vi)
+                    -- lazy load app at requested version if it does not yet exist to automatically transfer from using apps.yaml
+                    sa <- runDB $ fetchApp appId'
+                    (appKey, versionKey) <- case sa of
+                        Nothing -> do
+                            ak <- runDB $ createApp appId' storeApp
+                            vk <- runDB $ createAppVersion ak versionInfo
+                            pure (ak, vk)
+                        Just a -> do
+                            let appKey' = entityKey a
+                            maybeVer <- runDB $ fetchAppVersion appVersion appKey'
+                            case maybeVer of
+                                Nothing -> do
+                                    av <- runDB $ createAppVersion appKey' versionInfo
+                                    pure (appKey', av)
+                                Just v -> pure (appKey', entityKey v)
+                    runDB $ createMetric (Just appKey) (Just versionKey) appId'
                     sz <- liftIO $ fileSize <$> getFileStatus filePath
                     addHeader "Content-Length" (show sz)
                     respondSource typePlain $ CB.sourceFile filePath .| awaitForever sendChunkBS

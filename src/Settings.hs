@@ -91,18 +91,10 @@ compileTimeAppSettings =
 
 getAppManifest :: FilePath -> IO AppManifest
 getAppManifest resourcesDir = do
-    let appFile = (</> "apps.yaml") $ resourcesDir
+    let appFile = (</> "apps.yaml") resourcesDir
     loadYamlSettings [appFile] [] useEnv
 
 type AppIdentifier = Text
-data AppSeed = AppSeed 
-    { appSeedTitle :: Text
-    , appSeedDescShort :: Text
-    , appSeedDescLong :: Text
-    , appSeedVersion :: AppVersion
-    , appSeedReleaseNotes :: Text
-    , appSeedIconType :: Text
-    } deriving (Show)
     
 data StoreApp = StoreApp 
     { storeAppTitle :: Text
@@ -131,12 +123,12 @@ instance FromJSON AppManifest where
         return $ AppManifest (HM.fromList apps)
 
 data VersionInfo = VersionInfo 
-    { version' :: AppVersion
-    , releaseNotes' :: Text
+    { versionInfoVersion :: AppVersion
+    , versionInfoReleaseNotes :: Text
     } deriving (Eq, Ord, Show)
 
 instance FromJSON VersionInfo where
     parseJSON = withObject "version info" $ \o -> do
-        version' <- o .: "version"
-        releaseNotes' <- o .: "release-notes"
+        versionInfoVersion <- o .: "version"
+        versionInfoReleaseNotes <- o .: "release-notes"
         pure VersionInfo {..}

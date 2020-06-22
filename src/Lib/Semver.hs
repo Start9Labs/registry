@@ -43,4 +43,4 @@ instance HasAppVersion AppVersion where
 
 appVersionMax :: HasAppVersion a => [a] -> Maybe a
 appVersionMax [] = Nothing
-appVersionMax as = Just $ maximumBy (\a1 a2 -> version a1 `compare` version a2) as
+appVersionMax as = Just $ maximumBy (compare `on` version) as

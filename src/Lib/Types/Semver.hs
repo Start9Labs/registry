@@ -62,8 +62,8 @@ instance FromJSONKey AppVersion where
         Just x -> pure x
 
 instance PersistField AppVersion where
-    toPersistValue = toPersistValue @String . show
-    fromPersistValue = note "" . readMaybe <=< fromPersistValue
+    toPersistValue = toPersistValue @Text . show
+    fromPersistValue = note "invalid app version" . readMaybe <=< fromPersistValue
 
 instance PersistFieldSql AppVersion where
     sqlType _ = SqlString
