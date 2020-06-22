@@ -38,8 +38,9 @@ spec = do
                 setUrl ("/apps/bitcoind.s9pk?spec=0.18.1" :: Text)
             statusIs 200
             apps <- runDBtest $ selectList [SAppAppId ==. "bitcoind"] []
-            metrics <- runDBtest $ selectList [MetricEvent ==. "bitcoind"] []
             assertEq "app should exist" (length apps) 1
+            let app = fromJust $ head apps
+            metrics <- runDBtest $ selectList [MetricAppId ==. entityKey app] []
             assertEq "metric should exist" (length metrics) 1
     describe "GET /apps/:appId with existing version spec for cups" $
         withApp $ it "creates app and metric records" $ do
@@ -48,9 +49,9 @@ spec = do
                 setUrl ("/apps/cups.s9pk?spec=0.2.1" :: Text)
             statusIs 200
             apps <- runDBtest $ selectList [SAppAppId ==. "cups"] []
-            metrics <- runDBtest $ selectList [MetricEvent ==. "cups"] []
             assertEq "app should exist" (length apps) 1
-            assertEq "metric should exist" (length metrics) 1
             let app = fromJust $ head apps
+            metrics <- runDBtest $ selectList [MetricAppId ==. entityKey app] []
+            assertEq "metric should exist" (length metrics) 1
             version <- runDBtest $ selectList [VersionAppId ==. entityKey app] []
             assertEq "version should exist" (length version) 1

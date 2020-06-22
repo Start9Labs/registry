@@ -97,7 +97,7 @@ getApp rootDir ext@(Extension appId) = do
                                     av <- runDB $ createAppVersion appKey' versionInfo
                                     pure (appKey', av)
                                 Just v -> pure (appKey', entityKey v)
-                    runDB $ createMetric (Just appKey) (Just versionKey) appId'
+                    runDB $ createMetric appKey versionKey
                     sz <- liftIO $ fileSize <$> getFileStatus filePath
                     addHeader "Content-Length" (show sz)
                     respondSource typePlain $ CB.sourceFile filePath .| awaitForever sendChunkBS

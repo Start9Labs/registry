@@ -30,16 +30,15 @@ Version
     appId SAppId
     number AppVersion
     releaseNotes Text
-    UniqueNumber number
+    UniqueBin appId number
     deriving Eq
     deriving Show
 
 
 Metric
     createdAt UTCTime
-    appId SAppId Maybe default=null
-    version VersionId Maybe default=null
-    event Text
+    appId SAppId
+    version VersionId
     deriving Eq
     deriving Show
 |]
