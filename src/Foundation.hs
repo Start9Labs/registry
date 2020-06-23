@@ -19,6 +19,7 @@ import qualified Yesod.Core.Unsafe    as Unsafe
 
 import           Lib.Types.Semver
 import           Settings
+import           Yesod.Persist.Core
 
 -- | The foundation datatype for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application
@@ -31,6 +32,7 @@ data AgentCtx = AgentCtx
     , appLogger            :: Logger
     , appWebServerThreadId :: IORef (Maybe ThreadId)
     , appCompatibilityMap  :: HM.HashMap AppVersion AppVersion
+    , appConnPool          :: ConnectionPool
     }
 
 setWebProcessThreadId :: ThreadId -> AgentCtx -> IO ()
@@ -84,6 +86,17 @@ instance Yesod AgentCtx where
 
     makeLogger :: AgentCtx -> IO Logger
     makeLogger = return . appLogger
+
+-- How to run database actions.
+instance YesodPersist AgentCtx where
+    type YesodPersistBackend AgentCtx = SqlBackend
+    runDB :: SqlPersistT Handler a -> Handler a
+    runDB action = runSqlPool action . appConnPool =<< getYesod
+
+instance YesodPersistRunner AgentCtx where
+    getDBRunner :: Handler (DBRunner AgentCtx, Handler ())
+    getDBRunner = defaultGetDBRunner appConnPool
+
 
 unsafeHandler :: AgentCtx -> Handler a -> IO a
 unsafeHandler = Unsafe.fakeHandlerGetLogger appLogger

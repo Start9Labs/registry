@@ -1,5 +1,7 @@
 {-# LANGUAGE QuasiQuotes     #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeApplications #-}
+
 module Lib.Types.Semver where
 
 import           Startlude               hiding (break)
@@ -13,6 +15,7 @@ import           Data.Char               (isDigit)
 import           Data.String.Interpolate
 import           Data.Text
 import           Yesod.Core
+import           Database.Persist.Sql
 
 ------------------------------------------------------------------------------------------------------------------------
 -- Semver AppVersion
@@ -57,6 +60,13 @@ instance FromJSONKey AppVersion where
     fromJSONKey = FromJSONKeyTextParser $ \t -> case readMaybe (toS t) of
         Nothing -> fail "invalid app version"
         Just x -> pure x
+
+instance PersistField AppVersion where
+    toPersistValue = toPersistValue @Text . show
+    fromPersistValue = note "invalid app version" . readMaybe <=< fromPersistValue
+
+instance PersistFieldSql AppVersion where
+    sqlType _ = SqlString
 
 ------------------------------------------------------------------------------------------------------------------------
 -- Semver AppVersionSpecification
