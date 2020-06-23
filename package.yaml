@@ -1,5 +1,5 @@
 name: start9-registry
-version: 0.0.0
+version: 0.1.0
 
 default-extensions:
 - NoImplicitPrelude
@@ -38,6 +38,7 @@ dependencies:
 - monad-loops
 - persistent
 - persistent-sqlite
+- persistent-postgresql
 - persistent-template
 - process
 - protolude
@@ -61,6 +62,7 @@ dependencies:
 - yesod-core >=1.6 && <1.7
 - yesod-static
 - yesod-persistent >= 1.6 && < 1.7
+- shakespeare >=2.0 && <2.1
 
 library:
   source-dirs: src

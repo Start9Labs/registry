@@ -1,9 +1,0 @@
-bitcoind:
-  title: "Bitcoin Core"
-  description:
-    short: "A Bitcoin Full Node"
-    long: "The bitcoin full node implementation by Bitcoin Core."
-  version-info:
-    - version: 0.18.1
-      release-notes: "Some stuff"
-  icon-type: png

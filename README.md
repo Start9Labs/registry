@@ -37,6 +37,10 @@ As your code changes, your site will be automatically recompiled and redeployed 
 - Follow github instructions to install for specific GHC version ie. `stack ./install.hs hie`
 - Install VSCode Haskell Language Server Extension
 
+To create `hie.yaml` if it does not exist:
+- gather executables by running `stack ide targets`
+- see [here](https://github.com/haskell/haskell-ide-engine#project-configuration) for file setup details
+
 ## Tests
 
 ```

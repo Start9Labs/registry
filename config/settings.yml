@@ -32,3 +32,11 @@ app-compatibility-path: "_env:APP_COMPATIBILITY_CONFIG:/etc/start9/registry/comp
 resources-path: "_env:RESOURCES_PATH:/var/www/html/resources" 
 ssl-path: "_env:SSL_PATH:/var/ssl"
 registry-hostname: "_env:REGISTRY_HOSTNAME:registry.start9labs.com"
+
+database:
+  database: "_env:PG_DATABASE:start9_registry"
+  poolsize: "_env:PG_POOL_SIZE:2"
+  user: "_env:PG_USER:user"
+  password: "_env:PG_PASSWORD:password"
+  host: "_env:PG_HOST:localhost"
+  port: "_env:PG_PORT:5432"

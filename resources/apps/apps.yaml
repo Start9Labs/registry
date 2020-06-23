@@ -6,4 +6,17 @@ bitcoind:
   version-info:
     - version: 0.18.1
       release-notes: "Some stuff"
+    - version: 0.18.2
+      release-notes: "Some more stuff"
+  icon-type: png
+cups:
+  title: "Cups Messenger"
+  description:
+    short: "P2P Encrypted messaging"
+    long: "Peer-to-peer encrypted messaging platform that operates over tor."
+  version-info:
+    - version: 0.2.1
+      release-notes: "Some stuff"
+    - version: 0.2.2
+      release-notes: "Some more stuff"
   icon-type: png
