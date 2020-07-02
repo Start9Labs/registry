@@ -170,13 +170,13 @@ appMain = do
         useEnv
 
     -- Generate the foundation from the settings
-    makeFoundation settings >>= startApp
+    makeFoundation settings >>= (startApp settings)
 
-startApp :: AgentCtx -> IO ()
-startApp foundation = do
+startApp :: AppSettings -> AgentCtx -> IO ()
+startApp settings foundation = do
     -- set up ssl certificates
     putStrLn @Text "Setting up SSL"
-    _ <- setupSsl <$> getAppSettings
+    _ <- setupSsl settings
     putStrLn @Text "SSL Setup Complete"
     startWeb foundation
 
