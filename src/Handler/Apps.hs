@@ -71,15 +71,22 @@ getApp rootDir ext@(Extension appId) = do
     case getSpecifiedAppVersion spec appVersions of
         Nothing -> notFound
         Just (RegisteredAppVersion (appVersion, filePath)) -> do
-            exists <- liftIO $ doesFileExist filePath
             let isApp = isInfixOf "apps" rootDir
-            if isApp then toTypedContent <$> recordMetrics appId rootDir appVersion
-            else if exists
-                then do
-                    sz <- liftIO $ fileSize <$> getFileStatus filePath
-                    addHeader "Content-Length" (show sz)
-                    respondSource typePlain $ CB.sourceFile filePath .| awaitForever sendChunkBS
-                else notFound
+            exists <- liftIO $ doesFileExist filePath
+            determineEvent exists isApp filePath appVersion
+    where
+        determineEvent True False fp _ = do
+            sz <- liftIO $ fileSize <$> getFileStatus fp
+            addHeader "Content-Length" (show sz)
+            respondSource typePlain $ CB.sourceFile fp .| awaitForever sendChunkBS
+        determineEvent True True  fp av = do
+            _ <- recordMetrics appId rootDir av
+            sz <- liftIO $ fileSize <$> getFileStatus fp
+            addHeader "Content-Length" (show sz)
+            respondSource typePlain $ CB.sourceFile fp .| awaitForever sendChunkBS
+        determineEvent False _  _ _ = notFound
+
+
 
 errOnNothing :: MonadHandler m => Status -> Text -> Maybe a -> m a 
 errOnNothing status res entity = case entity of
