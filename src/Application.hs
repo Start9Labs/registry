@@ -176,7 +176,7 @@ startApp :: AgentCtx -> IO ()
 startApp foundation = do
     -- set up ssl certificates
     putStrLn @Text "Setting up SSL"
-    _ <- setupSsl <$> getAppSettings
+    _ <- setupSsl $ appSettings foundation
     putStrLn @Text "SSL Setup Complete"
     startWeb foundation
 
