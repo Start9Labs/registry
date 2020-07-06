@@ -3,6 +3,7 @@
 {-# LANGUAGE RecordWildCards  #-}
 {-# LANGUAGE TemplateHaskell  #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Handler.Apps where
 
@@ -15,6 +16,7 @@ import           Data.Char
 import           Data.Conduit
 import qualified Data.Conduit.Binary  as CB
 import qualified Data.Text            as T
+import           Data.List
 import qualified GHC.Show             (Show (..))
 import           Network.HTTP.Types
 import           System.Directory
@@ -24,6 +26,7 @@ import           Yesod.Persist.Core
 import           Foundation
 import           Lib.Registry
 import           Lib.Semver
+import           Lib.Types.Semver
 import           System.FilePath      ((<.>), (</>))
 import           System.Posix.Files   (fileSize, getFileStatus)
 import           Settings
@@ -65,39 +68,14 @@ getApp rootDir ext@(Extension appId) = do
         Just t  -> pure t
     appVersions <- liftIO $ getAvailableAppVersions rootDir ext
     putStrLn $ "valid appversion for " <> (show ext :: String) <> ": " <> show appVersions
-    -- this always returns the max version, not the one specified in query param, why?
     case getSpecifiedAppVersion spec appVersions of
         Nothing -> notFound
         Just (RegisteredAppVersion (appVersion, filePath)) -> do
             exists <- liftIO $ doesFileExist filePath
-            if exists
+            let isApp = isInfixOf "apps" rootDir
+            if isApp then toTypedContent <$> recordMetrics appId rootDir appVersion
+            else if exists
                 then do
-                    let appId' = T.pack appId
-                    manifest <- liftIO $ getAppManifest rootDir
-                    (storeApp, versionInfo) <- case HM.lookup appId' $ unAppManifest manifest of
-                                Nothing -> sendResponseStatus status400 ("App not present in manifest" :: Text)
-                                Just sa -> do
-                                    -- look up at specfic version
-                                    vi <- case find ((appVersion ==) . versionInfoVersion) (storeAppVersionInfo sa) of
-                                            Nothing -> sendResponseStatus status400 ("App version not present in manifest" :: Text)
-                                            Just x -> pure x
-                                    pure (sa, vi)
-                    -- lazy load app at requested version if it does not yet exist to automatically transfer from using apps.yaml
-                    sa <- runDB $ fetchApp appId'
-                    (appKey, versionKey) <- case sa of
-                        Nothing -> do
-                            appKey' <- runDB $ createApp appId' storeApp >>= errOnNothing status500 "duplicate app created"
-                            versionKey' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing status500 "duplicate app version created"
-                            pure (appKey', versionKey')
-                        Just a -> do
-                            let appKey' = entityKey a
-                            existingVersion <- runDB $ fetchAppVersion appVersion appKey'
-                            case existingVersion of
-                                Nothing -> do
-                                    appVersion' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing status500 "duplicate app version created"
-                                    pure (appKey', appVersion')
-                                Just v -> pure (appKey', entityKey v)
-                    runDB $ createMetric appKey versionKey
                     sz <- liftIO $ fileSize <$> getFileStatus filePath
                     addHeader "Content-Length" (show sz)
                     respondSource typePlain $ CB.sourceFile filePath .| awaitForever sendChunkBS
@@ -107,3 +85,32 @@ errOnNothing :: MonadHandler m => Status -> Text -> Maybe a -> m a
 errOnNothing status res entity = case entity of
     Nothing -> sendResponseStatus status res
     Just a -> pure a
+
+recordMetrics :: String -> FilePath -> AppVersion -> HandlerFor AgentCtx ()
+recordMetrics appId rootDir appVersion = do
+    let appId' = T.pack appId
+    manifest <- liftIO $ getAppManifest rootDir
+    (storeApp, versionInfo) <- case HM.lookup appId' $ unAppManifest manifest of
+                Nothing -> sendResponseStatus status400 ("App not present in manifest" :: Text)
+                Just sa -> do
+                    -- look up at specfic version
+                    vi <- case find ((appVersion ==) . versionInfoVersion) (storeAppVersionInfo sa) of
+                            Nothing -> sendResponseStatus status400 ("App version not present in manifest" :: Text)
+                            Just x -> pure x
+                    pure (sa, vi)
+    -- lazy load app at requested version if it does not yet exist to automatically transfer from using apps.yaml
+    sa <- runDB $ fetchApp appId'
+    (appKey, versionKey) <- case sa of
+        Nothing -> do
+            appKey' <- runDB $ createApp appId' storeApp >>= errOnNothing status500 "duplicate app created"
+            versionKey' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing status500 "duplicate app version created"
+            pure (appKey', versionKey')
+        Just a -> do
+            let appKey' = entityKey a
+            existingVersion <- runDB $ fetchAppVersion appVersion appKey'
+            case existingVersion of
+                Nothing -> do
+                    appVersion' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing status500 "duplicate app version created"
+                    pure (appKey', appVersion')
+                Just v -> pure (appKey', entityKey v)
+    runDB $ createMetric appKey versionKey
