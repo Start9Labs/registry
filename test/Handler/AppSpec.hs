@@ -55,3 +55,20 @@ spec = do
             assertEq "metric should exist" (length metrics) 1
             version <- runDBtest $ selectList [VersionAppId ==. entityKey app] []
             assertEq "version should exist" (length version) 1
+    describe "GET /sys/proxy.pac" $
+        withApp $ it "does not record metric but request successful" $ do
+            request $ do
+                setMethod "GET"
+                setUrl ("/sys/proxy.pac?spec=0.1.0" :: Text)
+            statusIs 200
+            -- select * from s_app
+            apps <- runDBtest $ selectList ([] :: [Filter SApp])[]
+            assertEq "no apps should exist" (length apps) 0
+    describe "GET /sys/:sysId" $
+        withApp $ it "does not record metric but request successful" $ do
+            request $ do
+                setMethod "GET"
+                setUrl ("/sys/agent?spec=0.0.0" :: Text)
+            statusIs 200
+            apps <- runDBtest $ selectList ([] :: [Filter SApp])[]
+            assertEq "no apps should exist" (length apps) 0
