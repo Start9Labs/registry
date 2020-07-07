@@ -16,7 +16,6 @@ import           Data.Char
 import           Data.Conduit
 import qualified Data.Conduit.Binary  as CB
 import qualified Data.Text            as T
-import           Data.List
 import qualified GHC.Show             (Show (..))
 import           Network.HTTP.Types
 import           System.Directory
@@ -27,6 +26,8 @@ import           Foundation
 import           Lib.Registry
 import           Lib.Semver
 import           Lib.Types.Semver
+import           Lib.Types.FileSystem
+import           Lib.Error
 import           System.FilePath      ((<.>), (</>))
 import           System.Posix.Files   (fileSize, getFileStatus)
 import           Settings
@@ -71,27 +72,26 @@ getApp rootDir ext@(Extension appId) = do
     case getSpecifiedAppVersion spec appVersions of
         Nothing -> notFound
         Just (RegisteredAppVersion (appVersion, filePath)) -> do
-            let isApp = isInfixOf "apps" rootDir
-            exists <- liftIO $ doesFileExist filePath
-            determineEvent exists isApp filePath appVersion
+            exists <- liftIO $ doesFileExist filePath >>= \case
+                        True -> pure Existent
+                        False -> pure NonExistent
+            determineEvent exists (extension ext) filePath appVersion
     where
-        determineEvent True False fp _ = do
+        determineEvent :: FileExistence -> String -> FilePath -> AppVersion -> HandlerFor AgentCtx TypedContent
+        -- for system files
+        determineEvent Existent "" fp _ = do
             sz <- liftIO $ fileSize <$> getFileStatus fp
             addHeader "Content-Length" (show sz)
             respondSource typePlain $ CB.sourceFile fp .| awaitForever sendChunkBS
-        determineEvent True True  fp av = do
+        -- for app files
+        determineEvent Existent "s9pk" fp av = do
             _ <- recordMetrics appId rootDir av
             sz <- liftIO $ fileSize <$> getFileStatus fp
             addHeader "Content-Length" (show sz)
             respondSource typePlain $ CB.sourceFile fp .| awaitForever sendChunkBS
-        determineEvent False _  _ _ = notFound
-
-
-
-errOnNothing :: MonadHandler m => Status -> Text -> Maybe a -> m a 
-errOnNothing status res entity = case entity of
-    Nothing -> sendResponseStatus status res
-    Just a -> pure a
+        -- for png files
+        determineEvent Existent _ _ _ = notFound
+        determineEvent NonExistent _ _ _ = notFound
 
 recordMetrics :: String -> FilePath -> AppVersion -> HandlerFor AgentCtx ()
 recordMetrics appId rootDir appVersion = do
