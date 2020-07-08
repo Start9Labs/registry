@@ -78,20 +78,19 @@ getApp rootDir ext@(Extension appId) = do
             determineEvent exists (extension ext) filePath appVersion
     where
         determineEvent :: FileExistence -> String -> FilePath -> AppVersion -> HandlerFor AgentCtx TypedContent
-        -- for system files
-        determineEvent Existent "" fp _ = do
-            sz <- liftIO $ fileSize <$> getFileStatus fp
-            addHeader "Content-Length" (show sz)
-            respondSource typePlain $ CB.sourceFile fp .| awaitForever sendChunkBS
         -- for app files
         determineEvent Existent "s9pk" fp av = do
             _ <- recordMetrics appId rootDir av
-            sz <- liftIO $ fileSize <$> getFileStatus fp
-            addHeader "Content-Length" (show sz)
-            respondSource typePlain $ CB.sourceFile fp .| awaitForever sendChunkBS
-        -- for png files
-        determineEvent Existent _ _ _ = notFound
+            chunkIt fp
+        -- for png, system, etc
+        determineEvent Existent _ fp _ = chunkIt fp
         determineEvent NonExistent _ _ _ = notFound
+
+chunkIt :: FilePath -> HandlerFor AgentCtx TypedContent
+chunkIt fp = do
+    sz <- liftIO $ fileSize <$> getFileStatus fp
+    addHeader "Content-Length" (show sz)
+    respondSource typePlain $ CB.sourceFile fp .| awaitForever sendChunkBS
 
 recordMetrics :: String -> FilePath -> AppVersion -> HandlerFor AgentCtx ()
 recordMetrics appId rootDir appVersion = do
