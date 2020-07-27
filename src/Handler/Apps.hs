@@ -90,7 +90,7 @@ chunkIt :: FilePath -> HandlerFor AgentCtx TypedContent
 chunkIt fp = do
     sz <- liftIO $ fileSize <$> getFileStatus fp
     addHeader "Content-Length" (show sz)
-    respondSource typePlain $ CB.sourceFile fp .| awaitForever sendChunkBS
+    respondSource typeOctet $ CB.sourceFile fp .| awaitForever sendChunkBS
 
 recordMetrics :: String -> FilePath -> AppVersion -> HandlerFor AgentCtx ()
 recordMetrics appId rootDir appVersion = do
