@@ -16,7 +16,6 @@ import           Yesod.Core
 
 import           Lib.Semver
 import           Lib.Types.Semver
-import           Data.Char
 
 type Registry = HashMap String (HashMap AppVersion FilePath)
 
@@ -50,11 +49,6 @@ newtype Extension (a :: Symbol) = Extension String deriving (Eq)
 type S9PK = Extension "s9pk"
 type SYS_EXTENSIONLESS = Extension ""
 type PNG = Extension "png"
-
-data Extensions = S9PK | PNG | EMPTY
-    deriving (Read)
-instance Show Extensions where
-    show a = fmap toLower $ show a
 
 instance IsString (Extension a) where
     fromString = Extension
