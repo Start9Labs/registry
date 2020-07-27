@@ -28,4 +28,3 @@ agent_*
 agent.*
 version
 **/*.s9pk
-startup.sh
