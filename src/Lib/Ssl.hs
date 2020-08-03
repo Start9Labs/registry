@@ -8,6 +8,7 @@ import           Startlude
 import           Data.String.Interpolate.IsString
 import           System.Directory
 import           System.Process
+
 import           Settings
 
 -- openssl genrsa -out key.pem 2048
@@ -15,7 +16,7 @@ import           Settings
 -- openssl x509 -req -in certificate.csr -signkey key.pem -out certificate.pem
 
 setupSsl :: AppSettings -> IO ()
-setupSsl AppSettings{..} = do
+setupSsl AppSettings {..} = do
     exists <- checkForSslCert
     unless exists $ do
         void $ system $ "mkdir -p " <> sslPath
@@ -24,8 +25,7 @@ setupSsl AppSettings{..} = do
         void selfSignSslCert
     where
         checkForSslCert :: IO Bool
-        checkForSslCert =
-            doesPathExist sslKeyLocation <&&> doesPathExist sslCertLocation
+        checkForSslCert = doesPathExist sslKeyLocation <&&> doesPathExist sslCertLocation
 
         generateSslKey :: IO ExitCode
         generateSslKey = rawSystem "openssl" ["genrsa", "-out", sslKeyLocation, "2048"]
@@ -38,12 +38,14 @@ setupSsl AppSettings{..} = do
         selfSignSslCert :: IO ExitCode
         selfSignSslCert = rawSystem
             "openssl"
-            [ "x509"
-            , "-req"
-            , "-in"
-            , sslCsrLocation
-            , "-signkey"
-            , sslKeyLocation
-            , "-out"
-            , sslCertLocation
-            ]
+            ["x509", "-req", "-in", sslCsrLocation, "-signkey", sslKeyLocation, "-out", sslCertLocation]
+
+doesSslNeedRenew :: FilePath -> IO Bool
+doesSslNeedRenew cert = do
+    ec <- liftIO $ system [i|openssl x509 -checkend 2592000 -noout -in #{cert}|]
+    pure $ ec /= ExitSuccess
+
+renewSslCerts :: FilePath -> IO ()
+renewSslCerts cert = do
+    void . liftIO $ system [i|certbot renew|]
+    void . liftIO $ system [i|cp /etc/letsencrypt/live/beta-registry.start9labs.com/fullchain.pem #{cert}|]

@@ -9,22 +9,24 @@ module Settings where
 
 import           Startlude
 
-import qualified Control.Exception        as Exception
-import           Control.Monad.Fail               (fail)
+import qualified Control.Exception             as Exception
+import           Control.Monad.Fail             ( fail )
 import           Data.Maybe
 import           Data.Aeson
 import           Data.Aeson.Types
-import           Data.Version          (showVersion)
-import           Data.FileEmbed           (embedFile)
-import           Data.Yaml                (decodeEither')
-import           Database.Persist.Postgresql (PostgresConf)
-import           Network.Wai.Handler.Warp (HostPreference)
-import           Yesod.Default.Config2    (applyEnvValue, configSettingsYml)
-import           Paths_start9_registry (version)
+import           Data.Version                   ( showVersion )
+import           Data.FileEmbed                 ( embedFile )
+import           Data.Yaml                      ( decodeEither' )
+import           Database.Persist.Postgresql    ( PostgresConf )
+import           Network.Wai.Handler.Warp       ( HostPreference )
+import           Yesod.Default.Config2          ( applyEnvValue
+                                                , configSettingsYml
+                                                )
+import           Paths_start9_registry          ( version )
 import           Lib.Types.Semver
-import           System.FilePath ((</>))
-import qualified Data.HashMap.Strict as HM
-import Data.Yaml.Config
+import           System.FilePath                ( (</>) )
+import qualified Data.HashMap.Strict           as HM
+import           Data.Yaml.Config
 
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
@@ -65,9 +67,9 @@ instance FromJSON AppSettings where
         resourcesDir              <- o .: "resources-path"
         sslPath                   <- o .: "ssl-path"
         registryHostname          <- o .: "registry-hostname"
-        
-        let sslKeyLocation = sslPath </> "key.pem"
-        let sslCsrLocation = sslPath </> "certificate.csr"
+
+        let sslKeyLocation  = sslPath </> "key.pem"
+        let sslCsrLocation  = sslPath </> "certificate.csr"
         let sslCertLocation = sslPath </> "certificate.pem"
         let registryVersion = fromJust . parseMaybe parseJSON . String . toS . showVersion $ version
 
@@ -79,15 +81,13 @@ configSettingsYmlBS = $(embedFile configSettingsYml)
 
 -- | @config/settings.yml@, parsed to a @Value@.
 configSettingsYmlValue :: Value
-configSettingsYmlValue =
-    either Exception.throw id $ decodeEither' configSettingsYmlBS
+configSettingsYmlValue = either Exception.throw id $ decodeEither' configSettingsYmlBS
 
 -- | A version of @AppSettings@ parsed at compile time from @config/settings.yml@.
 compileTimeAppSettings :: AppSettings
-compileTimeAppSettings =
-    case fromJSON $ applyEnvValue False mempty configSettingsYmlValue of
-        Error   e        -> panic $ toS e
-        Success settings -> settings
+compileTimeAppSettings = case fromJSON $ applyEnvValue False mempty configSettingsYmlValue of
+    Error   e        -> panic $ toS e
+    Success settings -> settings
 
 getAppManifest :: FilePath -> IO AppManifest
 getAppManifest resourcesDir = do
@@ -95,8 +95,8 @@ getAppManifest resourcesDir = do
     loadYamlSettings [appFile] [] useEnv
 
 type AppIdentifier = Text
-    
-data StoreApp = StoreApp 
+
+data StoreApp = StoreApp
     { storeAppTitle :: Text
     , storeAppDescShort :: Text
     , storeAppDescLong :: Text
@@ -110,25 +110,25 @@ newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap AppIdentifier St
 instance FromJSON AppManifest where
     parseJSON = withObject "app details to seed" $ \o -> do
         apps <- for (HM.toList o) $ \(appId', c) -> do
-            appId <- parseJSON $ String appId'
-            config <- parseJSON c
-            storeAppTitle <- config .: "title"
-            storeAppIconType <- config .: "icon-type"
-            storeAppDescShort <- config .: "description" >>= (.: "short")
-            storeAppDescLong <- config .: "description" >>= (.: "long")
+            appId               <- parseJSON $ String appId'
+            config              <- parseJSON c
+            storeAppTitle       <- config .: "title"
+            storeAppIconType    <- config .: "icon-type"
+            storeAppDescShort   <- config .: "description" >>= (.: "short")
+            storeAppDescLong    <- config .: "description" >>= (.: "long")
             storeAppVersionInfo <- config .: "version-info" >>= \case
-                [] -> fail "No Valid Version Info"
-                (x:xs) -> pure $ x :| xs
-            return $ (appId, StoreApp {..})
+                []       -> fail "No Valid Version Info"
+                (x : xs) -> pure $ x :| xs
+            return $ (appId, StoreApp { .. })
         return $ AppManifest (HM.fromList apps)
 
-data VersionInfo = VersionInfo 
+data VersionInfo = VersionInfo
     { versionInfoVersion :: AppVersion
     , versionInfoReleaseNotes :: Text
     } deriving (Eq, Ord, Show)
 
 instance FromJSON VersionInfo where
     parseJSON = withObject "version info" $ \o -> do
-        versionInfoVersion <- o .: "version"
+        versionInfoVersion      <- o .: "version"
         versionInfoReleaseNotes <- o .: "release-notes"
-        pure VersionInfo {..}
+        pure VersionInfo { .. }

@@ -23,6 +23,7 @@ dependencies:
 - dns
 - either
 - errors
+- extra
 - file-embed
 - fast-logger >=2.2 && <2.5
 - filepath

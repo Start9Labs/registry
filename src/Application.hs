@@ -56,19 +56,20 @@ import           Handler.Icons
 import           Handler.Version
 import           Lib.Ssl
 import           Settings
-import           Model
 import           System.Posix.Process
+import           System.Time.Extra
+import           Model
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
 -- comments there for more details.
-mkYesodDispatch "AgentCtx" resourcesAgentCtx
+mkYesodDispatch "RegistryCtx" resourcesRegistryCtx
 
 -- | This function allocates resources (such as a database connection pool),
 -- performs initialization and returns a foundation datatype value. This is also
 -- the place to put your migrate statements to have automatic database
 -- migrations handled by Yesod.
-makeFoundation :: AppSettings -> IO AgentCtx
+makeFoundation :: AppSettings -> IO RegistryCtx
 makeFoundation appSettings = do
     -- Some basic initializations: HTTP connection manager, logger, and static
     -- subsite.
@@ -85,8 +86,8 @@ makeFoundation appSettings = do
     -- logging function. To get out of this loop, we initially create a
     -- temporary foundation without a real connection pool, get a log function
     -- from there, and then create the real foundation.
-    let mkFoundation appConnPool = AgentCtx {..}
-        -- The AgentCtx {..} syntax is an example of record wild cards. For more
+    let mkFoundation appConnPool = RegistryCtx {..}
+        -- The RegistryCtx {..} syntax is an example of record wild cards. For more
         -- information, see:
         -- https://ocharles.org.uk/blog/posts/2014-12-04-record-wildcards.html
         tempFoundation = mkFoundation $ panic "connPool forced in tempFoundation"
@@ -105,7 +106,7 @@ makeFoundation appSettings = do
 
 -- | Convert our foundation to a WAI Application by calling @toWaiAppPlain@ and
 -- applying some additional middlewares.
-makeApplication :: AgentCtx -> IO Application
+makeApplication :: RegistryCtx -> IO Application
 makeApplication foundation = do
     logWare <- makeLogWare foundation
     let authWare = makeAuthWare foundation
@@ -117,10 +118,10 @@ makeApplication foundation = do
 
 -- TODO: create a middle ware which will attempt to verify an ecdsa signed transaction against one of the public keys
 -- in the validDevices table.
--- makeCheckSigWare :: AgentCtx -> IO Middleware
+-- makeCheckSigWare :: RegistryCtx -> IO Middleware
 -- makeCheckSigWare = _
 
-makeLogWare :: AgentCtx -> IO Middleware
+makeLogWare :: RegistryCtx -> IO Middleware
 makeLogWare foundation =
     mkRequestLogger def
         { outputFormat =
@@ -134,14 +135,14 @@ makeLogWare foundation =
         }
 
 -- TODO : what kind of auth is needed here
-makeAuthWare :: AgentCtx -> Middleware
+makeAuthWare :: RegistryCtx -> Middleware
 makeAuthWare _ app req res = next
     where
         next :: IO ResponseReceived
         next = app req res
 
 -- | Warp settings for the given foundation value.
-warpSettings :: AgentCtx -> Settings
+warpSettings :: RegistryCtx -> Settings
 warpSettings foundation =
       setPort (fromIntegral . appPort $ appSettings foundation)
     $ setHost (appHost $ appSettings foundation)
@@ -169,10 +170,17 @@ appMain = do
         -- allow environment variables to override
         useEnv
 
+    void . forkIO $ forever $ do
+        shouldRenew <- doesSslNeedRenew (sslCertLocation settings)
+        when shouldRenew $ do
+            putStrLn @Text "Renewing SSL Certs."
+            renewSslCerts (sslCertLocation settings)
+        sleep 86_400
+
     -- Generate the foundation from the settings
     makeFoundation settings >>= startApp
 
-startApp :: AgentCtx -> IO ()
+startApp :: RegistryCtx -> IO ()
 startApp foundation = do
     -- set up ssl certificates
     putStrLn @Text "Setting up SSL"
@@ -180,7 +188,7 @@ startApp foundation = do
     putStrLn @Text "SSL Setup Complete"
     startWeb foundation
 
-startWeb :: AgentCtx -> IO ()
+startWeb :: RegistryCtx -> IO ()
 startWeb foundation = do
     app <- makeApplication foundation
     let AppSettings{..} = appSettings foundation
@@ -199,25 +207,25 @@ shutdownAll threadIds = do
     exitImmediately ExitSuccess
 
 -- Careful, you should always spawn this within forkIO so as to avoid accidentally killing the running process
-shutdownWeb :: AgentCtx -> IO ()
-shutdownWeb AgentCtx{..} = do
+shutdownWeb :: RegistryCtx -> IO ()
+shutdownWeb RegistryCtx{..} = do
     mThreadId <- readIORef appWebServerThreadId
     for_ mThreadId $ \tid -> do
         killThread tid
         writeIORef appWebServerThreadId Nothing
 
 --------------------------------------------------------------
--- Functions for DevelMain.hs (a way to run the AgentCtx from GHCi)
+-- Functions for DevelMain.hs (a way to run the RegistryCtx from GHCi)
 --------------------------------------------------------------
 
-getApplicationRepl :: IO (Int, AgentCtx, Application)
+getApplicationRepl :: IO (Int, RegistryCtx, Application)
 getApplicationRepl = do
     foundation <- getAppSettings >>= makeFoundation
     wsettings <- getDevSettings $ warpSettings foundation
     app1 <- makeApplication foundation
-    return (getPort wsettings, foundation, app1)
+    return (getPort wsettings, foundation,  app1)
 
-shutdownApp :: AgentCtx -> IO ()
+shutdownApp :: RegistryCtx -> IO ()
 shutdownApp _ = return ()
 
 ---------------------------------------------
