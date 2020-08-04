@@ -43,6 +43,7 @@ import           Network.Wai.Middleware.Cors           (CorsResourcePolicy (..),
 import           Network.Wai.Middleware.MethodOverride
 import           Network.Wai.Middleware.RequestLogger  (Destination (Logger), IPAddrSource (..), OutputFormat (..),
                                                         destination, mkRequestLogger, outputFormat)
+import           System.IO                             (hSetBuffering, BufferMode (..))
 import           System.Log.FastLogger                 (defaultBufSize, newStdoutLoggerSet, toLogStr)
 import           Yesod.Core
 import           Yesod.Core.Types                      hiding (Logger)
@@ -162,6 +163,7 @@ getAppSettings = loadYamlSettings [configSettingsYml] [] useEnv
 -- | The @main@ function for an executable running this site.
 appMain :: IO ()
 appMain = do
+    hSetBuffering stdout LineBuffering
     -- Get the settings from all relevant sources
     settings <- loadYamlSettingsArgs
         -- fall back to compile-time values, set to [] to require values at runtime
