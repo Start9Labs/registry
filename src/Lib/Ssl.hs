@@ -41,15 +41,16 @@ setupSsl AppSettings {..} = do
             "openssl"
             ["x509", "-req", "-in", sslCsrLocation, "-signkey", sslKeyLocation, "-out", sslCertLocation]
 
-doesSslNeedRenew :: FilePath -> IO Bool
-doesSslNeedRenew cert = do
-    ec <- liftIO $ system [i|openssl x509 -checkend 2592000 -noout -in #{cert}|]
+doesSslNeedRenew :: ReaderT RegistryCtx IO Bool
+doesSslNeedRenew = do
+    cert <- asks $ sslCertLocation . appSettings
+    ec   <- liftIO $ system [i|openssl x509 -checkend 2592000 -noout -in #{cert}|]
     pure $ ec /= ExitSuccess
 
 renewSslCerts :: ReaderT RegistryCtx IO ()
 renewSslCerts = do
     domain      <- asks $ registryHostname . appSettings
     (cert, key) <- asks $ (sslCertLocation &&& sslKeyLocation) . appSettings
-    void . liftIO $ system [i|certbot renew --dry-run|]
+    void . liftIO $ system [i|certbot renew|]
     void . liftIO $ system [i|cp /etc/letsencrypt/live/#{domain}/fullchain.pem #{cert}|]
     void . liftIO $ system [i|cp /etc/letsencrypt/live/#{domain}/privkey.pem #{key}|]

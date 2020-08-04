@@ -182,15 +182,12 @@ startApp foundation = do
     putStrLn @Text "SSL Setup Complete"
 
     -- certbot renew loop
-    void . forkIO $ forever $ do
-        putStrLn $ "DOMAIN: " <> registryHostname (appSettings foundation)
-        putStrLn $ "CERT: " <> sslCertLocation (appSettings foundation)
-        runReaderT renewSslCerts foundation
-        shouldRenew <- doesSslNeedRenew (sslCertLocation $ appSettings foundation)
+    void . forkIO $ forever $ flip runReaderT foundation $ do
+        shouldRenew <- doesSslNeedRenew
         when shouldRenew $ do
             putStrLn @Text "Renewing SSL Certs."
-            runReaderT renewSslCerts foundation
-        sleep 86_400
+            renewSslCerts
+        liftIO $ sleep 86_400
 
     startWeb foundation
 
