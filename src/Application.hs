@@ -170,12 +170,6 @@ appMain = do
         -- allow environment variables to override
         useEnv
 
-    void . forkIO $ forever $ do
-        shouldRenew <- doesSslNeedRenew (sslCertLocation settings)
-        when shouldRenew $ do
-            putStrLn @Text "Renewing SSL Certs."
-            renewSslCerts (sslCertLocation settings)
-        sleep 86_400
 
     -- Generate the foundation from the settings
     makeFoundation settings >>= startApp
@@ -186,6 +180,15 @@ startApp foundation = do
     putStrLn @Text "Setting up SSL"
     _ <- setupSsl $ appSettings foundation
     putStrLn @Text "SSL Setup Complete"
+
+    -- certbot renew loop
+    void . forkIO $ forever $ do
+        shouldRenew <- doesSslNeedRenew (sslCertLocation $ appSettings foundation)
+        when shouldRenew $ do
+            putStrLn @Text "Renewing SSL Certs."
+            runReaderT (renewSslCerts (sslCertLocation $ appSettings foundation)) foundation
+        sleep 86_400
+
     startWeb foundation
 
 startWeb :: RegistryCtx -> IO ()

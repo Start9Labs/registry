@@ -29,7 +29,7 @@ ip-from-header: "_env:YESOD_IP_FROM_HEADER:false"
 # See https://github.com/yesodweb/yesod/wiki/Configuration#parsing-numeric-values-as-strings
 
 app-compatibility-path: "_env:APP_COMPATIBILITY_CONFIG:/etc/start9/registry/compatibility.json"
-resources-path: "_env:RESOURCES_PATH:/var/www/html/resources" 
+resources-path: "_env:RESOURCES_PATH:/var/www/html/resources"
 ssl-path: "_env:SSL_PATH:/var/ssl"
 registry-hostname: "_env:REGISTRY_HOSTNAME:registry.start9labs.com"
 

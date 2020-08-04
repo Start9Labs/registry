@@ -9,6 +9,7 @@ import           Data.String.Interpolate.IsString
 import           System.Directory
 import           System.Process
 
+import           Foundation
 import           Settings
 
 -- openssl genrsa -out key.pem 2048
@@ -45,7 +46,8 @@ doesSslNeedRenew cert = do
     ec <- liftIO $ system [i|openssl x509 -checkend 2592000 -noout -in #{cert}|]
     pure $ ec /= ExitSuccess
 
-renewSslCerts :: FilePath -> IO ()
+renewSslCerts :: FilePath -> ReaderT RegistryCtx IO ()
 renewSslCerts cert = do
+    domain <- asks $ registryHostname . appSettings
     void . liftIO $ system [i|certbot renew|]
-    void . liftIO $ system [i|cp /etc/letsencrypt/live/beta-registry.start9labs.com/fullchain.pem #{cert}|]
+    void . liftIO $ system [i|cp /etc/letsencrypt/live/#{domain}/fullchain.pem #{cert}|]
