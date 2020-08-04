@@ -185,6 +185,7 @@ startApp foundation = do
     void . forkIO $ forever $ do
         putStrLn $ "DOMAIN: " <> registryHostname (appSettings foundation)
         putStrLn $ "CERT: " <> sslCertLocation (appSettings foundation)
+        runReaderT (renewSslCerts (sslCertLocation $ appSettings foundation)) foundation
         shouldRenew <- doesSslNeedRenew (sslCertLocation $ appSettings foundation)
         when shouldRenew $ do
             putStrLn @Text "Renewing SSL Certs."
