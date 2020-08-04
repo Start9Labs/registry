@@ -46,8 +46,10 @@ doesSslNeedRenew cert = do
     ec <- liftIO $ system [i|openssl x509 -checkend 2592000 -noout -in #{cert}|]
     pure $ ec /= ExitSuccess
 
-renewSslCerts :: FilePath -> ReaderT RegistryCtx IO ()
-renewSslCerts cert = do
-    domain <- asks $ registryHostname . appSettings
+renewSslCerts :: ReaderT RegistryCtx IO ()
+renewSslCerts = do
+    domain      <- asks $ registryHostname . appSettings
+    (cert, key) <- asks $ (sslCertLocation &&& sslKeyLocation) . appSettings
     void . liftIO $ system [i|certbot renew --dry-run|]
     void . liftIO $ system [i|cp /etc/letsencrypt/live/#{domain}/fullchain.pem #{cert}|]
+    void . liftIO $ system [i|cp /etc/letsencrypt/live/#{domain}/privkey.pem #{key}|]
