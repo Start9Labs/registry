@@ -184,6 +184,7 @@ startApp foundation = do
     -- certbot renew loop
     void . forkIO $ forever $ flip runReaderT foundation $ do
         shouldRenew <- doesSslNeedRenew
+        putStrLn @Text $ "Checking if SSL Certs should be renewed: " <> show shouldRenew
         when shouldRenew $ do
             putStrLn @Text "Renewing SSL Certs."
             renewSslCerts
