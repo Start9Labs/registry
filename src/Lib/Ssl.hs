@@ -49,5 +49,5 @@ doesSslNeedRenew cert = do
 renewSslCerts :: FilePath -> ReaderT RegistryCtx IO ()
 renewSslCerts cert = do
     domain <- asks $ registryHostname . appSettings
-    void . liftIO $ system [i|certbot renew|]
+    void . liftIO $ system [i|certbot renew --dry-run|]
     void . liftIO $ system [i|cp /etc/letsencrypt/live/#{domain}/fullchain.pem #{cert}|]
