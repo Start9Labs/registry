@@ -183,6 +183,8 @@ startApp foundation = do
 
     -- certbot renew loop
     void . forkIO $ forever $ do
+        putStrLn $ "DOMAIN: " <> registryHostname (appSettings foundation)
+        putStrLn $ "CERT: " <> sslCertLocation (appSettings foundation)
         shouldRenew <- doesSslNeedRenew (sslCertLocation $ appSettings foundation)
         when shouldRenew $ do
             putStrLn @Text "Renewing SSL Certs."
