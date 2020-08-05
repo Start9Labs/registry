@@ -173,9 +173,7 @@ appMain = do
         useEnv
 
     -- Generate the foundation from the settings
-    makeFoundation settings >>= \f -> do
-        forkIO $ restartWeb f
-        startApp f
+    makeFoundation settings >>= startApp
 
 startApp :: RegistryCtx -> IO ()
 startApp foundation = do
