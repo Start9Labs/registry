@@ -10,7 +10,6 @@ import           Startlude
 
 import           Control.Monad.Logger           ( LogSource )
 import qualified Data.HashMap.Strict           as HM
-import           Data.IORef
 import           Database.Persist.Sql
 import           Lib.Registry
 import           Yesod.Core
@@ -30,13 +29,14 @@ import           Yesod.Persist.Core
 data RegistryCtx = RegistryCtx
     { appSettings          :: AppSettings
     , appLogger            :: Logger
-    , appWebServerThreadId :: IORef (Maybe ThreadId)
+    , appWebServerThreadId :: MVar ThreadId
+    , appShouldRestartWeb  :: MVar Bool
     , appCompatibilityMap  :: HM.HashMap AppVersion AppVersion
     , appConnPool          :: ConnectionPool
     }
 
 setWebProcessThreadId :: ThreadId -> RegistryCtx -> IO ()
-setWebProcessThreadId tid a = writeIORef (appWebServerThreadId a) . Just $ tid
+setWebProcessThreadId tid a = putMVar (appWebServerThreadId a) $ tid
 
 -- This is where we define all of the routes in our application. For a full
 -- explanation of the syntax, please see:

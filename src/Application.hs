@@ -30,7 +30,6 @@ import           Startlude
 import           Control.Monad.Logger                  (liftLoc, runLoggingT)
 import           Data.Aeson
 import           Data.Default
-import           Data.IORef
 import           Database.Persist.Postgresql           (createPostgresqlPool, pgConnStr, pgPoolSize, runSqlPool, runMigration)
 import           Language.Haskell.TH.Syntax            (qLocation)
 import           Network.Wai
@@ -76,7 +75,8 @@ makeFoundation appSettings = do
     -- subsite.
     appLogger <- newStdoutLoggerSet defaultBufSize >>= makeYesodLogger
 
-    appWebServerThreadId <- newIORef Nothing
+    appWebServerThreadId <- newEmptyMVar
+    appShouldRestartWeb <- newMVar False
 
     appCompatibilityMap <- decode . toS <$> readFile (appCompatibilityPath appSettings) >>= \case
         Nothing -> panic "invalid compatibility config"
@@ -172,9 +172,10 @@ appMain = do
         -- allow environment variables to override
         useEnv
 
-
     -- Generate the foundation from the settings
-    makeFoundation settings >>= startApp
+    makeFoundation settings >>= \f -> do
+        forkIO $ restartWeb f
+        startApp f
 
 startApp :: RegistryCtx -> IO ()
 startApp foundation = do
@@ -190,6 +191,7 @@ startApp foundation = do
         when shouldRenew $ do
             putStrLn @Text "Renewing SSL Certs."
             renewSslCerts
+            liftIO $ restartWeb foundation
         liftIO $ sleep 86_400
 
     startWeb foundation
@@ -197,15 +199,28 @@ startApp foundation = do
 startWeb :: RegistryCtx -> IO ()
 startWeb foundation = do
     app <- makeApplication foundation
-    let AppSettings{..} = appSettings foundation
-    putStrLn @Text $ "Launching Web Server on port " <> show appPort
-    action <- async $ runTLS
-        (tlsSettings sslCertLocation sslKeyLocation)
-        (warpSettings foundation)
-        app
+    startWeb' app
+    where
+        startWeb' app = do
+            let AppSettings{..} = appSettings foundation
+            putStrLn @Text $ "Launching Web Server on port " <> show appPort
+            action <- async $ runTLS
+                (tlsSettings sslCertLocation sslKeyLocation)
+                (warpSettings foundation)
+                app
 
-    setWebProcessThreadId (asyncThreadId action) foundation
-    wait action
+            setWebProcessThreadId (asyncThreadId action) foundation
+            void $ waitCatch action
+            shouldRestart <- takeMVar (appShouldRestartWeb foundation)
+            when shouldRestart $ do
+                putMVar (appShouldRestartWeb foundation) False
+                putStrLn @Text "Restarting Web Server"
+                startWeb' app
+
+restartWeb :: RegistryCtx -> IO ()
+restartWeb foundation = do
+    void $ swapMVar (appShouldRestartWeb foundation) True
+    shutdownWeb foundation
 
 shutdownAll :: [ThreadId] -> IO ()
 shutdownAll threadIds = do
@@ -215,10 +230,8 @@ shutdownAll threadIds = do
 -- Careful, you should always spawn this within forkIO so as to avoid accidentally killing the running process
 shutdownWeb :: RegistryCtx -> IO ()
 shutdownWeb RegistryCtx{..} = do
-    mThreadId <- readIORef appWebServerThreadId
-    for_ mThreadId $ \tid -> do
-        killThread tid
-        writeIORef appWebServerThreadId Nothing
+    threadId <-  takeMVar appWebServerThreadId
+    killThread threadId
 
 --------------------------------------------------------------
 -- Functions for DevelMain.hs (a way to run the RegistryCtx from GHCi)
