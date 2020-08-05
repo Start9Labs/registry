@@ -211,14 +211,17 @@ startWeb foundation = do
 
             setWebProcessThreadId (asyncThreadId action) foundation
             void $ waitCatch action
+            putStrLn @Text "WebServer Killed"
             shouldRestart <- takeMVar (appShouldRestartWeb foundation)
             when shouldRestart $ do
+                putStrLn @Text "Resetting Restart"
                 putMVar (appShouldRestartWeb foundation) False
                 putStrLn @Text "Restarting Web Server"
                 startWeb' app
 
 restartWeb :: RegistryCtx -> IO ()
 restartWeb foundation = do
+    putStrLn @Text "Should restart"
     void $ swapMVar (appShouldRestartWeb foundation) True
     shutdownWeb foundation
 
@@ -230,7 +233,9 @@ shutdownAll threadIds = do
 -- Careful, you should always spawn this within forkIO so as to avoid accidentally killing the running process
 shutdownWeb :: RegistryCtx -> IO ()
 shutdownWeb RegistryCtx{..} = do
+    putStrLn @Text "Taking MVar"
     threadId <-  takeMVar appWebServerThreadId
+    putStrLn @Text "Killing Thread"
     killThread threadId
 
 --------------------------------------------------------------
