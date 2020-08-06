@@ -30,7 +30,6 @@ import           Startlude
 import           Control.Monad.Logger                  (liftLoc, runLoggingT)
 import           Data.Aeson
 import           Data.Default
-import           Data.IORef
 import           Database.Persist.Postgresql           (createPostgresqlPool, pgConnStr, pgPoolSize, runSqlPool, runMigration)
 import           Language.Haskell.TH.Syntax            (qLocation)
 import           Network.Wai
@@ -43,6 +42,7 @@ import           Network.Wai.Middleware.Cors           (CorsResourcePolicy (..),
 import           Network.Wai.Middleware.MethodOverride
 import           Network.Wai.Middleware.RequestLogger  (Destination (Logger), IPAddrSource (..), OutputFormat (..),
                                                         destination, mkRequestLogger, outputFormat)
+import           System.IO                             (hSetBuffering, BufferMode (..))
 import           System.Log.FastLogger                 (defaultBufSize, newStdoutLoggerSet, toLogStr)
 import           Yesod.Core
 import           Yesod.Core.Types                      hiding (Logger)
@@ -56,25 +56,27 @@ import           Handler.Icons
 import           Handler.Version
 import           Lib.Ssl
 import           Settings
-import           Model
 import           System.Posix.Process
+import           System.Time.Extra
+import           Model
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
 -- comments there for more details.
-mkYesodDispatch "AgentCtx" resourcesAgentCtx
+mkYesodDispatch "RegistryCtx" resourcesRegistryCtx
 
 -- | This function allocates resources (such as a database connection pool),
 -- performs initialization and returns a foundation datatype value. This is also
 -- the place to put your migrate statements to have automatic database
 -- migrations handled by Yesod.
-makeFoundation :: AppSettings -> IO AgentCtx
+makeFoundation :: AppSettings -> IO RegistryCtx
 makeFoundation appSettings = do
     -- Some basic initializations: HTTP connection manager, logger, and static
     -- subsite.
     appLogger <- newStdoutLoggerSet defaultBufSize >>= makeYesodLogger
 
-    appWebServerThreadId <- newIORef Nothing
+    appWebServerThreadId <- newEmptyMVar
+    appShouldRestartWeb <- newMVar False
 
     appCompatibilityMap <- decode . toS <$> readFile (appCompatibilityPath appSettings) >>= \case
         Nothing -> panic "invalid compatibility config"
@@ -85,8 +87,8 @@ makeFoundation appSettings = do
     -- logging function. To get out of this loop, we initially create a
     -- temporary foundation without a real connection pool, get a log function
     -- from there, and then create the real foundation.
-    let mkFoundation appConnPool = AgentCtx {..}
-        -- The AgentCtx {..} syntax is an example of record wild cards. For more
+    let mkFoundation appConnPool = RegistryCtx {..}
+        -- The RegistryCtx {..} syntax is an example of record wild cards. For more
         -- information, see:
         -- https://ocharles.org.uk/blog/posts/2014-12-04-record-wildcards.html
         tempFoundation = mkFoundation $ panic "connPool forced in tempFoundation"
@@ -105,7 +107,7 @@ makeFoundation appSettings = do
 
 -- | Convert our foundation to a WAI Application by calling @toWaiAppPlain@ and
 -- applying some additional middlewares.
-makeApplication :: AgentCtx -> IO Application
+makeApplication :: RegistryCtx -> IO Application
 makeApplication foundation = do
     logWare <- makeLogWare foundation
     let authWare = makeAuthWare foundation
@@ -117,10 +119,10 @@ makeApplication foundation = do
 
 -- TODO: create a middle ware which will attempt to verify an ecdsa signed transaction against one of the public keys
 -- in the validDevices table.
--- makeCheckSigWare :: AgentCtx -> IO Middleware
+-- makeCheckSigWare :: RegistryCtx -> IO Middleware
 -- makeCheckSigWare = _
 
-makeLogWare :: AgentCtx -> IO Middleware
+makeLogWare :: RegistryCtx -> IO Middleware
 makeLogWare foundation =
     mkRequestLogger def
         { outputFormat =
@@ -134,14 +136,14 @@ makeLogWare foundation =
         }
 
 -- TODO : what kind of auth is needed here
-makeAuthWare :: AgentCtx -> Middleware
+makeAuthWare :: RegistryCtx -> Middleware
 makeAuthWare _ app req res = next
     where
         next :: IO ResponseReceived
         next = app req res
 
 -- | Warp settings for the given foundation value.
-warpSettings :: AgentCtx -> Settings
+warpSettings :: RegistryCtx -> Settings
 warpSettings foundation =
       setPort (fromIntegral . appPort $ appSettings foundation)
     $ setHost (appHost $ appSettings foundation)
@@ -161,6 +163,7 @@ getAppSettings = loadYamlSettings [configSettingsYml] [] useEnv
 -- | The @main@ function for an executable running this site.
 appMain :: IO ()
 appMain = do
+    hSetBuffering stdout LineBuffering
     -- Get the settings from all relevant sources
     settings <- loadYamlSettingsArgs
         -- fall back to compile-time values, set to [] to require values at runtime
@@ -172,26 +175,50 @@ appMain = do
     -- Generate the foundation from the settings
     makeFoundation settings >>= startApp
 
-startApp :: AgentCtx -> IO ()
+startApp :: RegistryCtx -> IO ()
 startApp foundation = do
     -- set up ssl certificates
     putStrLn @Text "Setting up SSL"
     _ <- setupSsl $ appSettings foundation
     putStrLn @Text "SSL Setup Complete"
+
+    -- certbot renew loop
+    void . forkIO $ forever $ flip runReaderT foundation $ do
+        shouldRenew <- doesSslNeedRenew
+        putStrLn @Text $ "Checking if SSL Certs should be renewed: " <> show shouldRenew
+        when shouldRenew $ do
+            putStrLn @Text "Renewing SSL Certs."
+            renewSslCerts
+            liftIO $ restartWeb foundation
+        liftIO $ sleep 86_400
+
     startWeb foundation
 
-startWeb :: AgentCtx -> IO ()
+startWeb :: RegistryCtx -> IO ()
 startWeb foundation = do
     app <- makeApplication foundation
-    let AppSettings{..} = appSettings foundation
-    putStrLn @Text $ "Launching Web Server on port " <> show appPort
-    action <- async $ runTLS
-        (tlsSettings sslCertLocation sslKeyLocation)
-        (warpSettings foundation)
-        app
+    startWeb' app
+    where
+        startWeb' app = do
+            let AppSettings{..} = appSettings foundation
+            putStrLn @Text $ "Launching Web Server on port " <> show appPort
+            action <- async $ runTLS
+                (tlsSettings sslCertLocation sslKeyLocation)
+                (warpSettings foundation)
+                app
 
-    setWebProcessThreadId (asyncThreadId action) foundation
-    wait action
+            setWebProcessThreadId (asyncThreadId action) foundation
+            void $ waitCatch action
+            shouldRestart <- takeMVar (appShouldRestartWeb foundation)
+            when shouldRestart $ do
+                putMVar (appShouldRestartWeb foundation) False
+                putStrLn @Text "Restarting Web Server"
+                startWeb' app
+
+restartWeb :: RegistryCtx -> IO ()
+restartWeb foundation = do
+    void $ swapMVar (appShouldRestartWeb foundation) True
+    shutdownWeb foundation
 
 shutdownAll :: [ThreadId] -> IO ()
 shutdownAll threadIds = do
@@ -199,25 +226,23 @@ shutdownAll threadIds = do
     exitImmediately ExitSuccess
 
 -- Careful, you should always spawn this within forkIO so as to avoid accidentally killing the running process
-shutdownWeb :: AgentCtx -> IO ()
-shutdownWeb AgentCtx{..} = do
-    mThreadId <- readIORef appWebServerThreadId
-    for_ mThreadId $ \tid -> do
-        killThread tid
-        writeIORef appWebServerThreadId Nothing
+shutdownWeb :: RegistryCtx -> IO ()
+shutdownWeb RegistryCtx{..} = do
+    threadId <-  takeMVar appWebServerThreadId
+    killThread threadId
 
 --------------------------------------------------------------
--- Functions for DevelMain.hs (a way to run the AgentCtx from GHCi)
+-- Functions for DevelMain.hs (a way to run the RegistryCtx from GHCi)
 --------------------------------------------------------------
 
-getApplicationRepl :: IO (Int, AgentCtx, Application)
+getApplicationRepl :: IO (Int, RegistryCtx, Application)
 getApplicationRepl = do
     foundation <- getAppSettings >>= makeFoundation
     wsettings <- getDevSettings $ warpSettings foundation
     app1 <- makeApplication foundation
-    return (getPort wsettings, foundation, app1)
+    return (getPort wsettings, foundation,  app1)
 
-shutdownApp :: AgentCtx -> IO ()
+shutdownApp :: RegistryCtx -> IO ()
 shutdownApp _ = return ()
 
 ---------------------------------------------

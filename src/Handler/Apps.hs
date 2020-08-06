@@ -11,12 +11,12 @@ import           Startlude
 
 import           Control.Monad.Logger
 import           Data.Aeson
-import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString.Lazy          as BS
 import           Data.Char
 import           Data.Conduit
-import qualified Data.Conduit.Binary  as CB
-import qualified Data.Text            as T
-import qualified GHC.Show             (Show (..))
+import qualified Data.Conduit.Binary           as CB
+import qualified Data.Text                     as T
+import qualified GHC.Show                       ( Show(..) )
 import           Network.HTTP.Types
 import           System.Directory
 import           Yesod.Core
@@ -28,11 +28,15 @@ import           Lib.Semver
 import           Lib.Types.Semver
 import           Lib.Types.FileSystem
 import           Lib.Error
-import           System.FilePath      ((<.>), (</>))
-import           System.Posix.Files   (fileSize, getFileStatus)
+import           System.FilePath                ( (<.>)
+                                                , (</>)
+                                                )
+import           System.Posix.Files             ( fileSize
+                                                , getFileStatus
+                                                )
 import           Settings
 import           Database.Queries
-import qualified Data.HashMap.Strict as HM
+import qualified Data.HashMap.Strict           as HM
 import           Database.Persist
 
 pureLog :: Show a => a -> Handler a
@@ -43,12 +47,12 @@ logRet = (>>= liftA2 (*>) ($logInfo . decodeUtf8 . BS.toStrict . encode) pure)
 
 data FileExtension = FileExtension FilePath (Maybe String)
 instance Show FileExtension where
-    show (FileExtension f Nothing)  = f
+    show (FileExtension f Nothing ) = f
     show (FileExtension f (Just e)) = f <.> e
 
 getAppsManifestR :: Handler TypedContent
 getAppsManifestR = do
-    appResourceDir <- (</> "apps" </> "apps.yaml") . resourcesDir . appSettings <$> getYesod 
+    appResourceDir <- (</> "apps" </> "apps.yaml") . resourcesDir . appSettings <$> getYesod
     respondSource typePlain $ CB.sourceFile appResourceDir .| awaitForever sendChunkBS
 
 getSysR :: Extension "" -> Handler TypedContent
@@ -64,7 +68,7 @@ getAppR e = do
 getApp :: KnownSymbol a => FilePath -> Extension a -> Handler TypedContent
 getApp rootDir ext@(Extension appId) = do
     specString <- T.filter (not . isSpace) . fromMaybe "*" <$> lookupGetParam "spec"
-    spec <- case readMaybe specString of
+    spec       <- case readMaybe specString of
         Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
         Just t  -> pure t
     appVersions <- liftIO $ getAvailableAppVersions rootDir ext
@@ -73,50 +77,54 @@ getApp rootDir ext@(Extension appId) = do
         Nothing -> notFound
         Just (RegisteredAppVersion (appVersion, filePath)) -> do
             exists <- liftIO $ doesFileExist filePath >>= \case
-                        True -> pure Existent
-                        False -> pure NonExistent
+                True  -> pure Existent
+                False -> pure NonExistent
             determineEvent exists (extension ext) filePath appVersion
     where
-        determineEvent :: FileExistence -> String -> FilePath -> AppVersion -> HandlerFor AgentCtx TypedContent
+        determineEvent :: FileExistence -> String -> FilePath -> AppVersion -> HandlerFor RegistryCtx TypedContent
         -- for app files
         determineEvent Existent "s9pk" fp av = do
             _ <- recordMetrics appId rootDir av
             chunkIt fp
         -- for png, system, etc
-        determineEvent Existent _ fp _ = chunkIt fp
-        determineEvent NonExistent _ _ _ = notFound
+        determineEvent Existent    _ fp _ = chunkIt fp
+        determineEvent NonExistent _ _  _ = notFound
 
-chunkIt :: FilePath -> HandlerFor AgentCtx TypedContent
+chunkIt :: FilePath -> HandlerFor RegistryCtx TypedContent
 chunkIt fp = do
     sz <- liftIO $ fileSize <$> getFileStatus fp
     addHeader "Content-Length" (show sz)
     respondSource typeOctet $ CB.sourceFile fp .| awaitForever sendChunkBS
 
-recordMetrics :: String -> FilePath -> AppVersion -> HandlerFor AgentCtx ()
+recordMetrics :: String -> FilePath -> AppVersion -> HandlerFor RegistryCtx ()
 recordMetrics appId rootDir appVersion = do
     let appId' = T.pack appId
-    manifest <- liftIO $ getAppManifest rootDir
+    manifest                <- liftIO $ getAppManifest rootDir
     (storeApp, versionInfo) <- case HM.lookup appId' $ unAppManifest manifest of
-                Nothing -> sendResponseStatus status400 ("App not present in manifest" :: Text)
-                Just sa -> do
-                    -- look up at specfic version
-                    vi <- case find ((appVersion ==) . versionInfoVersion) (storeAppVersionInfo sa) of
-                            Nothing -> sendResponseStatus status400 ("App version not present in manifest" :: Text)
-                            Just x -> pure x
-                    pure (sa, vi)
+        Nothing -> sendResponseStatus status400 ("App not present in manifest" :: Text)
+        Just sa -> do
+            -- look up at specfic version
+            vi <- case find ((appVersion ==) . versionInfoVersion) (storeAppVersionInfo sa) of
+                Nothing -> sendResponseStatus status400 ("App version not present in manifest" :: Text)
+                Just x  -> pure x
+            pure (sa, vi)
     -- lazy load app at requested version if it does not yet exist to automatically transfer from using apps.yaml
-    sa <- runDB $ fetchApp appId'
+    sa                   <- runDB $ fetchApp appId'
     (appKey, versionKey) <- case sa of
         Nothing -> do
-            appKey' <- runDB $ createApp appId' storeApp >>= errOnNothing status500 "duplicate app created"
-            versionKey' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing status500 "duplicate app version created"
+            appKey'     <- runDB $ createApp appId' storeApp >>= errOnNothing status500 "duplicate app created"
+            versionKey' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing
+                status500
+                "duplicate app version created"
             pure (appKey', versionKey')
         Just a -> do
             let appKey' = entityKey a
             existingVersion <- runDB $ fetchAppVersion appVersion appKey'
             case existingVersion of
                 Nothing -> do
-                    appVersion' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing status500 "duplicate app version created"
+                    appVersion' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing
+                        status500
+                        "duplicate app version created"
                     pure (appKey', appVersion')
                 Just v -> pure (appKey', entityKey v)
     runDB $ createMetric appKey versionKey

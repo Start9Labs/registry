@@ -8,14 +8,13 @@ module Foundation where
 
 import           Startlude
 
-import           Control.Monad.Logger (LogSource)
-import qualified Data.HashMap.Strict  as HM
-import           Data.IORef
+import           Control.Monad.Logger           ( LogSource )
+import qualified Data.HashMap.Strict           as HM
 import           Database.Persist.Sql
 import           Lib.Registry
 import           Yesod.Core
-import           Yesod.Core.Types     (Logger)
-import qualified Yesod.Core.Unsafe    as Unsafe
+import           Yesod.Core.Types               ( Logger )
+import qualified Yesod.Core.Unsafe             as Unsafe
 
 import           Lib.Types.Semver
 import           Settings
@@ -27,16 +26,17 @@ import           Yesod.Persist.Core
 -- access to the data present here.
 
 
-data AgentCtx = AgentCtx
+data RegistryCtx = RegistryCtx
     { appSettings          :: AppSettings
     , appLogger            :: Logger
-    , appWebServerThreadId :: IORef (Maybe ThreadId)
+    , appWebServerThreadId :: MVar ThreadId
+    , appShouldRestartWeb  :: MVar Bool
     , appCompatibilityMap  :: HM.HashMap AppVersion AppVersion
     , appConnPool          :: ConnectionPool
     }
 
-setWebProcessThreadId :: ThreadId -> AgentCtx -> IO ()
-setWebProcessThreadId tid a = writeIORef (appWebServerThreadId a) . Just $ tid
+setWebProcessThreadId :: ThreadId -> RegistryCtx -> IO ()
+setWebProcessThreadId tid a = putMVar (appWebServerThreadId a) $ tid
 
 -- This is where we define all of the routes in our application. For a full
 -- explanation of the syntax, please see:
@@ -49,16 +49,16 @@ setWebProcessThreadId tid a = writeIORef (appWebServerThreadId a) . Just $ tid
 -- http://www.yesodweb.com/book/scaffolding-and-the-site-template#scaffolding-and-the-site-template_foundation_and_application_modules
 --
 -- This function also generates the following type synonyms:
--- type Handler = HandlerT AgentCtx IO
-mkYesodData "AgentCtx" $(parseRoutesFile "config/routes")
+-- type Handler = HandlerT RegistryCtx IO
+mkYesodData "RegistryCtx" $(parseRoutesFile "config/routes")
 
 -- Please see the documentation for the Yesod typeclass. There are a number
 -- of settings which can be configured by overriding methods here.
-instance Yesod AgentCtx where
+instance Yesod RegistryCtx where
 
 -- Store session data on the client in encrypted cookies,
 -- default session idle timeout is 120 minutes
-    makeSessionBackend :: AgentCtx -> IO (Maybe SessionBackend)
+    makeSessionBackend :: RegistryCtx -> IO (Maybe SessionBackend)
     makeSessionBackend _ = pure Nothing
 
 -- Yesod Middleware allows you to run code before and after each handler function.
@@ -73,32 +73,25 @@ instance Yesod AgentCtx where
 
 -- What messages should be logged. The following includes all messages when
 -- in development, and warnings and errors in production.
-    shouldLogIO :: AgentCtx -> LogSource -> LogLevel -> IO Bool
+    shouldLogIO :: RegistryCtx -> LogSource -> LogLevel -> IO Bool
     shouldLogIO app _source level =
-        return
-            $  appShouldLogAll (appSettings app)
-            || level
-            == LevelInfo
-            || level
-            == LevelWarn
-            || level
-            == LevelError
+        return $ appShouldLogAll (appSettings app) || level == LevelInfo || level == LevelWarn || level == LevelError
 
-    makeLogger :: AgentCtx -> IO Logger
+    makeLogger :: RegistryCtx -> IO Logger
     makeLogger = return . appLogger
 
 -- How to run database actions.
-instance YesodPersist AgentCtx where
-    type YesodPersistBackend AgentCtx = SqlBackend
+instance YesodPersist RegistryCtx where
+    type YesodPersistBackend RegistryCtx = SqlBackend
     runDB :: SqlPersistT Handler a -> Handler a
     runDB action = runSqlPool action . appConnPool =<< getYesod
 
-instance YesodPersistRunner AgentCtx where
-    getDBRunner :: Handler (DBRunner AgentCtx, Handler ())
+instance YesodPersistRunner RegistryCtx where
+    getDBRunner :: Handler (DBRunner RegistryCtx, Handler ())
     getDBRunner = defaultGetDBRunner appConnPool
 
 
-unsafeHandler :: AgentCtx -> Handler a -> IO a
+unsafeHandler :: RegistryCtx -> Handler a -> IO a
 unsafeHandler = Unsafe.fakeHandlerGetLogger appLogger
 
 -- Note: Some functionality previously present in the scaffolding has been
@@ -109,5 +102,5 @@ unsafeHandler = Unsafe.fakeHandlerGetLogger appLogger
 -- https://github.com/yesodweb/yesod/wiki/Serve-static-files-from-a-separate-domain
 -- https://github.com/yesodweb/yesod/wiki/i18n-messages-in-the-scaffolding
 
-appLogFunc :: AgentCtx -> LogFunc
+appLogFunc :: RegistryCtx -> LogFunc
 appLogFunc = appLogger >>= flip messageLoggerSource
