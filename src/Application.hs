@@ -34,7 +34,7 @@ import           Database.Persist.Postgresql           (createPostgresqlPool, pg
 import           Language.Haskell.TH.Syntax            (qLocation)
 import           Network.Wai
 import           Network.Wai.Handler.Warp              (Settings, defaultSettings, defaultShouldDisplayException,
-                                                        getPort, setHost, setOnException, setPort)
+                                                        getPort, setHost, setOnException, setPort, run)
 import           Network.Wai.Handler.WarpTLS
 import           Network.Wai.Middleware.AcceptOverride
 import           Network.Wai.Middleware.Autohead
@@ -202,10 +202,12 @@ startWeb foundation = do
         startWeb' app = do
             let AppSettings{..} = appSettings foundation
             putStrLn @Text $ "Launching Web Server on port " <> show appPort
-            action <- async $ runTLS
-                (tlsSettings sslCertLocation sslKeyLocation)
-                (warpSettings foundation)
-                app
+            action <- async $ if enableTor 
+                                then run (fromIntegral appPort) app
+                                else runTLS
+                                    (tlsSettings sslCertLocation sslKeyLocation)
+                                    (warpSettings foundation)
+                                    app
 
             setWebProcessThreadId (asyncThreadId action) foundation
             void $ waitCatch action
