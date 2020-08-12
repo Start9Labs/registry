@@ -202,6 +202,7 @@ startWeb foundation = do
         startWeb' app = do
             let AppSettings{..} = appSettings foundation
             putStrLn @Text $ "Launching Web Server on port " <> show appPort
+            putStrLn @Text $ "Tor enabled: " <> show enableTor
             action <- async $ if enableTor 
                                 then run (fromIntegral appPort) app
                                 else runTLS
