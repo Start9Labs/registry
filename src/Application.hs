@@ -59,6 +59,8 @@ import           Settings
 import           System.Posix.Process
 import           System.Time.Extra
 import           Model
+import           Control.Lens
+import           Control.Arrow ((***))
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
@@ -202,16 +204,14 @@ startWeb foundation = do
         startWeb' app = do
             let AppSettings{..} = appSettings foundation
             putStrLn @Text $ "Launching Web Server on port " <> show appPort
-            putStrLn @Text $ "Tor enabled: " <> show enableTor
-            action <- async $ if enableTor 
-                                then run (fromIntegral appPort) app
-                                else runTLS
-                                    (tlsSettings sslCertLocation sslKeyLocation)
-                                    (warpSettings foundation)
-                                    app
+            torAction <- async $ run (fromIntegral appPort) app
+            action <- async $ runTLS (tlsSettings sslCertLocation sslKeyLocation)
+                            (warpSettings foundation)
+                            app
+            let actions = (,) action torAction
 
-            setWebProcessThreadId (asyncThreadId action) foundation
-            void $ waitCatch action
+            setWebProcessThreadId (join (***) asyncThreadId actions) foundation
+            void $ both waitCatch actions
             shouldRestart <- takeMVar (appShouldRestartWeb foundation)
             when shouldRestart $ do
                 putMVar (appShouldRestartWeb foundation) False
@@ -231,8 +231,9 @@ shutdownAll threadIds = do
 -- Careful, you should always spawn this within forkIO so as to avoid accidentally killing the running process
 shutdownWeb :: RegistryCtx -> IO ()
 shutdownWeb RegistryCtx{..} = do
-    threadId <-  takeMVar appWebServerThreadId
-    killThread threadId
+    threadIds <-  takeMVar appWebServerThreadId
+    _ <- both killThread threadIds
+    pure ()
 
 --------------------------------------------------------------
 -- Functions for DevelMain.hs (a way to run the RegistryCtx from GHCi)
