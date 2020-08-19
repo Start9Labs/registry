@@ -203,8 +203,9 @@ startWeb foundation = do
     where
         startWeb' app = do
             let AppSettings{..} = appSettings foundation
-            putStrLn @Text $ "Launching Web Server on port " <> show appPort
+            putStrLn @Text $ "Launching Tor Web Server on port " <> show torPort
             torAction <- async $ runSettings (warpSettings torPort foundation) app
+            putStrLn @Text $ "Launching Web Server on port " <> show appPort
             action <- async $ runTLS (tlsSettings sslCertLocation sslKeyLocation)
                             (warpSettings appPort foundation)
                             app
