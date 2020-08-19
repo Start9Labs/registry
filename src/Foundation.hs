@@ -29,13 +29,13 @@ import           Yesod.Persist.Core
 data RegistryCtx = RegistryCtx
     { appSettings          :: AppSettings
     , appLogger            :: Logger
-    , appWebServerThreadId :: MVar ThreadId
+    , appWebServerThreadId :: MVar (ThreadId, ThreadId)
     , appShouldRestartWeb  :: MVar Bool
     , appCompatibilityMap  :: HM.HashMap AppVersion AppVersion
     , appConnPool          :: ConnectionPool
     }
 
-setWebProcessThreadId :: ThreadId -> RegistryCtx -> IO ()
+setWebProcessThreadId :: (ThreadId, ThreadId) -> RegistryCtx -> IO ()
 setWebProcessThreadId tid a = putMVar (appWebServerThreadId a) $ tid
 
 -- This is where we define all of the routes in our application. For a full

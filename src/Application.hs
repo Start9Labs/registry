@@ -34,7 +34,7 @@ import           Database.Persist.Postgresql           (createPostgresqlPool, pg
 import           Language.Haskell.TH.Syntax            (qLocation)
 import           Network.Wai
 import           Network.Wai.Handler.Warp              (Settings, defaultSettings, defaultShouldDisplayException,
-                                                        getPort, setHost, setOnException, setPort)
+                                                        getPort, setHost, setOnException, setPort, runSettings)
 import           Network.Wai.Handler.WarpTLS
 import           Network.Wai.Middleware.AcceptOverride
 import           Network.Wai.Middleware.Autohead
@@ -59,6 +59,8 @@ import           Settings
 import           System.Posix.Process
 import           System.Time.Extra
 import           Model
+import           Control.Lens
+import           Control.Arrow ((***))
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
@@ -143,9 +145,9 @@ makeAuthWare _ app req res = next
         next = app req res
 
 -- | Warp settings for the given foundation value.
-warpSettings :: RegistryCtx -> Settings
-warpSettings foundation =
-      setPort (fromIntegral . appPort $ appSettings foundation)
+warpSettings :: AppPort -> RegistryCtx -> Settings
+warpSettings port foundation =
+      setPort (fromIntegral port)
     $ setHost (appHost $ appSettings foundation)
     $ setOnException (\_req e ->
         when (defaultShouldDisplayException e) $ messageLoggerSource
@@ -201,14 +203,16 @@ startWeb foundation = do
     where
         startWeb' app = do
             let AppSettings{..} = appSettings foundation
+            putStrLn @Text $ "Launching Tor Web Server on port " <> show torPort
+            torAction <- async $ runSettings (warpSettings torPort foundation) app
             putStrLn @Text $ "Launching Web Server on port " <> show appPort
-            action <- async $ runTLS
-                (tlsSettings sslCertLocation sslKeyLocation)
-                (warpSettings foundation)
-                app
+            action <- async $ runTLS (tlsSettings sslCertLocation sslKeyLocation)
+                            (warpSettings appPort foundation)
+                            app
+            let actions = (action, torAction)
 
-            setWebProcessThreadId (asyncThreadId action) foundation
-            void $ waitCatch action
+            setWebProcessThreadId (join (***) asyncThreadId actions) foundation
+            void $ both waitCatch actions
             shouldRestart <- takeMVar (appShouldRestartWeb foundation)
             when shouldRestart $ do
                 putMVar (appShouldRestartWeb foundation) False
@@ -228,17 +232,17 @@ shutdownAll threadIds = do
 -- Careful, you should always spawn this within forkIO so as to avoid accidentally killing the running process
 shutdownWeb :: RegistryCtx -> IO ()
 shutdownWeb RegistryCtx{..} = do
-    threadId <-  takeMVar appWebServerThreadId
-    killThread threadId
+    threadIds <-  takeMVar appWebServerThreadId
+    void $ both killThread threadIds
 
 --------------------------------------------------------------
 -- Functions for DevelMain.hs (a way to run the RegistryCtx from GHCi)
 --------------------------------------------------------------
 
-getApplicationRepl :: IO (Int, RegistryCtx, Application)
-getApplicationRepl = do
+getApplicationRepl :: AppPort -> IO (Int, RegistryCtx, Application)
+getApplicationRepl port = do
     foundation <- getAppSettings >>= makeFoundation
-    wsettings <- getDevSettings $ warpSettings foundation
+    wsettings <- getDevSettings $ warpSettings port foundation
     app1 <- makeApplication foundation
     return (getPort wsettings, foundation,  app1)
 

@@ -31,11 +31,12 @@ import           Data.Yaml.Config
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
 -- theoretically even a database.
+type AppPort = Word16
 data AppSettings = AppSettings
     { appDatabaseConf           :: PostgresConf
     , appHost                   :: HostPreference
     -- ^ Host/interface the server should bind to.
-    , appPort                   :: Word16
+    , appPort                   :: AppPort
     -- ^ Port to listen on
     , appIpFromHeader           :: Bool
     -- ^ Get the IP address from the header when logging. Useful when sitting
@@ -53,6 +54,7 @@ data AppSettings = AppSettings
     , sslKeyLocation            :: FilePath
     , sslCsrLocation            :: FilePath
     , sslCertLocation           :: FilePath
+    , torPort                   :: AppPort
     }
 
 instance FromJSON AppSettings where
@@ -67,6 +69,7 @@ instance FromJSON AppSettings where
         resourcesDir              <- o .: "resources-path"
         sslPath                   <- o .: "ssl-path"
         registryHostname          <- o .: "registry-hostname"
+        torPort                   <- o .: "tor-port"
 
         let sslKeyLocation  = sslPath </> "key.pem"
         let sslCsrLocation  = sslPath </> "certificate.csr"

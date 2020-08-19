@@ -32,6 +32,7 @@ app-compatibility-path: "_env:APP_COMPATIBILITY_CONFIG:/etc/start9/registry/comp
 resources-path: "_env:RESOURCES_PATH:/var/www/html/resources"
 ssl-path: "_env:SSL_PATH:/var/ssl"
 registry-hostname: "_env:REGISTRY_HOSTNAME:registry.start9labs.com"
+tor-port: "_env:TOR_PORT:447"
 
 database:
   database: "_env:PG_DATABASE:start9_registry"
