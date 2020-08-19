@@ -34,7 +34,7 @@ import           Database.Persist.Postgresql           (createPostgresqlPool, pg
 import           Language.Haskell.TH.Syntax            (qLocation)
 import           Network.Wai
 import           Network.Wai.Handler.Warp              (Settings, defaultSettings, defaultShouldDisplayException,
-                                                        getPort, setHost, setOnException, setPort, run)
+                                                        getPort, setHost, setOnException, setPort, runSettings)
 import           Network.Wai.Handler.WarpTLS
 import           Network.Wai.Middleware.AcceptOverride
 import           Network.Wai.Middleware.Autohead
@@ -145,9 +145,9 @@ makeAuthWare _ app req res = next
         next = app req res
 
 -- | Warp settings for the given foundation value.
-warpSettings :: RegistryCtx -> Settings
-warpSettings foundation =
-      setPort (fromIntegral . appPort $ appSettings foundation)
+warpSettings :: AppPort -> RegistryCtx -> Settings
+warpSettings port foundation =
+      setPort (fromIntegral port)
     $ setHost (appHost $ appSettings foundation)
     $ setOnException (\_req e ->
         when (defaultShouldDisplayException e) $ messageLoggerSource
@@ -181,7 +181,7 @@ startApp :: RegistryCtx -> IO ()
 startApp foundation = do
     -- set up ssl certificates
     putStrLn @Text "Setting up SSL"
-    _ <- setupSsl $ appSettings foundation
+    -- _ <- setupSsl $ appSettings foundation
     putStrLn @Text "SSL Setup Complete"
 
     -- certbot renew loop
@@ -204,11 +204,11 @@ startWeb foundation = do
         startWeb' app = do
             let AppSettings{..} = appSettings foundation
             putStrLn @Text $ "Launching Web Server on port " <> show appPort
-            torAction <- async $ run (fromIntegral appPort) app
+            torAction <- async $ runSettings (warpSettings torPort foundation) app
             action <- async $ runTLS (tlsSettings sslCertLocation sslKeyLocation)
-                            (warpSettings foundation)
+                            (warpSettings appPort foundation)
                             app
-            let actions = (,) action torAction
+            let actions = (action, torAction)
 
             setWebProcessThreadId (join (***) asyncThreadId actions) foundation
             void $ both waitCatch actions
@@ -232,17 +232,16 @@ shutdownAll threadIds = do
 shutdownWeb :: RegistryCtx -> IO ()
 shutdownWeb RegistryCtx{..} = do
     threadIds <-  takeMVar appWebServerThreadId
-    _ <- both killThread threadIds
-    pure ()
+    void $ both killThread threadIds
 
 --------------------------------------------------------------
 -- Functions for DevelMain.hs (a way to run the RegistryCtx from GHCi)
 --------------------------------------------------------------
 
-getApplicationRepl :: IO (Int, RegistryCtx, Application)
-getApplicationRepl = do
+getApplicationRepl :: AppPort -> IO (Int, RegistryCtx, Application)
+getApplicationRepl port = do
     foundation <- getAppSettings >>= makeFoundation
-    wsettings <- getDevSettings $ warpSettings foundation
+    wsettings <- getDevSettings $ warpSettings port foundation
     app1 <- makeApplication foundation
     return (getPort wsettings, foundation,  app1)
 
