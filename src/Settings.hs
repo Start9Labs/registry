@@ -7,27 +7,24 @@
 -- declared in the Foundation.hs file.
 module Settings where
 
+import           Paths_start9_registry          ( version )
 import           Startlude
 
 import qualified Control.Exception             as Exception
-import           Control.Monad.Fail             ( fail )
 import           Data.Maybe
 import           Data.Aeson
 import           Data.Aeson.Types
 import           Data.Version                   ( showVersion )
 import           Data.FileEmbed                 ( embedFile )
 import           Data.Yaml                      ( decodeEither' )
+import           Data.Yaml.Config
 import           Database.Persist.Postgresql    ( PostgresConf )
 import           Network.Wai.Handler.Warp       ( HostPreference )
-import           Yesod.Default.Config2          ( applyEnvValue
-                                                , configSettingsYml
-                                                )
-import           Paths_start9_registry          ( version )
-import           Lib.Types.Semver
 import           System.FilePath                ( (</>) )
-import qualified Data.HashMap.Strict           as HM
-import           Data.Yaml.Config
+import           Yesod.Default.Config2          ( configSettingsYml )
 
+import           Lib.Types.Semver
+import           Lib.Types.AppIndex
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
 -- theoretically even a database.
@@ -41,12 +38,10 @@ data AppSettings = AppSettings
     , appIpFromHeader           :: Bool
     -- ^ Get the IP address from the header when logging. Useful when sitting
     -- behind a reverse proxy.
-
     , appDetailedRequestLogging :: Bool
     -- ^ Use detailed request logging system
     , appShouldLogAll           :: Bool
     -- ^ Should all log messages be displayed?
-    , appCompatibilityPath      :: FilePath
     , resourcesDir              :: FilePath
     , sslPath                   :: FilePath
     , registryHostname          :: Text
@@ -65,7 +60,6 @@ instance FromJSON AppSettings where
         appIpFromHeader           <- o .: "ip-from-header"
         appDetailedRequestLogging <- o .:? "detailed-logging" .!= True
         appShouldLogAll           <- o .:? "should-log-all" .!= False
-        appCompatibilityPath      <- o .: "app-compatibility-path"
         resourcesDir              <- o .: "resources-path"
         sslPath                   <- o .: "ssl-path"
         registryHostname          <- o .: "registry-hostname"
@@ -96,42 +90,3 @@ getAppManifest :: FilePath -> IO AppManifest
 getAppManifest resourcesDir = do
     let appFile = (</> "apps.yaml") resourcesDir
     loadYamlSettings [appFile] [] useEnv
-
-type AppIdentifier = Text
-
-data StoreApp = StoreApp
-    { storeAppTitle :: Text
-    , storeAppDescShort :: Text
-    , storeAppDescLong :: Text
-    , storeAppVersionInfo :: NonEmpty VersionInfo
-    , storeAppIconType :: Text
-    } deriving (Show)
-
-newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap AppIdentifier StoreApp}
-    deriving (Show)
-
-instance FromJSON AppManifest where
-    parseJSON = withObject "app details to seed" $ \o -> do
-        apps <- for (HM.toList o) $ \(appId', c) -> do
-            appId               <- parseJSON $ String appId'
-            config              <- parseJSON c
-            storeAppTitle       <- config .: "title"
-            storeAppIconType    <- config .: "icon-type"
-            storeAppDescShort   <- config .: "description" >>= (.: "short")
-            storeAppDescLong    <- config .: "description" >>= (.: "long")
-            storeAppVersionInfo <- config .: "version-info" >>= \case
-                []       -> fail "No Valid Version Info"
-                (x : xs) -> pure $ x :| xs
-            return $ (appId, StoreApp { .. })
-        return $ AppManifest (HM.fromList apps)
-
-data VersionInfo = VersionInfo
-    { versionInfoVersion :: AppVersion
-    , versionInfoReleaseNotes :: Text
-    } deriving (Eq, Ord, Show)
-
-instance FromJSON VersionInfo where
-    parseJSON = withObject "version info" $ \o -> do
-        versionInfoVersion      <- o .: "version"
-        versionInfoReleaseNotes <- o .: "release-notes"
-        pure VersionInfo { .. }

@@ -1,12 +1,15 @@
+{-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes           #-}
+{-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE UndecidableInstances  #-}
 
 module Model where
 
-import Startlude
+import           Startlude
 import           Database.Persist.TH
 import           Lib.Types.Semver
 
@@ -30,6 +33,8 @@ Version
     appId SAppId
     number AppVersion
     releaseNotes Text
+    osVersionRequired AppVersionSpec default='*'
+    osVersionRecommended AppVersionSpec default='*'
     UniqueBin appId number
     deriving Eq
     deriving Show

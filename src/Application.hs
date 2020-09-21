@@ -80,10 +80,6 @@ makeFoundation appSettings = do
     appWebServerThreadId <- newEmptyMVar
     appShouldRestartWeb <- newMVar False
 
-    appCompatibilityMap <- decode . toS <$> readFile (appCompatibilityPath appSettings) >>= \case
-        Nothing -> panic "invalid compatibility config"
-        Just x -> pure x
-
     -- We need a log function to create a connection pool. We need a connection
     -- pool to create our foundation. And we need our foundation to get a
     -- logging function. To get out of this loop, we initially create a

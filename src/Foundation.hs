@@ -9,14 +9,12 @@ module Foundation where
 import           Startlude
 
 import           Control.Monad.Logger           ( LogSource )
-import qualified Data.HashMap.Strict           as HM
 import           Database.Persist.Sql
 import           Lib.Registry
 import           Yesod.Core
 import           Yesod.Core.Types               ( Logger )
 import qualified Yesod.Core.Unsafe             as Unsafe
 
-import           Lib.Types.Semver
 import           Settings
 import           Yesod.Persist.Core
 
@@ -31,7 +29,6 @@ data RegistryCtx = RegistryCtx
     , appLogger            :: Logger
     , appWebServerThreadId :: MVar (ThreadId, ThreadId)
     , appShouldRestartWeb  :: MVar Bool
-    , appCompatibilityMap  :: HM.HashMap AppVersion AppVersion
     , appConnPool          :: ConnectionPool
     }
 
