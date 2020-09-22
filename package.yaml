@@ -11,59 +11,44 @@ default-extensions:
 - OverloadedStrings
 
 dependencies:
-- base >=4.9.1.0 && <5
-- aeson >=1.4 && <1.5
+- base >=4.12 && <5
+- aeson
+- attoparsec
 - bytestring
 - casing
-- comonad
 - conduit
 - conduit-extra
 - data-default
 - directory
-- dns
-- either
 - errors
 - extra
 - file-embed
-- fast-logger >=2.2 && <2.5
+- fast-logger
 - filepath
-- http-client
-- http-conduit
 - http-types
 - interpolate
-- jose-jwt
 - lens
-- lens-aeson
-- memory
-- monad-logger >=0.3 && <0.4
-- monad-loops
+- monad-logger
 - persistent
-- persistent-sqlite
 - persistent-postgresql
 - persistent-template
 - process
 - protolude
-- safe
-- singletons
-- split
 - template-haskell
-- text >=0.11 && <2.0
+- text
 - time
 - transformers
 - unordered-containers
 - unix
 - wai
 - wai-cors
-- wai-extra >=3.0 && <3.1
-- wai-logger >=2.2 && <2.4
-- warp >=3.0 && <3.3
+- wai-extra
+- warp
 - warp-tls
-- yaml >=0.11 && <0.12
-- yesod >=1.6 && <1.7
-- yesod-core >=1.6 && <1.7
-- yesod-static
-- yesod-persistent >= 1.6 && < 1.7
-- shakespeare >=2.0 && <2.1
+- yaml
+- yesod
+- yesod-core
+- yesod-persistent
 
 library:
   source-dirs: src

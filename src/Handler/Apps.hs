@@ -11,33 +11,38 @@ import           Startlude
 
 import           Control.Monad.Logger
 import           Data.Aeson
+import qualified Data.Attoparsec.ByteString.Char8
+                                               as Atto
 import qualified Data.ByteString.Lazy          as BS
 import           Data.Char
 import           Data.Conduit
 import qualified Data.Conduit.Binary           as CB
+import qualified Data.HashMap.Strict           as HM
 import qualified Data.Text                     as T
+import qualified Data.Yaml                     as Yaml
+import           Database.Persist
 import qualified GHC.Show                       ( Show(..) )
 import           Network.HTTP.Types
 import           System.Directory
-import           Yesod.Core
-import           Yesod.Persist.Core
-
-import           Foundation
-import           Lib.Registry
-import           Lib.Semver
-import           Lib.Types.Semver
-import           Lib.Types.FileSystem
-import           Lib.Error
 import           System.FilePath                ( (<.>)
                                                 , (</>)
                                                 )
 import           System.Posix.Files             ( fileSize
                                                 , getFileStatus
                                                 )
+import           Yesod.Core
+import           Yesod.Persist.Core
+
+import           Foundation
+import           Lib.Registry
+import           Lib.Semver
+import           Lib.Types.AppIndex
+import           Lib.Types.Semver
+import           Lib.Types.FileSystem
+import           Lib.Error
 import           Settings
 import           Database.Queries
-import qualified Data.HashMap.Strict           as HM
-import           Database.Persist
+import           Network.Wai                    ( Request(requestHeaderUserAgent) )
 
 pureLog :: Show a => a -> Handler a
 pureLog = liftA2 (*>) ($logInfo . show) pure
@@ -50,10 +55,30 @@ instance Show FileExtension where
     show (FileExtension f Nothing ) = f
     show (FileExtension f (Just e)) = f <.> e
 
+userAgentOsVersionParser :: Atto.Parser AppVersion
+userAgentOsVersionParser = do
+    void $ (Atto.string "AmbassadorOS" <|> Atto.string "EmbassyOS") *> Atto.char '/'
+    semverParserBS
+
+getEmbassyOsVersion :: Handler (Maybe AppVersion)
+getEmbassyOsVersion = userAgentOsVersion
+    where
+        userAgentOsVersion = (hush . Atto.parseOnly userAgentOsVersionParser <=< requestHeaderUserAgent) <$> waiRequest
+
 getAppsManifestR :: Handler TypedContent
 getAppsManifestR = do
-    appResourceDir <- (</> "apps" </> "apps.yaml") . resourcesDir . appSettings <$> getYesod
-    respondSource typePlain $ CB.sourceFile appResourceDir .| awaitForever sendChunkBS
+    osVersion                              <- getEmbassyOsVersion
+    appResourceFile                        <- (</> "apps" </> "apps.yaml") . resourcesDir . appSettings <$> getYesod
+    manifest@AppManifest { unAppManifest } <- liftIO (Yaml.decodeFileEither appResourceFile) >>= \case
+        Left e -> do
+            $logError "COULD NOT PARSE APP INDEX! CORRECT IMMEDIATELY!"
+            $logError (show e)
+            sendResponseStatus status500 ("Internal Server Error" :: Text)
+        Right a -> pure a
+    let pruned = case osVersion of
+            Nothing -> manifest
+            Just av -> AppManifest $ HM.mapMaybe (filterOsRecommended av) unAppManifest
+    pure $ TypedContent "application/x-yaml" (toContent $ Yaml.encode pruned)
 
 getSysR :: Extension "" -> Handler TypedContent
 getSysR e = do

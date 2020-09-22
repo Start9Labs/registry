@@ -4,21 +4,17 @@ import           Startlude
 
 import           Lib.Types.Semver
 
-(<||) :: HasAppVersion a => a -> AppVersionSpecification -> Bool
-(<||) _ AppVersionAny                                 = True
-(<||) a (AppVersionSpecification SVEquals av1)        = version a == av1
-(<||) a (AppVersionSpecification SVLessThan av1)      = version a < av1
-(<||) a (AppVersionSpecification SVGreaterThan av1)   = version a > av1
-(<||) a (AppVersionSpecification SVLessThanEq av1)    = version a <= av1
-(<||) a (AppVersionSpecification SVGreaterThanEq av1) = version a >= av1
-(<||) a (AppVersionSpecification SVGreatestWithMajor av1) -- "maj.*"
-    = major av == major av1 && av >= av1
-    where
-        av = version a
-(<||) a (AppVersionSpecification SVGreatestWithMajorMinor av1) -- "maj.min.*"
-    = major av == major av1 && minor av == minor av1 && av >= av1
-    where
-        av = version a
+(<||) :: HasAppVersion a => a -> AppVersionSpec -> Bool
+(<||) _ AppVersionAny                            = True
+(<||) a (AppVersionSpec SVEquals            av1) = version a == av1
+(<||) a (AppVersionSpec SVLessThan          av1) = version a < av1
+(<||) a (AppVersionSpec SVGreaterThan       av1) = version a > av1
+(<||) a (AppVersionSpec SVLessThanEq        av1) = version a <= av1
+(<||) a (AppVersionSpec SVGreaterThanEq     av1) = version a >= av1
+(<||) a (AppVersionSpec SVGreatestWithMajor av1) = major av == major av1 && av >= av1 -- "maj.*"
+    where av = version a
+(<||) a (AppVersionSpec SVGreatestWithMajorMinor av1) = major av == major av1 && minor av == minor av1 && av >= av1 -- "maj.min.*"
+    where av = version a
 
 major :: AppVersion -> Word16
 major (AppVersion (a, _, _, _)) = a
@@ -32,7 +28,7 @@ build (AppVersion (_, _, _, a)) = a
 hasGiven :: (AppVersion -> Word16) -> AppVersion -> AppVersion -> Bool
 hasGiven projection av = (== projection av) . projection
 
-getSpecifiedAppVersion :: HasAppVersion a => AppVersionSpecification -> [a] -> Maybe a
+getSpecifiedAppVersion :: HasAppVersion a => AppVersionSpec -> [a] -> Maybe a
 getSpecifiedAppVersion avSpec = appVersionMax . filter (<|| avSpec)
 
 class HasAppVersion a where
