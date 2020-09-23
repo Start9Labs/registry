@@ -28,7 +28,6 @@ module Application
 import           Startlude
 
 import           Control.Monad.Logger                  (liftLoc, runLoggingT)
-import           Data.Aeson
 import           Data.Default
 import           Database.Persist.Postgresql           (createPostgresqlPool, pgConnStr, pgPoolSize, runSqlPool, runMigration)
 import           Language.Haskell.TH.Syntax            (qLocation)

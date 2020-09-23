@@ -17,6 +17,7 @@ type AppIdentifier = Text
 data VersionInfo = VersionInfo
     { versionInfoVersion       :: AppVersion
     , versionInfoReleaseNotes  :: Text
+    , versionInfoDependencies  :: HM.HashMap Text AppVersionSpec
     , versionInfoOsRequired    :: AppVersionSpec
     , versionInfoOsRecommended :: AppVersionSpec
     }
@@ -29,6 +30,7 @@ instance FromJSON VersionInfo where
     parseJSON = withObject "version info" $ \o -> do
         versionInfoVersion       <- o .: "version"
         versionInfoReleaseNotes  <- o .: "release-notes"
+        versionInfoDependencies  <- o .:? "dependencies" .!= HM.empty
         versionInfoOsRequired    <- o .:? "os-version-required" .!= AppVersionAny
         versionInfoOsRecommended <- o .:? "os-version-recommended" .!= AppVersionAny
         pure VersionInfo { .. }
@@ -37,6 +39,7 @@ instance ToJSON VersionInfo where
     toJSON VersionInfo {..} = object
         [ "version" .= versionInfoVersion
         , "release-notes" .= versionInfoReleaseNotes
+        , "dependencies" .= versionInfoDependencies
         , "os-version-required" .= versionInfoOsRequired
         , "os-version-recommended" .= versionInfoOsRecommended
         ]
