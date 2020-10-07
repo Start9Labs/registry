@@ -9,6 +9,8 @@ default-extensions:
 - NamedFieldPuns
 - NumericUnderscores
 - OverloadedStrings
+- StandaloneDeriving
+- FlexibleInstances
 
 dependencies:
 - base >=4.12 && <5
@@ -49,6 +51,8 @@ dependencies:
 - yesod
 - yesod-core
 - yesod-persistent
+- shakespeare
+- typed-process
 
 library:
   source-dirs: src

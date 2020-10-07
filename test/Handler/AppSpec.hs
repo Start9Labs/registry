@@ -72,3 +72,10 @@ spec = do
             statusIs 200
             apps <- runDBtest $ selectList ([] :: [Filter SApp])[]
             assertEq "no apps should exist" (length apps) 0
+    describe "GET /apps/#S9PK/#Text/manifest" $
+        withApp $ it "gets bitcoin manifest" $ do
+            request $ do
+                setMethod "GET"
+                setUrl ("/apps/bitcoind.s9pk/0.2.5/manifest?appmgr=0.2.5" :: Text)
+            statusIs 200
+            bodyContains "{\"id\":\"bitcoind\",\"version\":\"0.20.1\",\"title\":\"Bitcoin Core\",\"description\":{\"short\":\"Bitcoin Full Node by Bitcoin Core\",\"long\":\"Bitcoin is an innovative payment network and a new kind of money. Bitcoin uses peer-to-peer technology to operate with no central authority or banks; managing transactions and the issuing of bitcoins is carried out collectively by the network. Bitcoin is open-source; its design is public, nobody owns or controls Bitcoin and everyone can take part. Through many of its unique properties, Bitcoin allows exciting uses that could not be covered by any previous payment system.\"},\"release-notes\":\"https://github.com/bitcoin/bitcoin/blob/master/doc/release-notes/release-notes-0.20.1.md\",\"has-instructions\":true,\"os-version-required\":\">=0.2.4\",\"os-version-recommended\":\">=0.2.4\",\"ports\":[{\"internal\":8332,\"tor\":8332},{\"internal\":8333,\"tor\":8333}],\"image\":{\"type\":\"tar\"},\"mount\":\"/root/.bitcoin\",\"assets\":[{\"src\":\"bitcoin.conf.template\",\"dst\":\".\",\"overwrite\":true}],\"hidden-service-version\":\"v2\",\"dependencies\":{}}"
