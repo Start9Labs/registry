@@ -88,20 +88,14 @@ getSysR e = do
 
 getAppManifestR :: Extension "s9pk" -> Text -> Handler TypedContent
 getAppManifestR e@(Extension appId) v = do
-    appmgrVersion <- lookupGetParam "appmgr" >>= \case
-        Nothing -> sendResponseStatus status400 ("Appmgr version required" :: Text)
-        Just a -> pure $ toS a
-    appMgrDir <- (<> "/") . (</> appmgrVersion) . (</> "appmgr") . (</> "sys") . resourcesDir . appSettings <$> getYesod
+    appMgrDir <- (<> "/") . staticBinDir . appSettings <$> getYesod
     appDir <- (<> "/") . (</> toS v) . (</> appId) . (</> "apps") . resourcesDir . appSettings <$> getYesod
     manifest <- handleS9ErrT $ getManifest appMgrDir appDir e
     pure $ TypedContent "application/json" (toContent manifest)
 
 getAppConfigR :: Extension "s9pk" -> Text -> Handler TypedContent
 getAppConfigR e@(Extension appId) v = do
-    appmgrVersion <- lookupGetParam "appmgr" >>= \case
-        Nothing -> sendResponseStatus status400 ("Appmgr version required" :: Text)
-        Just a -> pure $ toS a
-    appMgrDir <- (<> "/") . (</> appmgrVersion) . (</> "appmgr") . (</> "sys") . resourcesDir . appSettings <$> getYesod
+    appMgrDir <- (<> "/") . staticBinDir . appSettings <$> getYesod
     appDir <- (<> "/") . (</> toS v) . (</> appId) . (</> "apps") . resourcesDir . appSettings <$> getYesod
     config <- handleS9ErrT $ getConfig appMgrDir appDir e
     pure $ TypedContent "application/json" (toContent config)

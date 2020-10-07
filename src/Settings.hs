@@ -50,6 +50,7 @@ data AppSettings = AppSettings
     , sslCsrLocation            :: FilePath
     , sslCertLocation           :: FilePath
     , torPort                   :: AppPort
+    , staticBinDir              :: FilePath
     }
 
 instance FromJSON AppSettings where
@@ -64,6 +65,7 @@ instance FromJSON AppSettings where
         sslPath                   <- o .: "ssl-path"
         registryHostname          <- o .: "registry-hostname"
         torPort                   <- o .: "tor-port"
+        staticBinDir              <- o .: "static-bin-dir"
 
         let sslKeyLocation  = sslPath </> "key.pem"
         let sslCsrLocation  = sslPath </> "certificate.csr"

@@ -1,8 +1,8 @@
 
 
 /apps                                   AppsManifestR      GET -- get current apps listing
-/apps/#S9PK/#Text/manifest              AppManifestR       GET -- get app manifest from appmgr - requires query param ?appmgr=<appmgr_version>
-/apps/#S9PK/#Text/config                AppConfigR         GET -- get app config from appmgr - requires query param ?appmgr=<appmgr_version>
+/apps/#S9PK/#Text/manifest              AppManifestR       GET -- get app manifest from appmgr
+/apps/#S9PK/#Text/config                AppConfigR         GET -- get app config from appmgr
 
 /version                                VersionR           GET
 
