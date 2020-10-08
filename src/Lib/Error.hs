@@ -1,14 +1,19 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE QuasiQuotes     #-}
+
 module Lib.Error where
 
 import           Startlude
 
 import           Network.HTTP.Types
 import           Yesod.Core
+import           Data.String.Interpolate.IsString
 
 type S9ErrT m = ExceptT S9Error m
 
-data S9Error = PersistentE Text
+data S9Error = 
+      PersistentE Text
+    | AppMgrE Text Int
     deriving (Show, Eq)
 
 instance Exception S9Error
@@ -17,8 +22,12 @@ instance Exception S9Error
 toError :: S9Error -> Error
 toError = \case
     PersistentE t -> Error DATABASE_ERROR t
+    AppMgrE cmd code -> Error APPMGR_ERROR [i|"appmgr #{cmd}" exited with #{code}|]
 
-data ErrorCode = DATABASE_ERROR
+data ErrorCode = 
+      DATABASE_ERROR
+    | APPMGR_ERROR
+
     deriving (Eq, Show)
 instance ToJSON ErrorCode where
     toJSON = String . show
@@ -42,7 +51,9 @@ instance ToContent S9Error where
 
 toStatus :: S9Error -> Status
 toStatus = \case
-    PersistentE _ -> status500
+    PersistentE _          -> status500
+    AppMgrE     _ _        -> status500
+
 
 handleS9ErrT :: MonadHandler m => S9ErrT m a -> m a
 handleS9ErrT action = runExceptT action >>= \case

@@ -28,3 +28,4 @@ agent_*
 agent.*
 version
 **/*.s9pk
+**/appmgr

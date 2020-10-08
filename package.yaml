@@ -2,13 +2,15 @@ name: start9-registry
 version: 0.1.0
 
 default-extensions:
-- NoImplicitPrelude
+- FlexibleInstances
 - GeneralizedNewtypeDeriving
 - LambdaCase
 - MultiWayIf
 - NamedFieldPuns
+- NoImplicitPrelude
 - NumericUnderscores
 - OverloadedStrings
+- StandaloneDeriving
 
 dependencies:
 - base >=4.12 && <5
@@ -34,10 +36,12 @@ dependencies:
 - persistent-template
 - process
 - protolude
+- shakespeare
 - template-haskell
 - text
 - time
 - transformers
+- typed-process
 - unordered-containers
 - unix
 - wai
