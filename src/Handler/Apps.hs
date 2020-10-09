@@ -86,18 +86,18 @@ getSysR e = do
     sysResourceDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
     getApp sysResourceDir e
 
-getAppManifestR :: Extension "s9pk" -> Text -> Handler TypedContent
-getAppManifestR e@(Extension appId) v = do
+getAppManifestR :: AppIdentifier -> Text -> Handler TypedContent
+getAppManifestR appId v = do
     appMgrDir <- (<> "/") . staticBinDir . appSettings <$> getYesod
-    appDir <- (<> "/") . (</> toS v) . (</> appId) . (</> "apps") . resourcesDir . appSettings <$> getYesod
-    manifest <- handleS9ErrT $ getManifest appMgrDir appDir e
+    appDir <- (<> "/") . (</> toS v) . (</> toS appId) . (</> "apps") . resourcesDir . appSettings <$> getYesod
+    manifest <- handleS9ErrT $ getManifest appMgrDir appDir appId
     pure $ TypedContent "application/json" (toContent manifest)
 
-getAppConfigR :: Extension "s9pk" -> Text -> Handler TypedContent
-getAppConfigR e@(Extension appId) v = do
+getAppConfigR :: AppIdentifier -> Text -> Handler TypedContent
+getAppConfigR appId v = do
     appMgrDir <- (<> "/") . staticBinDir . appSettings <$> getYesod
-    appDir <- (<> "/") . (</> toS v) . (</> appId) . (</> "apps") . resourcesDir . appSettings <$> getYesod
-    config <- handleS9ErrT $ getConfig appMgrDir appDir e
+    appDir <- (<> "/") . (</> toS v) . (</> toS appId) . (</> "apps") . resourcesDir . appSettings <$> getYesod
+    config <- handleS9ErrT $ getConfig appMgrDir appDir appId
     pure $ TypedContent "application/json" (toContent config)
 
 getAppR :: Extension "s9pk" -> Handler TypedContent

@@ -17,6 +17,8 @@ import qualified Yesod.Core.Unsafe             as Unsafe
 
 import           Settings
 import           Yesod.Persist.Core
+import           Lib.Types.AppIndex
+import           Lib.Types.Semver
 
 -- | The foundation datatype for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application

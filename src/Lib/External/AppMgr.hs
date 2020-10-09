@@ -16,7 +16,7 @@ import           Data.String.Interpolate.IsString
 import           System.Process.Typed    hiding ( createPipe )
 
 import           Lib.Error
-import           Lib.Registry
+import           Lib.Types.AppIndex
 
 readProcessWithExitCode' :: MonadIO m => String -> [String] -> ByteString -> m (ExitCode, ByteString, ByteString)
 readProcessWithExitCode' a b c = liftIO $ do
@@ -42,16 +42,16 @@ readProcessInheritStderr a b c = liftIO $ do
     withProcessWait pc
         $ \process -> atomically $ liftA2 (,) (waitExitCodeSTM process) (fmap LBS.toStrict $ getStdout process)
 
-getConfig :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m Text
-getConfig appmgrPath appPath e@(Extension appId) = fmap decodeUtf8 $ do
-    (ec, out) <- readProcessInheritStderr (appmgrPath <> "appmgr") ["inspect", "info", appPath <> show e, "-C", "--json"] ""
+getConfig :: MonadIO m => FilePath -> FilePath -> AppIdentifier -> S9ErrT m Text
+getConfig appmgrPath appPath appId = fmap decodeUtf8 $ do
+    (ec, out) <- readProcessInheritStderr (appmgrPath <> "appmgr") ["inspect", "info", appPath <> (toS $ appId <> ".s9pk"), "-C", "--json"] ""
     case ec of
         ExitSuccess   -> pure out
         ExitFailure n -> throwE $ AppMgrE [i|info #{appId} -C \--json|] n
 
-getManifest :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m ByteString
-getManifest appmgrPath appPath e@(Extension appId) = do
-    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "appmgr") ["inspect", "info", appPath <> show e, "-M", "--json"] ""
+getManifest :: MonadIO m => FilePath -> FilePath -> AppIdentifier -> S9ErrT m ByteString
+getManifest appmgrPath appPath appId = do
+    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "appmgr") ["inspect", "info", appPath <> (toS $ appId <> ".s9pk"), "-M", "--json"] ""
     case ec of
         ExitSuccess -> pure bs
         ExitFailure n -> throwE $ AppMgrE [i|info -M #{appId} \--json|] n
