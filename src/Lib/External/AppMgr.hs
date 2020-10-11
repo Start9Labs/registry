@@ -44,14 +44,14 @@ readProcessInheritStderr a b c = liftIO $ do
 
 getConfig :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m Text
 getConfig appmgrPath appPath e@(Extension appId) = fmap decodeUtf8 $ do
-    (ec, out) <- readProcessInheritStderr (appmgrPath <> "appmgr") ["inspect", "info", appPath <> show e, "-C", "--json"] ""
+    (ec, out) <- readProcessInheritStderr (appmgrPath <> "appmgr") ["inspect", "info", appPath <> (show e), "-C", "--json"] ""
     case ec of
         ExitSuccess   -> pure out
         ExitFailure n -> throwE $ AppMgrE [i|info #{appId} -C \--json|] n
 
-getManifest :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m ByteString
+getManifest ::  (MonadIO m, KnownSymbol a)  => FilePath -> FilePath ->  Extension a -> S9ErrT m ByteString
 getManifest appmgrPath appPath e@(Extension appId) = do
-    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "appmgr") ["inspect", "info", appPath <> show e, "-M", "--json"] ""
+    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "appmgr") ["inspect", "info", appPath <> (show e), "-M", "--json"] ""
     case ec of
         ExitSuccess -> pure bs
         ExitFailure n -> throwE $ AppMgrE [i|info -M #{appId} \--json|] n
