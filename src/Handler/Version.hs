@@ -9,18 +9,15 @@ module Handler.Version where
 import           Startlude
 
 import           Control.Monad.Trans.Maybe
-import           Data.Char
-import qualified Data.Text                     as T
-import           Network.HTTP.Types
 import           Yesod.Core
 
 import           Foundation
 import           Handler.Types.Status
 import           Lib.Registry
-import           Lib.Semver
 import           Lib.Types.Semver
 import           Settings
 import           System.FilePath                ( (</>) )
+import           Util.Shared
 
 getVersionR :: Handler AppVersionRes
 getVersionR = do
@@ -42,10 +39,5 @@ getVersionSysR sysAppId = runMaybeT $ do
 
 getVersionWSpec :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe AppVersionRes)
 getVersionWSpec rootDir ext = do
-    specString <- T.filter (not . isSpace) . fromMaybe "*" <$> lookupGetParam "spec"
-    spec       <- case readMaybe specString of
-        Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
-        Just t  -> pure t
-    appVersions <- liftIO $ getAvailableAppVersions rootDir ext
-    let av = version <$> getSpecifiedAppVersion spec appVersions
+    av <- getVersionFromQuery rootDir ext
     pure $ liftA2 AppVersionRes av (pure Nothing)

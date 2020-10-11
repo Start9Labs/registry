@@ -44,6 +44,8 @@ import           Lib.External.AppMgr
 import           Settings
 import           Database.Queries
 import           Network.Wai                    ( Request(requestHeaderUserAgent) )
+import           Util.Shared
+
 
 pureLog :: Show a => a -> Handler a
 pureLog = liftA2 (*>) ($logInfo . show) pure
@@ -86,19 +88,33 @@ getSysR e = do
     sysResourceDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
     getApp sysResourceDir e
 
-getAppManifestR :: AppIdentifier -> Text -> Handler TypedContent
-getAppManifestR appId v = do
-    appMgrDir <- (<> "/") . staticBinDir . appSettings <$> getYesod
-    appDir <- (<> "/") . (</> toS v) . (</> toS appId) . (</> "apps") . resourcesDir . appSettings <$> getYesod
-    manifest <- handleS9ErrT $ getManifest appMgrDir appDir appId
+getAppManifestR :: AppIdentifier -> Handler TypedContent
+getAppManifestR appId = do
+    appSettings <- appSettings <$> getYesod
+    let appsDir = (</> "apps") . resourcesDir $ appSettings
+    let appMgrDir = staticBinDir $ appSettings
+    av <- getVersionFromQuery appsDir appExt >>= \case
+        Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
+        Just v -> pure v
+    let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
+    manifest <- handleS9ErrT $ getManifest appMgrDir appDir appExt
     pure $ TypedContent "application/json" (toContent manifest)
+    where 
+        appExt = Extension (toS appId) :: Extension "s9pk"
 
-getAppConfigR :: AppIdentifier -> Text -> Handler TypedContent
-getAppConfigR appId v = do
-    appMgrDir <- (<> "/") . staticBinDir . appSettings <$> getYesod
-    appDir <- (<> "/") . (</> toS v) . (</> toS appId) . (</> "apps") . resourcesDir . appSettings <$> getYesod
-    config <- handleS9ErrT $ getConfig appMgrDir appDir appId
+getAppConfigR :: AppIdentifier -> Handler TypedContent
+getAppConfigR appId = do
+    appSettings <- appSettings <$> getYesod
+    let appsDir = (</> "apps") . resourcesDir $ appSettings
+    let appMgrDir = staticBinDir $ appSettings
+    av <- getVersionFromQuery appsDir appExt >>= \case
+        Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
+        Just v -> pure v
+    let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
+    config <- handleS9ErrT $ getConfig appMgrDir appDir appExt
     pure $ TypedContent "application/json" (toContent config)
+    where 
+        appExt = Extension (toS appId) :: Extension "s9pk"
 
 getAppR :: Extension "s9pk" -> Handler TypedContent
 getAppR e = do
