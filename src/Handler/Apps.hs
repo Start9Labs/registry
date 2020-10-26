@@ -57,7 +57,7 @@ instance Show FileExtension where
 
 userAgentOsVersionParser :: Atto.Parser AppVersion
 userAgentOsVersionParser = do
-    void $ (Atto.string "AmbassadorOS" <|> Atto.string "EmbassyOS") *> Atto.char '/'
+    void $ (Atto.string "EmbassyOS" <|> Atto.string "AmbassadorOS" <|> Atto.string "MeshOS") *> Atto.char '/'
     semverParserBS
 
 getEmbassyOsVersion :: Handler (Maybe AppVersion)
