@@ -11,7 +11,8 @@ module Model where
 
 import           Startlude
 import           Database.Persist.TH
-import           Lib.Types.Semver
+import           Lib.Types.Emver
+import           Orphans.Emver                  ( )
 
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
@@ -27,14 +28,14 @@ SApp
     deriving Eq
     deriving Show
 
-Version
+SVersion sql=version
     createdAt UTCTime
     updatedAt UTCTime Maybe
     appId SAppId
-    number AppVersion
+    number Version
     releaseNotes Text
-    osVersionRequired AppVersionSpec default='*'
-    osVersionRecommended AppVersionSpec default='*'
+    osVersionRequired VersionRange default='*'
+    osVersionRecommended VersionRange default='*'
     UniqueBin appId number
     deriving Eq
     deriving Show
@@ -43,7 +44,7 @@ Version
 Metric
     createdAt UTCTime
     appId SAppId
-    version VersionId
+    version SVersionId
     deriving Eq
     deriving Show
 |]

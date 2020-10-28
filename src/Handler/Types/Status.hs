@@ -7,15 +7,17 @@ import           Startlude
 import           Data.Aeson
 import           Yesod.Core.Content
 
-import           Lib.Types.Semver
+import           Lib.Types.Emver
+import           Orphans.Emver                  ( )
 
 data AppVersionRes = AppVersionRes
-    { appVersionVersion      :: AppVersion
-    , appVersionMinCompanion :: Maybe AppVersion
-    } deriving (Eq, Show)
+    { appVersionVersion      :: Version
+    , appVersionMinCompanion :: Maybe Version
+    }
+    deriving (Eq, Show)
 instance ToJSON AppVersionRes where
-    toJSON AppVersionRes{ appVersionVersion, appVersionMinCompanion } = object $
-        ["version" .= appVersionVersion] <> case appVersionMinCompanion of
+    toJSON AppVersionRes { appVersionVersion, appVersionMinCompanion } =
+        object $ ["version" .= appVersionVersion] <> case appVersionMinCompanion of
             Nothing -> []
             Just x  -> ["minCompanion" .= x]
 

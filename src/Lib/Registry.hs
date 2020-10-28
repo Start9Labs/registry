@@ -7,37 +7,40 @@ module Lib.Registry where
 
 import           Startlude
 
-import           Data.HashMap.Lazy hiding (mapMaybe)
-import qualified GHC.Read          (Read (..))
-import qualified GHC.Show          (Show (..))
+import qualified Data.Attoparsec.Text          as Atto
+import           Data.HashMap.Lazy       hiding ( mapMaybe )
+import qualified GHC.Read                       ( Read(..) )
+import qualified GHC.Show                       ( Show(..) )
 import           System.Directory
 import           System.FilePath
 import           Yesod.Core
 
-import           Lib.Semver
-import           Lib.Types.Semver
+import           Lib.Types.Emver
 
-type Registry = HashMap String (HashMap AppVersion FilePath)
+type Registry = HashMap String (HashMap Version FilePath)
 
-newtype RegisteredAppVersion = RegisteredAppVersion (AppVersion, FilePath) deriving (Eq, Show)
-instance HasAppVersion RegisteredAppVersion where
-    version (RegisteredAppVersion (av, _)) = av
+newtype RegisteredAppVersion = RegisteredAppVersion { unRegisteredAppVersion :: (Version, FilePath) } deriving (Eq, Show)
+data MaxVersion a = MaxVersion
+    { getMaxVersion :: (a, a -> Version)
+    }
+instance Semigroup (MaxVersion a) where
+    (MaxVersion (a, f)) <> (MaxVersion (b, g)) = if f a > g b then MaxVersion (a, f) else MaxVersion (b, g)
 
 -- retrieve all valid semver folder names with queried for file: rootDirectory/appId/[0.0.0 ...]/appId.extension
 getAvailableAppVersions :: KnownSymbol a => FilePath -> Extension a -> IO [RegisteredAppVersion]
 getAvailableAppVersions rootDirectory ext@(Extension appId) = do
-    versions <- mapMaybe (readMaybe . toS) <$> getSubDirectories (rootDirectory </> appId)
-    fmap catMaybes . for versions $ \v ->
-        getVersionedFileFromDir rootDirectory ext v
-            >>= \case
-                Nothing      -> pure Nothing
-                Just appFile -> pure . Just $ RegisteredAppVersion (v, appFile)
+    versions <- mapMaybe (hush . Atto.parseOnly parseVersion . toS) <$> getSubDirectories (rootDirectory </> appId)
+    fmap catMaybes . for versions $ \v -> getVersionedFileFromDir rootDirectory ext v >>= \case
+        Nothing      -> pure Nothing
+        Just appFile -> pure . Just $ RegisteredAppVersion (v, appFile)
     where
-        getSubDirectories path = (fmap (fromRight []) . try @SomeException $ listDirectory path) >>= filterM (doesDirectoryExist . (path </>))
+        getSubDirectories path = (fmap (fromRight []) . try @SomeException $ listDirectory path)
+            >>= filterM (doesDirectoryExist . (path </>))
 
 -- /root/appId/version/appId.ext
-getVersionedFileFromDir :: KnownSymbol a => FilePath -> Extension a -> AppVersion -> IO (Maybe FilePath)
-getVersionedFileFromDir rootDirectory ext@(Extension appId) v = getUnversionedFileFromDir (rootDirectory </> appId </> show v) ext
+getVersionedFileFromDir :: KnownSymbol a => FilePath -> Extension a -> Version -> IO (Maybe FilePath)
+getVersionedFileFromDir rootDirectory ext@(Extension appId) v =
+    getUnversionedFileFromDir (rootDirectory </> appId </> show v) ext
 
 -- /root/appId.ext
 getUnversionedFileFromDir :: KnownSymbol a => FilePath -> Extension a -> IO (Maybe FilePath)
@@ -65,16 +68,15 @@ instance KnownSymbol a => Show (Extension a) where
 instance KnownSymbol a => Read (Extension a) where
     readsPrec _ s = case (symbolVal $ Proxy @a) of
         ""    -> [(Extension s, "")]
-        other -> [(Extension file, "") | ext' == "" <.> other]
-        where
-            (file, ext') = splitExtension s
+        other -> [ (Extension file, "") | ext' == "" <.> other ]
+        where (file, ext') = splitExtension s
 
 withPeriod :: String -> String
-withPeriod word@(a:_) = case a of
+withPeriod word@(a : _) = case a of
     '.' -> word
     _   -> "." <> word
 withPeriod word = word
 
 instance KnownSymbol a => PathPiece (Extension a) where
     fromPathPiece = readMaybe . toS
-    toPathPiece = show
+    toPathPiece   = show

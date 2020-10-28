@@ -14,7 +14,7 @@ import           Yesod.Core
 import           Foundation
 import           Handler.Types.Status
 import           Lib.Registry
-import           Lib.Types.Semver
+import           Lib.Types.Emver
 import           Settings
 import           System.FilePath                ( (</>) )
 import           Util.Shared
@@ -34,7 +34,7 @@ getVersionSysR :: Text -> Handler (Maybe AppVersionRes)
 getVersionSysR sysAppId = runMaybeT $ do
     sysDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
     avr    <- MaybeT $ getVersionWSpec sysDir sysExt
-    pure $ avr { appVersionMinCompanion = Just $ AppVersion (1, 1, 0, 0) }
+    pure $ avr { appVersionMinCompanion = Just $ Version (1, 1, 0, 0) }
     where sysExt = Extension (toS sysAppId) :: Extension ""
 
 getVersionWSpec :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe AppVersionRes)

@@ -23,8 +23,9 @@ import           Network.Wai.Handler.Warp       ( HostPreference )
 import           System.FilePath                ( (</>) )
 import           Yesod.Default.Config2          ( configSettingsYml )
 
-import           Lib.Types.Semver
+import           Lib.Types.Emver
 import           Lib.Types.AppIndex
+import           Orphans.Emver                  ( )
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
 -- theoretically even a database.
@@ -44,8 +45,9 @@ data AppSettings = AppSettings
     -- ^ Should all log messages be displayed?
     , resourcesDir              :: FilePath
     , sslPath                   :: FilePath
+    , sslAuto                   :: Bool
     , registryHostname          :: Text
-    , registryVersion           :: AppVersion
+    , registryVersion           :: Version
     , sslKeyLocation            :: FilePath
     , sslCsrLocation            :: FilePath
     , sslCertLocation           :: FilePath
@@ -63,6 +65,7 @@ instance FromJSON AppSettings where
         appShouldLogAll           <- o .:? "should-log-all" .!= False
         resourcesDir              <- o .: "resources-path"
         sslPath                   <- o .: "ssl-path"
+        sslAuto                   <- o .: "ssl-auto"
         registryHostname          <- o .: "registry-hostname"
         torPort                   <- o .: "tor-port"
         staticBinDir              <- o .: "static-bin-dir"
