@@ -1,6 +1,6 @@
 {- |
-Module : Lib.Types.SemverQuad
-Description : Semver with 4th digit extension
+Module : Lib.Types.Emver
+Description : Semver with 4th digit extension for Embassy
 License : Start9 Non-Commercial
 Maintainer : keagan@start9labs.com
 Stability : experimental
@@ -20,7 +20,7 @@ module Lib.Types.Emver
     ( major
     , minor
     , patch
-    , quad
+    , revision
     , satisfies
     , (<||)
     , (||>)
@@ -76,12 +76,12 @@ patch (Version (_, _, z, _)) = z
 -- speaking, if you are both the package author and maintainer, you should not ever increment this number, as it is
 -- redundant with 'patch'. However, if you maintain a package on some distribution channel, and you are /not/ the
 -- original author, then it is encouraged for you to increment 'quad' instead of 'patch'.
-quad :: Version -> Word
-quad (Version (_, _, _, q)) = q
+revision :: Version -> Word
+revision (Version (_, _, _, q)) = q
 
 
--- | 'Operator' is the type that specifies how to compare against the target version. Right includes equality, Left
--- excludes it
+-- | 'Operator' is the type that specifies how to compare against the target version. Right represents the ordering,
+-- Left negates it
 type Operator = Either Ordering Ordering
 
 -- | 'VersionRange' is the algebra of sets of versions. They can be constructed by having an 'Anchor' term which
@@ -130,23 +130,21 @@ exactly :: Version -> VersionRange
 exactly = Anchor (Left EQ)
 
 instance Show VersionRange where
-    show (Anchor (  Left  EQ) v           ) = '=' : show v
-    show (Anchor (  Right EQ) v           ) = '=' : show v
-    show (Anchor (  Left  LT) v           ) = '<' : show v
-    show (Anchor (  Right LT) v           ) = '<' : '=' : show v
-    show (Anchor (  Left  GT) v           ) = '>' : show v
-    show (Anchor (  Right GT) v           ) = '>' : '=' : show v
-    show (Conj   a@(Disj _ _) b@(Disj _ _)) = paren (show a) <> " " <> paren (show b)
-    show (Conj   a@(Disj _ _) b           ) = paren (show a) <> " " <> show b
-    show (Conj   a            b@(Disj _ _)) = show a <> " " <> paren (show b)
-    show (Conj   a            b           ) = show a <> " " <> show b
-    show (Disj   a            b           ) = show a <> " || " <> show b
-    show Any                                = "*"
-    show None                               = "!"
+    show (Anchor (Left  EQ) v) = '!' : '=' : show v
+    show (Anchor (Right EQ) v) = '=' : show v
+    show (Anchor (Left  LT) v) = '>' : '=' : show v
+    show (Anchor (Right LT) v) = '<' : show v
+    show (Anchor (Left  GT) v) = '<' : '=' : show v
+    show (Anchor (Right GT) v) = '>' : show v
+    show (Conj   a          b) = paren $ show a <> (' ' : show b)
+    show (Disj   a          b) = paren $ show a <> " || " <> show b
+    show Any                   = "*"
+    show None                  = "!"
 instance Read VersionRange where
-    readsPrec _ s = case Atto.parseOnly parseRange (T.pack s) of
-        Left  _ -> []
-        Right a -> [(a, "")]
+    readsPrec _ s = case Atto.parse parseRange (T.pack s) of
+        Atto.Fail _ _ _ -> []
+        Atto.Partial _  -> []
+        Atto.Done i r   -> [(r, T.unpack i)]
 
 paren :: String -> String
 paren = mappend "(" . flip mappend ")"
@@ -165,12 +163,11 @@ instance Monoid AllRange where
 
 -- | Predicate for deciding whether the 'Version' is in the 'VersionRange'
 satisfies :: Version -> VersionRange -> Bool
-satisfies v (Anchor op v') =
-    either (\c x y -> compare x y == c) (\c x y -> let c' = compare x y in c' == c || c' == EQ) op v v'
-satisfies v (Conj a b) = v `satisfies` a && v `satisfies` b
-satisfies v (Disj a b) = v `satisfies` a || v `satisfies` b
-satisfies _ Any        = True
-satisfies _ None       = False
+satisfies v (Anchor op v') = either (\c x y -> compare x y /= c) (\c x y -> compare x y == c) op v v'
+satisfies v (Conj   a  b ) = v `satisfies` a && v `satisfies` b
+satisfies v (Disj   a  b ) = v `satisfies` a || v `satisfies` b
+satisfies _ Any            = True
+satisfies _ None           = False
 
 (<||) :: Version -> VersionRange -> Bool
 (<||) = satisfies
@@ -201,7 +198,7 @@ parseVersion = do
     pure $ Version (major', minor', patch', quad')
 
 -- >>> Atto.parseOnly parseRange "=2.3.4 1.2.3.4 - 2.3.4.5 (>3.0.0 || <3.4.5)"
--- Right =2.3.4 >=1.2.3.4 <=2.3.4.5 ((>3.0.0 || <3.4.5))
+-- Right (=2.3.4 ((>=1.2.3.4 <=2.3.4.5) (>3.0.0 || <3.4.5)))
 parseRange :: Atto.Parser VersionRange
 parseRange = s <|> (Atto.char '*' *> pure Any)
     where
@@ -213,17 +210,17 @@ parseRange = s <|> (Atto.char '*' *> pure Any)
         p = unAllRange . foldMap AllRange <$> ((a <|> sub) `Atto.sepBy1` Atto.space)
         a = liftA2 Anchor parseOperator parseVersion <|> caret <|> tilde <|> wildcard <|> hyphen
 
--- >>> Atto.parseOnly parseRange "^2.3.4.5"
--- Right >=2.3.4.5 <3.0.0
+-- >>> Atto.parseOnly parseRange "^2.3.0.5"
+-- Right (>=2.3.0.5 <3.0.0)
 caret :: Atto.Parser VersionRange
 caret = (Atto.char '^' *> parseVersion) <&> \case
-    v@(Version (0, 0, 0, _)) -> Anchor (Left EQ) v
+    v@(Version (0, 0, 0, _)) -> Anchor (Right EQ) v
     v@(Version (0, 0, z, _)) -> rangeIE v (Version (0, 0, z + 1, 0))
     v@(Version (0, y, _, _)) -> rangeIE v (Version (0, y + 1, 0, 0))
     v@(Version (x, _, _, _)) -> rangeIE v (Version (x + 1, 0, 0, 0))
 
 -- >>> Atto.parseOnly tilde "~1.2.3.4"
--- Right >=1.2.3.4 <1.2.4
+-- Right (>=1.2.3.4 <1.2.4)
 tilde :: Atto.Parser VersionRange
 tilde = (Atto.char '~' *> (Atto.decimal `Atto.sepBy1` Atto.char '.')) >>= \case
     [x, y, z, q] -> pure $ rangeIE (Version (x, y, z, q)) (Version (x, y, z + 1, 0))
@@ -234,15 +231,15 @@ tilde = (Atto.char '~' *> (Atto.decimal `Atto.sepBy1` Atto.char '.')) >>= \case
 
 range :: Bool -> Bool -> Version -> Version -> VersionRange
 range inc0 inc1 v0 v1 =
-    let f = if inc0 then Right else Left
-        g = if inc1 then Right else Left
-    in  Conj (Anchor (f GT) v0) (Anchor (g LT) v1)
+    let lo = if inc0 then Left LT else Right GT
+        hi = if inc1 then Left GT else Right LT
+    in  Conj (Anchor lo v0) (Anchor hi v1)
 
 rangeIE :: Version -> Version -> VersionRange
 rangeIE = range True False
 
 -- >>> Atto.parseOnly wildcard "1.2.3.x"
--- Right >=1.2.3 <1.2.4
+-- Right (>=1.2.3 <1.2.4)
 wildcard :: Atto.Parser VersionRange
 wildcard = (Atto.many1 (Atto.decimal <* Atto.char '.') <* Atto.char 'x') >>= \case
     [x, y, z] -> pure $ rangeIE (Version (x, y, z, 0)) (Version (x, y, z + 1, 0))
@@ -251,6 +248,6 @@ wildcard = (Atto.many1 (Atto.decimal <* Atto.char '.') <* Atto.char 'x') >>= \ca
     o         -> fail $ "Invalid number of version numbers: " <> show (length o)
 
 -- >>> Atto.parseOnly hyphen "0.1.2.3 - 1.2.3.4"
--- Right >=0.1.2.3 <=1.2.3.4
+-- Right (>=0.1.2.3 <=1.2.3.4)
 hyphen :: Atto.Parser VersionRange
 hyphen = liftA2 (range True True) parseVersion (Atto.skipSpace *> Atto.char '-' *> Atto.skipSpace *> parseVersion)
