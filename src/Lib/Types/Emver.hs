@@ -127,7 +127,7 @@ disj a    None = a
 disj a    b    = Disj a b
 
 exactly :: Version -> VersionRange
-exactly = Anchor (Left EQ)
+exactly = Anchor (Right EQ)
 
 instance Show VersionRange where
     show (Anchor (Left  EQ) v) = '!' : '=' : show v
