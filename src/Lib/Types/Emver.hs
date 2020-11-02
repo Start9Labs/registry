@@ -24,7 +24,6 @@ module Lib.Types.Emver
     , satisfies
     , (<||)
     , (||>)
-    -- we do not export 'None' because it is useful for its internal algebraic properties only
     , VersionRange(Anchor, Any, None)
     , Version(..)
     , AnyRange(..)
