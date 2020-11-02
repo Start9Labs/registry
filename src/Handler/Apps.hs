@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE QuasiQuotes      #-}
 {-# LANGUAGE RecordWildCards  #-}
@@ -11,8 +12,7 @@ import           Startlude
 
 import           Control.Monad.Logger
 import           Data.Aeson
-import qualified Data.Attoparsec.ByteString.Char8
-                                               as Atto
+import qualified Data.Attoparsec.Text          as Atto
 import qualified Data.ByteString.Lazy          as BS
 import           Data.Char
 import           Data.Conduit
@@ -35,9 +35,8 @@ import           Yesod.Persist.Core
 
 import           Foundation
 import           Lib.Registry
-import           Lib.Semver
 import           Lib.Types.AppIndex
-import           Lib.Types.Semver
+import           Lib.Types.Emver
 import           Lib.Types.FileSystem
 import           Lib.Error
 import           Lib.External.AppMgr
@@ -58,15 +57,16 @@ instance Show FileExtension where
     show (FileExtension f Nothing ) = f
     show (FileExtension f (Just e)) = f <.> e
 
-userAgentOsVersionParser :: Atto.Parser AppVersion
+userAgentOsVersionParser :: Atto.Parser Version
 userAgentOsVersionParser = do
     void $ (Atto.string "EmbassyOS" <|> Atto.string "AmbassadorOS" <|> Atto.string "MeshOS") *> Atto.char '/'
-    semverParserBS
+    parseVersion
 
-getEmbassyOsVersion :: Handler (Maybe AppVersion)
+getEmbassyOsVersion :: Handler (Maybe Version)
 getEmbassyOsVersion = userAgentOsVersion
     where
-        userAgentOsVersion = (hush . Atto.parseOnly userAgentOsVersionParser <=< requestHeaderUserAgent) <$> waiRequest
+        userAgentOsVersion =
+            (hush . Atto.parseOnly userAgentOsVersionParser . decodeUtf8 <=< requestHeaderUserAgent) <$> waiRequest
 
 getAppsManifestR :: Handler TypedContent
 getAppsManifestR = do
@@ -91,30 +91,28 @@ getSysR e = do
 getAppManifestR :: AppIdentifier -> Handler TypedContent
 getAppManifestR appId = do
     appSettings <- appSettings <$> getYesod
-    let appsDir = (</> "apps") . resourcesDir $ appSettings
+    let appsDir   = (</> "apps") . resourcesDir $ appSettings
     let appMgrDir = staticBinDir $ appSettings
     av <- getVersionFromQuery appsDir appExt >>= \case
         Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
-        Just v -> pure v
+        Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
     manifest <- handleS9ErrT $ getManifest appMgrDir appDir appExt
     pure $ TypedContent "application/json" (toContent manifest)
-    where 
-        appExt = Extension (toS appId) :: Extension "s9pk"
+    where appExt = Extension (toS appId) :: Extension "s9pk"
 
 getAppConfigR :: AppIdentifier -> Handler TypedContent
 getAppConfigR appId = do
     appSettings <- appSettings <$> getYesod
-    let appsDir = (</> "apps") . resourcesDir $ appSettings
+    let appsDir   = (</> "apps") . resourcesDir $ appSettings
     let appMgrDir = staticBinDir $ appSettings
     av <- getVersionFromQuery appsDir appExt >>= \case
         Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
-        Just v -> pure v
+        Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
     config <- handleS9ErrT $ getConfig appMgrDir appDir appExt
     pure $ TypedContent "application/json" (toContent config)
-    where 
-        appExt = Extension (toS appId) :: Extension "s9pk"
+    where appExt = Extension (toS appId) :: Extension "s9pk"
 
 getAppR :: Extension "s9pk" -> Handler TypedContent
 getAppR e = do
@@ -129,7 +127,9 @@ getApp rootDir ext@(Extension appId) = do
         Just t  -> pure t
     appVersions <- liftIO $ getAvailableAppVersions rootDir ext
     putStrLn $ "valid appversion for " <> (show ext :: String) <> ": " <> show appVersions
-    case getSpecifiedAppVersion spec appVersions of
+    let satisfactory = filter ((<|| spec) . fst . unRegisteredAppVersion) appVersions
+    let best = fst . getMaxVersion <$> foldMap (Just . MaxVersion . (, fst . unRegisteredAppVersion)) satisfactory
+    case best of
         Nothing -> notFound
         Just (RegisteredAppVersion (appVersion, filePath)) -> do
             exists <- liftIO $ doesFileExist filePath >>= \case
@@ -137,7 +137,7 @@ getApp rootDir ext@(Extension appId) = do
                 False -> pure NonExistent
             determineEvent exists (extension ext) filePath appVersion
     where
-        determineEvent :: FileExistence -> String -> FilePath -> AppVersion -> HandlerFor RegistryCtx TypedContent
+        determineEvent :: FileExistence -> String -> FilePath -> Version -> HandlerFor RegistryCtx TypedContent
         -- for app files
         determineEvent Existent "s9pk" fp av = do
             _ <- recordMetrics appId rootDir av
@@ -152,7 +152,7 @@ chunkIt fp = do
     addHeader "Content-Length" (show sz)
     respondSource typeOctet $ CB.sourceFile fp .| awaitForever sendChunkBS
 
-recordMetrics :: String -> FilePath -> AppVersion -> HandlerFor RegistryCtx ()
+recordMetrics :: String -> FilePath -> Version -> HandlerFor RegistryCtx ()
 recordMetrics appId rootDir appVersion = do
     let appId' = T.pack appId
     manifest                <- liftIO $ getAppManifest rootDir

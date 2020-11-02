@@ -2,24 +2,24 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Lib.Types.AppIndex where
 
-import           Startlude
+import           Startlude               hiding ( Any )
 
 import           Control.Monad.Fail
 import           Data.Aeson
 import qualified Data.HashMap.Strict           as HM
 import qualified Data.List.NonEmpty            as NE
 
-import           Lib.Semver
-import           Lib.Types.Semver
+import           Lib.Types.Emver
+import           Orphans.Emver                  ( )
 
 type AppIdentifier = Text
 
 data VersionInfo = VersionInfo
-    { versionInfoVersion       :: AppVersion
+    { versionInfoVersion       :: Version
     , versionInfoReleaseNotes  :: Text
-    , versionInfoDependencies  :: HM.HashMap Text AppVersionSpec
-    , versionInfoOsRequired    :: AppVersionSpec
-    , versionInfoOsRecommended :: AppVersionSpec
+    , versionInfoDependencies  :: HM.HashMap Text VersionRange
+    , versionInfoOsRequired    :: VersionRange
+    , versionInfoOsRecommended :: VersionRange
     }
     deriving (Eq, Show)
 
@@ -31,8 +31,8 @@ instance FromJSON VersionInfo where
         versionInfoVersion       <- o .: "version"
         versionInfoReleaseNotes  <- o .: "release-notes"
         versionInfoDependencies  <- o .:? "dependencies" .!= HM.empty
-        versionInfoOsRequired    <- o .:? "os-version-required" .!= AppVersionAny
-        versionInfoOsRecommended <- o .:? "os-version-recommended" .!= AppVersionAny
+        versionInfoOsRequired    <- o .:? "os-version-required" .!= Any
+        versionInfoOsRecommended <- o .:? "os-version-recommended" .!= Any
         pure VersionInfo { .. }
 
 instance ToJSON VersionInfo where
@@ -82,12 +82,12 @@ instance ToJSON AppManifest where
     toJSON = toJSON . unAppManifest
 
 
-filterOsRequired :: AppVersion -> StoreApp -> Maybe StoreApp
+filterOsRequired :: Version -> StoreApp -> Maybe StoreApp
 filterOsRequired av sa = case NE.filter ((av <||) . versionInfoOsRequired) (storeAppVersionInfo sa) of
     []       -> Nothing
     (x : xs) -> Just $ sa { storeAppVersionInfo = x :| xs }
 
-filterOsRecommended :: AppVersion -> StoreApp -> Maybe StoreApp
+filterOsRecommended :: Version -> StoreApp -> Maybe StoreApp
 filterOsRecommended av sa = case NE.filter ((av <||) . versionInfoOsRecommended) (storeAppVersionInfo sa) of
     []       -> Nothing
     (x : xs) -> Just $ sa { storeAppVersionInfo = x :| xs }

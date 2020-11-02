@@ -30,6 +30,7 @@ ip-from-header: "_env:YESOD_IP_FROM_HEADER:false"
 
 resources-path: "_env:RESOURCES_PATH:/var/www/html/resources"
 ssl-path: "_env:SSL_PATH:/var/ssl"
+ssl-auto: "_env:SSL_AUTO:true"
 registry-hostname: "_env:REGISTRY_HOSTNAME:registry.start9labs.com"
 tor-port: "_env:TOR_PORT:447"
 static-bin-dir: "_env:STATIC_BIN:/usr/local/bin/"

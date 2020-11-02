@@ -174,20 +174,21 @@ appMain = do
 
 startApp :: RegistryCtx -> IO ()
 startApp foundation = do
-    -- set up ssl certificates
-    putStrLn @Text "Setting up SSL"
-    _ <- setupSsl $ appSettings foundation
-    putStrLn @Text "SSL Setup Complete"
+    when (sslAuto . appSettings $ foundation) $ do
+        -- set up ssl certificates
+        putStrLn @Text "Setting up SSL"
+        _ <- setupSsl $ appSettings foundation
+        putStrLn @Text "SSL Setup Complete"
 
-    -- certbot renew loop
-    void . forkIO $ forever $ flip runReaderT foundation $ do
-        shouldRenew <- doesSslNeedRenew
-        putStrLn @Text $ "Checking if SSL Certs should be renewed: " <> show shouldRenew
-        when shouldRenew $ do
-            putStrLn @Text "Renewing SSL Certs."
-            renewSslCerts
-            liftIO $ restartWeb foundation
-        liftIO $ sleep 86_400
+        -- certbot renew loop
+        void . forkIO $ forever $ flip runReaderT foundation $ do
+            shouldRenew <- doesSslNeedRenew
+            putStrLn @Text $ "Checking if SSL Certs should be renewed: " <> show shouldRenew
+            when shouldRenew $ do
+                putStrLn @Text "Renewing SSL Certs."
+                renewSslCerts
+                liftIO $ restartWeb foundation
+            liftIO $ sleep 86_400
 
     startWeb foundation
 
@@ -207,7 +208,17 @@ startWeb foundation = do
             let actions = (action, torAction)
 
             setWebProcessThreadId (join (***) asyncThreadId actions) foundation
-            void $ both waitCatch actions
+            (clearRes, torRes) <- both waitCatch actions
+            case clearRes of
+                Left e -> do
+                    putStr @Text "Clearnet ServerError: "
+                    print e
+                Right _ -> pure ()
+            case torRes of
+                Left e -> do
+                    putStr @Text "Tor ServerError: "
+                    print e
+                Right _ -> pure ()
             shouldRestart <- takeMVar (appShouldRestartWeb foundation)
             when shouldRestart $ do
                 putMVar (appShouldRestartWeb foundation) False
