@@ -24,6 +24,7 @@ module Lib.Types.Emver
     , satisfies
     , (<||)
     , (||>)
+    -- we do not export 'None' because it is useful for its internal algebraic properties only
     , VersionRange(Anchor, Any, None)
     , Version(..)
     , AnyRange(..)
@@ -140,10 +141,9 @@ instance Show VersionRange where
     show Any                   = "*"
     show None                  = "!"
 instance Read VersionRange where
-    readsPrec _ s = case Atto.parse parseRange (T.pack s) of
-        Atto.Fail _ _ _ -> []
-        Atto.Partial _  -> []
-        Atto.Done i r   -> [(r, T.unpack i)]
+    readsPrec _ s = case Atto.parseOnly parseRange (T.pack s) of
+        Left  _ -> []
+        Right a -> [(a, "")]
 
 paren :: String -> String
 paren = mappend "(" . flip mappend ")"
@@ -182,11 +182,12 @@ satisfies _ None           = False
 
 parseOperator :: Atto.Parser Operator
 parseOperator =
-    (Atto.char '=' $> Left EQ)
-        <|> (Atto.string ">=" $> Right GT)
-        <|> (Atto.string "<=" $> Right LT)
-        <|> (Atto.char '>' $> Left GT)
-        <|> (Atto.char '<' $> Left LT)
+    (Atto.char '=' $> Right EQ)
+        <|> (Atto.string "!=" $> Left EQ)
+        <|> (Atto.string ">=" $> Left LT)
+        <|> (Atto.string "<=" $> Left GT)
+        <|> (Atto.char '>' $> Right GT)
+        <|> (Atto.char '<' $> Right LT)
 
 parseVersion :: Atto.Parser Version
 parseVersion = do
@@ -197,7 +198,7 @@ parseVersion = do
     pure $ Version (major', minor', patch', quad')
 
 -- >>> Atto.parseOnly parseRange "=2.3.4 1.2.3.4 - 2.3.4.5 (>3.0.0 || <3.4.5)"
--- Right (=2.3.4 ((>=1.2.3.4 <=2.3.4.5) (>3.0.0 || <3.4.5)))
+-- Right =2.3.4 >=1.2.3.4 <=2.3.4.5 ((>3.0.0 || <3.4.5))
 parseRange :: Atto.Parser VersionRange
 parseRange = s <|> (Atto.char '*' *> pure Any)
     where
@@ -209,8 +210,8 @@ parseRange = s <|> (Atto.char '*' *> pure Any)
         p = unAllRange . foldMap AllRange <$> ((a <|> sub) `Atto.sepBy1` Atto.space)
         a = liftA2 Anchor parseOperator parseVersion <|> caret <|> tilde <|> wildcard <|> hyphen
 
--- >>> Atto.parseOnly parseRange "^2.3.0.5"
--- Right (>=2.3.0.5 <3.0.0)
+-- >>> Atto.parseOnly parseRange "^2.3.4.5"
+-- Right >=2.3.4.5 <3.0.0
 caret :: Atto.Parser VersionRange
 caret = (Atto.char '^' *> parseVersion) <&> \case
     v@(Version (0, 0, 0, _)) -> Anchor (Right EQ) v
@@ -219,7 +220,7 @@ caret = (Atto.char '^' *> parseVersion) <&> \case
     v@(Version (x, _, _, _)) -> rangeIE v (Version (x + 1, 0, 0, 0))
 
 -- >>> Atto.parseOnly tilde "~1.2.3.4"
--- Right (>=1.2.3.4 <1.2.4)
+-- Right >=1.2.3.4 <1.2.4
 tilde :: Atto.Parser VersionRange
 tilde = (Atto.char '~' *> (Atto.decimal `Atto.sepBy1` Atto.char '.')) >>= \case
     [x, y, z, q] -> pure $ rangeIE (Version (x, y, z, q)) (Version (x, y, z + 1, 0))
@@ -238,7 +239,7 @@ rangeIE :: Version -> Version -> VersionRange
 rangeIE = range True False
 
 -- >>> Atto.parseOnly wildcard "1.2.3.x"
--- Right (>=1.2.3 <1.2.4)
+-- Right >=1.2.3 <1.2.4
 wildcard :: Atto.Parser VersionRange
 wildcard = (Atto.many1 (Atto.decimal <* Atto.char '.') <* Atto.char 'x') >>= \case
     [x, y, z] -> pure $ rangeIE (Version (x, y, z, 0)) (Version (x, y, z + 1, 0))
@@ -247,6 +248,6 @@ wildcard = (Atto.many1 (Atto.decimal <* Atto.char '.') <* Atto.char 'x') >>= \ca
     o         -> fail $ "Invalid number of version numbers: " <> show (length o)
 
 -- >>> Atto.parseOnly hyphen "0.1.2.3 - 1.2.3.4"
--- Right (>=0.1.2.3 <=1.2.3.4)
+-- Right >=0.1.2.3 <=1.2.3.4
 hyphen :: Atto.Parser VersionRange
 hyphen = liftA2 (range True True) parseVersion (Atto.skipSpace *> Atto.char '-' *> Atto.skipSpace *> parseVersion)
