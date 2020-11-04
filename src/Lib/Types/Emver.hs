@@ -130,16 +130,19 @@ exactly :: Version -> VersionRange
 exactly = Anchor (Right EQ)
 
 instance Show VersionRange where
-    show (Anchor (Left  EQ) v) = '!' : '=' : show v
-    show (Anchor (Right EQ) v) = '=' : show v
-    show (Anchor (Left  LT) v) = '>' : '=' : show v
-    show (Anchor (Right LT) v) = '<' : show v
-    show (Anchor (Left  GT) v) = '<' : '=' : show v
-    show (Anchor (Right GT) v) = '>' : show v
-    show (Conj   a          b) = paren $ show a <> (' ' : show b)
-    show (Disj   a          b) = paren $ show a <> " || " <> show b
-    show Any                   = "*"
-    show None                  = "!"
+    show (Anchor (  Left  EQ) v           ) = '!' : '=' : show v
+    show (Anchor (  Right EQ) v           ) = '=' : show v
+    show (Anchor (  Left  LT) v           ) = '>' : '=' : show v
+    show (Anchor (  Right LT) v           ) = '<' : show v
+    show (Anchor (  Left  GT) v           ) = '<' : '=' : show v
+    show (Anchor (  Right GT) v           ) = '>' : show v
+    show (Conj   a@(Disj _ _) b@(Disj _ _)) = paren (show a) <> (' ' : paren (show b))
+    show (Conj   a@(Disj _ _) b           ) = paren (show a) <> (' ' : show b)
+    show (Conj   a            b@(Disj _ _)) = show a <> (' ' : paren (show b))
+    show (Conj   a            b           ) = show a <> (' ' : show b)
+    show (Disj   a            b           ) = show a <> " || " <> show b
+    show Any                                = "*"
+    show None                               = "!"
 instance Read VersionRange where
     readsPrec _ s = case Atto.parseOnly parseRange (T.pack s) of
         Left  _ -> []
