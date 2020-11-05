@@ -202,8 +202,9 @@ parseVersion = do
 
 -- >>> Atto.parseOnly parseRange "=2.3.4 1.2.3.4 - 2.3.4.5 (>3.0.0 || <3.4.5)"
 -- Right =2.3.4 >=1.2.3.4 <=2.3.4.5 ((>3.0.0 || <3.4.5))
+-- >>> Atto.parseOnly parseRange "0.2.6"
 parseRange :: Atto.Parser VersionRange
-parseRange = s <|> (Atto.char '*' *> pure Any)
+parseRange = s <|> (Atto.char '*' *> pure Any) <|> (Anchor (Right EQ) <$> parseVersion)
     where
         sub = Atto.char '(' *> Atto.skipSpace *> parseRange <* Atto.skipSpace <* Atto.char ')'
         s =
@@ -213,8 +214,8 @@ parseRange = s <|> (Atto.char '*' *> pure Any)
         p = unAllRange . foldMap AllRange <$> ((a <|> sub) `Atto.sepBy1` Atto.space)
         a = liftA2 Anchor parseOperator parseVersion <|> caret <|> tilde <|> wildcard <|> hyphen
 
--- >>> Atto.parseOnly parseRange "^2.3.4.5"
--- Right >=2.3.4.5 <3.0.0
+-- >>> liftA2 satisfies (Atto.parseOnly parseVersion "0.20.1.1") (Atto.parseOnly parseRange "^0.20.1")
+-- Right True
 caret :: Atto.Parser VersionRange
 caret = (Atto.char '^' *> parseVersion) <&> \case
     v@(Version (0, 0, 0, _)) -> Anchor (Right EQ) v
