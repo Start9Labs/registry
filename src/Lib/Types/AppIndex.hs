@@ -82,7 +82,7 @@ instance FromJSON AppManifest where
                 []       -> fail "No Valid Version Info"
                 (x : xs) -> pure $ x :| xs
             storeAppTimestamp   <- config .:? "timestamp"
-            return (appId, StoreApp { .. })
+            pure (appId, StoreApp { .. })
         return $ AppManifest (HM.fromList apps)
 instance ToJSON AppManifest where
     toJSON = toJSON . unAppManifest
