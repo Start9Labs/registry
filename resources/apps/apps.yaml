@@ -1,22 +1,163 @@
 bitcoind:
-  title: "Bitcoin Core"
-  description:
-    short: "A Bitcoin Full Node"
-    long: "The bitcoin full node implementation by Bitcoin Core."
-  version-info:
-    - version: 0.18.1
-      release-notes: "Some stuff"
-    - version: 0.18.2
-      release-notes: "Some more stuff"
+  title: Bitcoin Core
   icon-type: png
+  description:
+    long: Bitcoin is an innovative payment network and a new kind of money. Bitcoin
+      uses peer-to-peer technology to operate with no central authority or banks;
+      managing transactions and the issuing of bitcoins is carried out collectively
+      by the network. Bitcoin is open-source; its design is public, nobody owns or
+      controls Bitcoin and everyone can take part. Through many of its unique properties,
+      Bitcoin allows exciting uses that could not be covered by any previous payment
+      system.
+    short: A Bitcoin Full Node by Bitcoin Core
+  version-info:
+  - os-version-required: '>=0.2.5'
+    release-notes: https://github.com/bitcoin/bitcoin/blob/master/doc/release-notes/release-notes-0.20.1.md
+    dependencies: {}
+    version: 0.20.1.1
+    os-version-recommended: '>=0.2.5'
+  - os-version-required: '>=0.2.4'
+    release-notes: https://github.com/bitcoin/bitcoin/blob/master/doc/release-notes/release-notes-0.20.1.md
+    dependencies: {}
+    version: 0.20.1
+    os-version-recommended: '>=0.2.4'
+  - os-version-required: '*'
+    release-notes: https://github.com/bitcoin/bitcoin/blob/master/doc/release-notes/release-notes-0.20.0.md
+    dependencies: {}
+    version: 0.20.0
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: https://github.com/bitcoin/bitcoin/blob/master/doc/release-notes/release-notes-0.19.1.md
+    dependencies: {}
+    version: 0.19.1
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: https://github.com/bitcoin/bitcoin/blob/master/doc/release-notes/release-notes-0.19.0.1.md
+    dependencies: {}
+    version: 0.19.0
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: https://github.com/bitcoin/bitcoin/blob/master/doc/release-notes/release-notes-0.18.1.md
+    dependencies: {}
+    version: 0.18.1
+    os-version-recommended: '*'
 cups:
-  title: "Cups Messenger"
-  description:
-    short: "P2P Encrypted messaging"
-    long: "Peer-to-peer encrypted messaging platform that operates over tor."
-  version-info:
-    - version: 0.2.1
-      release-notes: "Some stuff"
-    - version: 0.2.2
-      release-notes: "Some more stuff"
+  title: Cups Messenger
   icon-type: png
+  description:
+    long: Cups is a private, self-hosted, peer-to-peer, Tor-based, instant messenger.
+      Unlike other end-to-end encrypted messengers, with Cups on the Embassy there
+      are no trusted third parties.
+    short: Real private messaging
+  version-info:
+  - os-version-required: '>=0.2.4'
+    release-notes: |
+      Features
+        - Adds instructions defined by EmbassyOS 0.2.4 instructions feature
+    dependencies: {}
+    version: 0.3.6
+    os-version-recommended: '>=0.2.4'
+  - os-version-required: '*'
+    release-notes: |
+      Bug Fixes
+        - Upgrade UI to gracefully handle Consulate browser
+    dependencies: {}
+    version: 0.3.5
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: |
+      Bug Fixes
+        - Register a SIGTERM handler for graceful shutdown
+    dependencies: {}
+    version: 0.3.4
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: |
+      Features
+        - Conversation manual refresh
+      Bug Fixes
+        - Contacts hilighting for unread messages
+        - Avatar first initial centering
+        - Styling improvements
+    dependencies: {}
+    version: 0.3.3
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: |
+      Features
+        - Conversation manual refresh
+      Bug Fixes
+        - Contacts hilighting for unread messages
+        - Avatar first initial centering
+        - Styling improvements
+    dependencies: {}
+    version: 0.3.2
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: |
+      Big UX overhaul, including the code requisite to power the new Cups Messenger mobile application.
+      Check out "Cups Messenger" on the iOS and Google Play store
+      - Usable from your phone without the Tor browser.
+      - New Dark Theme.
+      - Message Previews + Old conversation removal
+      - Fixes bugs from 0.3.0
+    dependencies: {}
+    version: 0.3.1
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: |
+      Big UX overhaul, including the code requisite to power the new Cups Messenger mobile application.
+      Check out "Cups Messenger" on the iOS and Google Play store
+      - Usable from your phone without the Tor browser.
+      - New Dark Theme.
+      - Message Previews + Old conversation removal
+    dependencies: {}
+    version: 0.3.0
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: Added headers for Consulate caching
+    dependencies: {}
+    version: 0.2.4
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: fix autofill for password field
+    dependencies: {}
+    version: 0.2.3
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: |
+      - Massive load-time improvements
+    dependencies: {}
+    version: 0.2.2
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: |
+      - Signin security improvements
+    dependencies: {}
+    version: 0.2.1
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: |
+      # Cups UI released
+      - Breaks compatibility with cups-cli 0.1.x
+    dependencies: {}
+    version: 0.2.0
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: |
+      # Alpha Release
+      - Send messages
+      - Recieve messages
+      - Contact book
+    dependencies: {}
+    version: 0.1.1
+    os-version-recommended: '*'
+  - os-version-required: '*'
+    release-notes: |
+      # Alpha Release
+      - Send messages
+      - Recieve messages
+      - Contact book
+    dependencies: {}
+    version: 0.1.0
+    os-version-recommended: '*'
