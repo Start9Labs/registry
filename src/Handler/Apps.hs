@@ -72,8 +72,8 @@ getEmbassyOsVersion = userAgentOsVersion
 getAppsManifestR :: Handler TypedContent
 getAppsManifestR = do
     osVersion                              <- getEmbassyOsVersion
-    appResourceFile                        <- (</> "apps" </> "apps.yaml") . resourcesDir . appSettings <$> getYesod
     appsDir <- (</> "apps") . resourcesDir . appSettings <$> getYesod
+    let appResourceFile = appsDir </> "apps.yaml"
     manifest  <- liftIO (Yaml.decodeFileEither appResourceFile) >>= \case
         Left e -> do
             $logError "COULD NOT PARSE APP INDEX! CORRECT IMMEDIATELY!"
@@ -94,10 +94,9 @@ getAppsManifestR = do
             (v, _) <- case mostRecentVersion of
                     Nothing -> notFound
                     Just a -> pure $ unRegisteredAppVersion a
-            maybeStoreApp <- liftIO $ addFileTimestamp dir ext service v
-            case maybeStoreApp of
-                Nothing -> notFound
-                Just appWithTimestamp -> pure (appId, appWithTimestamp)
+            liftIO (addFileTimestamp dir ext service v) >>= \case
+                            Nothing -> notFound
+                            Just appWithTimestamp -> pure (appId, appWithTimestamp)
 
 getSysR :: Extension "" -> Handler TypedContent
 getSysR e = do
@@ -106,9 +105,7 @@ getSysR e = do
 
 getAppManifestR :: AppIdentifier -> Handler TypedContent
 getAppManifestR appId = do
-    appSettings' <- appSettings <$> getYesod
-    let appsDir   = (</> "apps") . resourcesDir $ appSettings'
-    let appMgrDir = staticBinDir appSettings'
+    (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     av <- getVersionFromQuery appsDir appExt >>= \case
         Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v

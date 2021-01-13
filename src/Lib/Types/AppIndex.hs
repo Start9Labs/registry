@@ -12,8 +12,8 @@ import qualified Data.List.NonEmpty            as NE
 
 import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
-import System.Directory
-import Lib.Registry
+import           System.Directory
+import           Lib.Registry
 
 type AppIdentifier = Text
 
