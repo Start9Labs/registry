@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Lib.Types.AppIndex where
@@ -11,6 +12,8 @@ import qualified Data.List.NonEmpty            as NE
 
 import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
+import System.Directory
+import Lib.Registry
 
 type AppIdentifier = Text
 
@@ -50,6 +53,7 @@ data StoreApp = StoreApp
     , storeAppDescLong    :: Text
     , storeAppVersionInfo :: NonEmpty VersionInfo
     , storeAppIconType    :: Text
+    , storeAppTimestamp   :: Maybe UTCTime
     }
     deriving Show
 
@@ -59,6 +63,7 @@ instance ToJSON StoreApp where
         , "icon-type" .= storeAppIconType
         , "description" .= object ["short" .= storeAppDescShort, "long" .= storeAppDescLong]
         , "version-info" .= storeAppVersionInfo
+        , "timestamp" .= storeAppTimestamp
         ]
 
 newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap AppIdentifier StoreApp}
@@ -76,7 +81,8 @@ instance FromJSON AppManifest where
             storeAppVersionInfo <- config .: "version-info" >>= \case
                 []       -> fail "No Valid Version Info"
                 (x : xs) -> pure $ x :| xs
-            return $ (appId, StoreApp { .. })
+            storeAppTimestamp   <- config .:? "timestamp"
+            return (appId, StoreApp { .. })
         return $ AppManifest (HM.fromList apps)
 instance ToJSON AppManifest where
     toJSON = toJSON . unAppManifest
@@ -91,3 +97,11 @@ filterOsRecommended :: Version -> StoreApp -> Maybe StoreApp
 filterOsRecommended av sa = case NE.filter ((av <||) . versionInfoOsRecommended) (storeAppVersionInfo sa) of
     []       -> Nothing
     (x : xs) -> Just $ sa { storeAppVersionInfo = x :| xs }
+
+addFileTimestamp :: KnownSymbol a => FilePath -> Extension a -> StoreApp -> Version -> IO (Maybe StoreApp)
+addFileTimestamp appDir ext service v = do
+    getVersionedFileFromDir appDir ext v >>= \case
+                Nothing -> pure Nothing
+                Just file -> do
+                    time <- getModificationTime file
+                    pure $ Just service {storeAppTimestamp = Just time }

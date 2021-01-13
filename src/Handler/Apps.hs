@@ -5,6 +5,7 @@
 {-# LANGUAGE TemplateHaskell  #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Handler.Apps where
 
@@ -72,16 +73,31 @@ getAppsManifestR :: Handler TypedContent
 getAppsManifestR = do
     osVersion                              <- getEmbassyOsVersion
     appResourceFile                        <- (</> "apps" </> "apps.yaml") . resourcesDir . appSettings <$> getYesod
-    manifest@AppManifest { unAppManifest } <- liftIO (Yaml.decodeFileEither appResourceFile) >>= \case
+    appsDir <- (</> "apps") . resourcesDir . appSettings <$> getYesod
+    manifest  <- liftIO (Yaml.decodeFileEither appResourceFile) >>= \case
         Left e -> do
             $logError "COULD NOT PARSE APP INDEX! CORRECT IMMEDIATELY!"
             $logError (show e)
             sendResponseStatus status500 ("Internal Server Error" :: Text)
         Right a -> pure a
+    m <- mapM (addFileTimestamp' appsDir) (HM.toList $ unAppManifest manifest)
+    let withServiceTimestamps = AppManifest $ HM.fromList m
     let pruned = case osVersion of
-            Nothing -> manifest
-            Just av -> AppManifest $ HM.mapMaybe (filterOsRecommended av) unAppManifest
+            Nothing -> withServiceTimestamps
+            Just av -> AppManifest $ HM.mapMaybe (filterOsRecommended av) $ unAppManifest withServiceTimestamps
     pure $ TypedContent "application/x-yaml" (toContent $ Yaml.encode pruned)
+    where
+        addFileTimestamp' :: (MonadHandler m, MonadIO m) => FilePath -> (AppIdentifier, StoreApp) -> m (AppIdentifier, StoreApp)
+        addFileTimestamp' dir (appId, service) = do
+            let ext = (Extension (toS appId) :: Extension "s9pk")
+            mostRecentVersion <- liftIO $ getMostRecentAppVersion dir ext
+            (v, _) <- case mostRecentVersion of
+                    Nothing -> notFound
+                    Just a -> pure $ unRegisteredAppVersion a
+            maybeStoreApp <- liftIO $ addFileTimestamp dir ext service v
+            case maybeStoreApp of
+                Nothing -> notFound
+                Just appWithTimestamp -> pure (appId, appWithTimestamp)
 
 getSysR :: Extension "" -> Handler TypedContent
 getSysR e = do
@@ -90,9 +106,9 @@ getSysR e = do
 
 getAppManifestR :: AppIdentifier -> Handler TypedContent
 getAppManifestR appId = do
-    appSettings <- appSettings <$> getYesod
-    let appsDir   = (</> "apps") . resourcesDir $ appSettings
-    let appMgrDir = staticBinDir $ appSettings
+    appSettings' <- appSettings <$> getYesod
+    let appsDir   = (</> "apps") . resourcesDir $ appSettings'
+    let appMgrDir = staticBinDir appSettings'
     av <- getVersionFromQuery appsDir appExt >>= \case
         Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
@@ -105,7 +121,7 @@ getAppConfigR :: AppIdentifier -> Handler TypedContent
 getAppConfigR appId = do
     appSettings <- appSettings <$> getYesod
     let appsDir   = (</> "apps") . resourcesDir $ appSettings
-    let appMgrDir = staticBinDir $ appSettings
+    let appMgrDir = staticBinDir appSettings
     av <- getVersionFromQuery appsDir appExt >>= \case
         Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
