@@ -23,6 +23,7 @@ data VersionInfo = VersionInfo
     , versionInfoDependencies  :: HM.HashMap Text VersionRange
     , versionInfoOsRequired    :: VersionRange
     , versionInfoOsRecommended :: VersionRange
+    , versionInfoInstallAlert  :: Maybe Text
     }
     deriving (Eq, Show)
 
@@ -36,6 +37,7 @@ instance FromJSON VersionInfo where
         versionInfoDependencies  <- o .:? "dependencies" .!= HM.empty
         versionInfoOsRequired    <- o .:? "os-version-required" .!= Any
         versionInfoOsRecommended <- o .:? "os-version-recommended" .!= Any
+        versionInfoInstallAlert  <- o .:? "install-alert"
         pure VersionInfo { .. }
 
 instance ToJSON VersionInfo where
@@ -45,6 +47,7 @@ instance ToJSON VersionInfo where
         , "dependencies" .= versionInfoDependencies
         , "os-version-required" .= versionInfoOsRequired
         , "os-version-recommended" .= versionInfoOsRecommended
+        , "install-alert" .= versionInfoInstallAlert
         ]
 
 data StoreApp = StoreApp
