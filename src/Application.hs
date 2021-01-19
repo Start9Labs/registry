@@ -202,9 +202,10 @@ startWeb foundation = do
             putStrLn @Text $ "Launching Tor Web Server on port " <> show torPort
             torAction <- async $ runSettings (warpSettings torPort foundation) app
             putStrLn @Text $ "Launching Web Server on port " <> show appPort
-            action <- async $ runTLS (tlsSettings sslCertLocation sslKeyLocation)
-                            (warpSettings appPort foundation)
-                            app
+            action <- if sslAuto
+                        then async $ runTLS (tlsSettings sslCertLocation sslKeyLocation)
+                            (warpSettings appPort foundation) app
+                        else async $ runSettings (warpSettings appPort foundation) app
             let actions = (action, torAction)
 
             setWebProcessThreadId (join (***) asyncThreadId actions) foundation

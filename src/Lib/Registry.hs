@@ -40,7 +40,7 @@ getAvailableAppVersions rootDirectory ext@(Extension appId) = do
 getMostRecentAppVersion :: KnownSymbol a => FilePath -> Extension a -> IO (Maybe RegisteredAppVersion)
 getMostRecentAppVersion rootDirectory ext = do
     allVersions <- liftIO $ getAvailableAppVersions rootDirectory ext
-    pure $ head $ sortOn (fst . unRegisteredAppVersion) allVersions
+    pure $ head $ sortOn (Down . fst . unRegisteredAppVersion) allVersions
 
 -- /root/appId/version/appId.ext
 getVersionedFileFromDir :: KnownSymbol a => FilePath -> Extension a -> Version -> IO (Maybe FilePath)
