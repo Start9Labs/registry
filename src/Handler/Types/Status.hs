@@ -13,14 +13,18 @@ import           Orphans.Emver                  ( )
 data AppVersionRes = AppVersionRes
     { appVersionVersion      :: Version
     , appVersionMinCompanion :: Maybe Version
+    , appVersionReleaseNotes :: Maybe Text
     }
     deriving (Eq, Show)
 instance ToJSON AppVersionRes where
-    toJSON AppVersionRes { appVersionVersion, appVersionMinCompanion } =
-        object $ ["version" .= appVersionVersion] <> case appVersionMinCompanion of
-            Nothing -> []
-            Just x  -> ["minCompanion" .= x]
-
+    toJSON AppVersionRes { appVersionVersion, appVersionMinCompanion, appVersionReleaseNotes } =
+        let rn = case appVersionReleaseNotes of
+                Nothing -> []
+                Just x  -> ["release-notes" .= x]
+            mc = case appVersionMinCompanion of
+                Nothing -> []
+                Just x  -> ["minCompanion" .= x]
+        in  object $ ["version" .= appVersionVersion] <> mc <> rn
 instance ToContent AppVersionRes where
     toContent = toContent . toJSON
 instance ToTypedContent AppVersionRes where
