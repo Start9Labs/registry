@@ -47,5 +47,5 @@ getVersionWSpec rootDir ext = do
 
 getSystemStatusR :: Handler OSVersionRes
 getSystemStatusR = do
-    -- hardcoded since this will be last OS version release on this registry before 1.0
-    pure $ OSVersionRes NOTHING $ Version (0,2,13,0)
+    -- hardcoded to the next major version release so the UI can by dynamic. this might change depending on the version number we decide to release.
+    pure $ OSVersionRes NOTHING $ Version (1,0,0,0)
