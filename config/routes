@@ -12,5 +12,5 @@
 /icons/#PNG                             IconsR             GET -- get icons
 !/apps/#S9PK                            AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
 
-!/sys/#SYS_EXTENSIONLESS                SysR               GET -- get most recent sys app -- ?spec={semver-spec}
 /sys/status                             SystemStatusR      GET -- get system update status and version
+!/sys/#SYS_EXTENSIONLESS                SysR               GET -- get most recent sys app -- ?spec={semver-spec}
