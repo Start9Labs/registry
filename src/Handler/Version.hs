@@ -44,3 +44,8 @@ getVersionWSpec :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe Ap
 getVersionWSpec rootDir ext = do
     av <- getVersionFromQuery rootDir ext
     pure $ liftA3 AppVersionRes av (pure Nothing) (pure Nothing)
+
+getSystemStatusR :: Handler OSVersionRes
+getSystemStatusR = do
+    -- hardcoded since this will be last OS version release on this registry before 1.0
+    pure $ OSVersionRes NOTHING $ Version (0,2,13,0)
