@@ -44,3 +44,8 @@ getVersionWSpec :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe Ap
 getVersionWSpec rootDir ext = do
     av <- getVersionFromQuery rootDir ext
     pure $ liftA3 AppVersionRes av (pure Nothing) (pure Nothing)
+
+getSystemStatusR :: Handler OSVersionRes
+getSystemStatusR = do
+    -- hardcoded to the next major version release so the UI can by dynamic. this might change depending on the version number we decide to release.
+    pure $ OSVersionRes NOTHING $ Version (1,0,0,0)

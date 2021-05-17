@@ -37,6 +37,7 @@ getAvailableAppVersions rootDirectory ext@(Extension appId) = do
         getSubDirectories path = (fmap (fromRight []) . try @SomeException $ listDirectory path)
             >>= filterM (doesDirectoryExist . (path </>))
 
+-- this works for both service versions and embassyOS versions
 getMostRecentAppVersion :: KnownSymbol a => FilePath -> Extension a -> IO (Maybe RegisteredAppVersion)
 getMostRecentAppVersion rootDirectory ext = do
     allVersions <- liftIO $ getAvailableAppVersions rootDirectory ext
