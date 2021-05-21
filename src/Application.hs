@@ -60,6 +60,8 @@ import           System.Time.Extra
 import           Model
 import           Control.Lens
 import           Control.Arrow ((***))
+import           Network.HTTP.Types.Header ( hOrigin )
+import           Data.List (lookup)
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
@@ -110,10 +112,72 @@ makeApplication foundation = do
     let authWare = makeAuthWare foundation
     -- Create the WAI application and apply middlewares
     appPlain <- toWaiAppPlain foundation
-    pure . logWare . cors (const . Just $ policy) . authWare . acceptOverride . autohead . methodOverride $ appPlain
-    where
-        policy = simpleCorsResourcePolicy { corsMethods = ["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE"], corsRequestHeaders = ["app-version", "Content-Type", "Authorization"] }
+    pure . logWare . cors dynamicCorsResourcePolicy . authWare . acceptOverride . autohead . methodOverride $ appPlain
 
+dynamicCorsResourcePolicy :: Request -> Maybe CorsResourcePolicy
+dynamicCorsResourcePolicy req = Just . policy . lookup hOrigin $ requestHeaders req
+    where
+        policy o = simpleCorsResourcePolicy
+            { corsOrigins        = (\o' -> ([o'], True)) <$> o
+            , corsMethods        = ["GET", "POST", "HEAD", "PUT", "DELETE", "TRACE", "CONNECT", "OPTIONS", "PATCH"]
+            , corsRequestHeaders = [ "app-version"
+                                   , "Accept"
+                                   , "Accept-Charset"
+                                   , "Accept-Encoding"
+                                   , "Accept-Language"
+                                   , "Accept-Ranges"
+                                   , "Age"
+                                   , "Allow"
+                                   , "Authorization"
+                                   , "Cache-Control"
+                                   , "Connection"
+                                   , "Content-Encoding"
+                                   , "Content-Language"
+                                   , "Content-Length"
+                                   , "Content-Location"
+                                   , "Content-MD5"
+                                   , "Content-Range"
+                                   , "Content-Type"
+                                   , "Date"
+                                   , "ETag"
+                                   , "Expect"
+                                   , "Expires"
+                                   , "From"
+                                   , "Host"
+                                   , "If-Match"
+                                   , "If-Modified-Since"
+                                   , "If-None-Match"
+                                   , "If-Range"
+                                   , "If-Unmodified-Since"
+                                   , "Last-Modified"
+                                   , "Location"
+                                   , "Max-Forwards"
+                                   , "Pragma"
+                                   , "Proxy-Authenticate"
+                                   , "Proxy-Authorization"
+                                   , "Range"
+                                   , "Referer"
+                                   , "Retry-After"
+                                   , "Server"
+                                   , "TE"
+                                   , "Trailer"
+                                   , "Transfer-Encoding"
+                                   , "Upgrade"
+                                   , "User-Agent"
+                                   , "Vary"
+                                   , "Via"
+                                   , "WWW-Authenticate"
+                                   , "Warning"
+                                   , "Content-Disposition"
+                                   , "MIME-Version"
+                                   , "Cookie"
+                                   , "Set-Cookie"
+                                   , "Origin"
+                                   , "Prefer"
+                                   , "Preference-Applied"
+                                   ]
+            , corsIgnoreFailures = True
+            }
 -- TODO: create a middle ware which will attempt to verify an ecdsa signed transaction against one of the public keys
 -- in the validDevices table.
 -- makeCheckSigWare :: RegistryCtx -> IO Middleware
