@@ -6,7 +6,7 @@
 {-# LANGUAGE ViewPatterns          #-}
 module Foundation where
 
-import           Startlude
+import           Startlude hiding (Handler)
 
 import           Control.Monad.Logger           ( LogSource )
 import           Database.Persist.Sql

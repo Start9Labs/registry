@@ -53,6 +53,9 @@ dependencies:
 - yesod
 - yesod-core
 - yesod-persistent
+- esqueleto
+- text-conversions
+- foreign-store
 
 library:
   source-dirs: src

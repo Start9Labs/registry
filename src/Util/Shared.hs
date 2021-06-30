@@ -1,8 +1,7 @@
 module Util.Shared where
 
-import           Startlude
+import           Startlude hiding (Handler)
 
-import           Data.Char
 import qualified Data.Text                     as T
 import           Network.HTTP.Types
 import           Yesod.Core
@@ -18,6 +17,10 @@ getVersionFromQuery rootDir ext = do
     spec       <- case readMaybe specString of
         Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
         Just t  -> pure t
+    getBestVersion rootDir ext spec
+
+getBestVersion :: (MonadIO m, KnownSymbol a, MonadLogger m) => FilePath -> Extension a -> VersionRange -> m (Maybe Version)
+getBestVersion rootDir ext spec = do
     appVersions <- liftIO $ getAvailableAppVersions rootDir ext
     let satisfactory = filter ((<|| spec) . fst . unRegisteredAppVersion) appVersions
     let best         = getMax <$> foldMap (Just . Max . fst . unRegisteredAppVersion) satisfactory

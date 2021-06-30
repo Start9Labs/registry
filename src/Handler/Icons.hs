@@ -4,7 +4,7 @@
 
 module Handler.Icons where
 
-import           Startlude
+import           Startlude hiding (Handler)
 
 import           Data.Conduit
 import qualified Data.Conduit.Binary as CB
@@ -18,6 +18,7 @@ import           System.FilePath ((</>))
 
 getIconsR :: Extension "png" -> Handler TypedContent
 getIconsR ext = do
+    -- @TODO switch to getting from service directory
     AppSettings{..} <- appSettings <$> getYesod
     mPng <- liftIO $ getUnversionedFileFromDir (resourcesDir </> "icons") ext
     case mPng of

@@ -29,3 +29,4 @@ agent.*
 version
 **/*.s9pk
 **/appmgr
+0.3.0_features.md
