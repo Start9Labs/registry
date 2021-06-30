@@ -3,7 +3,7 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 module Handler.Types.Status where
 
-import           Startlude
+import           Startlude hiding (toLower)
 
 import           Data.Aeson
 import           Yesod.Core.Content

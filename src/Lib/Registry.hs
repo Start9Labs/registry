@@ -27,6 +27,7 @@ instance Semigroup (MaxVersion a) where
     (MaxVersion (a, f)) <> (MaxVersion (b, g)) = if f a > g b then MaxVersion (a, f) else MaxVersion (b, g)
 
 -- retrieve all valid semver folder names with queried for file: rootDirectory/appId/[0.0.0 ...]/appId.extension
+-- TODO move to db query after all appversions are seeded qith post 0.3.0 migration script
 getAvailableAppVersions :: KnownSymbol a => FilePath -> Extension a -> IO [RegisteredAppVersion]
 getAvailableAppVersions rootDirectory ext@(Extension appId) = do
     versions <- mapMaybe (hush . Atto.parseOnly parseVersion . toS) <$> getSubDirectories (rootDirectory </> appId)
@@ -58,6 +59,7 @@ newtype Extension (a :: Symbol) = Extension String deriving (Eq)
 type S9PK = Extension "s9pk"
 type SYS_EXTENSIONLESS = Extension ""
 type PNG = Extension "png"
+type SVG = Extension "svg"
 
 instance IsString (Extension a) where
     fromString = Extension
@@ -72,7 +74,7 @@ instance KnownSymbol a => Show (Extension a) where
     show e@(Extension file) = file <.> extension e
 
 instance KnownSymbol a => Read (Extension a) where
-    readsPrec _ s = case (symbolVal $ Proxy @a) of
+    readsPrec _ s = case symbolVal $ Proxy @a of
         ""    -> [(Extension s, "")]
         other -> [ (Extension file, "") | ext' == "" <.> other ]
         where (file, ext') = splitExtension s

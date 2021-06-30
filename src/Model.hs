@@ -6,14 +6,15 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE DataKinds  #-}
 
 module Model where
 
 import           Startlude
 import           Database.Persist.TH
 import           Lib.Types.Emver
+import           Lib.Types.Category
 import           Orphans.Emver                  ( )
-
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 SApp
@@ -40,11 +41,37 @@ SVersion sql=version
     deriving Eq
     deriving Show
 
+OsVersion 
+    createdAt UTCTime
+    updatedAt UTCTime
+    number Version
+    headline Text
+    releaseNotes Text 
+    deriving Eq
+    deriving Show
 
 Metric
     createdAt UTCTime
     appId SAppId
     version SVersionId
+    deriving Eq
+    deriving Show
+
+Category
+    createdAt UTCTime
+    name CategoryTitle
+    parent CategoryId Maybe
+    description Text
+    deriving Eq
+    deriving Show
+
+ServiceCategory
+    createdAt UTCTime
+    serviceId SAppId
+    categoryId CategoryId
+    serviceName Text -- SAppAppId
+    categoryName CategoryTitle -- CategoryTitle
+    priority Int Maybe
     deriving Eq
     deriving Show
 |]

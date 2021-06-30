@@ -35,5 +35,5 @@ createAppVersion sId VersionInfo {..} = do
 
 createMetric :: MonadIO m => Key SApp -> Key SVersion -> ReaderT SqlBackend m ()
 createMetric appId versionId = do
-    time <- liftIO $ getCurrentTime
+    time <- liftIO getCurrentTime
     insert_ $ Metric time appId versionId
