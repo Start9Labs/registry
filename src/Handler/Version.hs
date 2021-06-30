@@ -48,4 +48,4 @@ getVersionWSpec rootDir ext = do
 getSystemStatusR :: Handler OSVersionRes
 getSystemStatusR = do
     -- hardcoded to the next major version release so the UI can by dynamic. this might change depending on the version number we decide to release.
-    pure $ OSVersionRes NOTHING $ Version (0,3,0,0)
+    pure $ OSVersionRes INSTRUCTIONS $ Version (0,3,0,0)
