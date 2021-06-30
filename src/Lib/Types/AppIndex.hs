@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Lib.Types.AppIndex where
 
 import           Startlude               hiding ( Any )
@@ -14,18 +16,31 @@ import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 import           System.Directory
 import           Lib.Registry
+import Model
+import qualified Data.Text as T
 
 type AppIdentifier = Text
 
 data VersionInfo = VersionInfo
     { versionInfoVersion       :: Version
     , versionInfoReleaseNotes  :: Text
-    , versionInfoDependencies  :: HM.HashMap Text VersionRange
+    , versionInfoDependencies  :: HM.HashMap AppIdentifier VersionRange
     , versionInfoOsRequired    :: VersionRange
     , versionInfoOsRecommended :: VersionRange
     , versionInfoInstallAlert  :: Maybe Text
     }
     deriving (Eq, Show)
+
+mapSVersionToVersionInfo :: [SVersion] -> [VersionInfo]
+mapSVersionToVersionInfo sv = do
+    (\v -> VersionInfo {
+      versionInfoVersion = sVersionNumber v
+    , versionInfoReleaseNotes = sVersionReleaseNotes v
+    , versionInfoDependencies = HM.empty
+    , versionInfoOsRequired = sVersionOsVersionRequired v
+    , versionInfoOsRecommended = sVersionOsVersionRecommended v
+    , versionInfoInstallAlert = Nothing
+    }) <$> sv
 
 instance Ord VersionInfo where
     compare = compare `on` versionInfoVersion
@@ -68,7 +83,6 @@ instance ToJSON StoreApp where
         , "version-info" .= storeAppVersionInfo
         , "timestamp" .= storeAppTimestamp
         ]
-
 newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap AppIdentifier StoreApp}
     deriving (Show)
 
@@ -90,7 +104,6 @@ instance FromJSON AppManifest where
 instance ToJSON AppManifest where
     toJSON = toJSON . unAppManifest
 
-
 filterOsRequired :: Version -> StoreApp -> Maybe StoreApp
 filterOsRequired av sa = case NE.filter ((av <||) . versionInfoOsRequired) (storeAppVersionInfo sa) of
     []       -> Nothing
@@ -108,3 +121,70 @@ addFileTimestamp appDir ext service v = do
                 Just file -> do
                     time <- getModificationTime file
                     pure $ Just service {storeAppTimestamp = Just time }
+
+data ServiceDependencyInfo = ServiceDependencyInfo
+    { serviceDependencyInfoOptional :: Maybe Text
+    , serviceDependencyInfoRecommended :: Bool 
+    , serviceDependencyInfoVersion :: Version
+    , serviceDependencyInfoDescription :: Maybe Text
+    } deriving (Show)
+instance FromJSON ServiceDependencyInfo where
+    parseJSON = withObject "service dependency info" $ \o -> do
+        serviceDependencyInfoOptional <- o .:? "optional"
+        serviceDependencyInfoRecommended <- o .: "recommended"
+        serviceDependencyInfoVersion <- o .: "version"
+        serviceDependencyInfoDescription <- o .:? "description"
+        pure ServiceDependencyInfo { .. }
+
+instance ToJSON ServiceDependencyInfo where
+    toJSON ServiceDependencyInfo {..} = object
+        [ "description" .= serviceDependencyInfoDescription
+        , "version" .= serviceDependencyInfoVersion
+        , "recommended" .= serviceDependencyInfoRecommended
+        , "optional" .= serviceDependencyInfoOptional
+        ]
+data ServiceAlert = INSTALL | UNINSTALL | RESTORE | START | STOP
+    deriving (Show, Eq, Generic, Hashable)
+instance FromJSONKey ServiceAlert
+instance ToJSONKey ServiceAlert
+instance ToJSON ServiceAlert where
+    toJSON = String . T.toLower . show
+instance FromJSON ServiceAlert where
+    parseJSON = withText "ServiceAlert" $ \case
+        "install"   -> pure INSTALL
+        "uninstall" -> pure UNINSTALL
+        "restore"   -> pure RESTORE
+        "start"     -> pure START
+        "stop"      -> pure STOP
+        _           -> fail "unknown service alert type"
+data ServiceManifest = ServiceManifest 
+    { serviceManifestId :: AppIdentifier
+    , serviceManifestTitle :: Text
+    , serviceManifestVersion :: Version
+    , serviceManifestDescriptionLong :: Text
+    , serviceManifestDescriptionShort :: Text
+    , serviceManifestReleaseNotes :: Text
+    , serviceManifestAlerts :: HM.HashMap ServiceAlert (Maybe Text)
+    , serviceManifestDependencies :: HM.HashMap AppIdentifier ServiceDependencyInfo
+    } deriving (Show)
+instance FromJSON ServiceManifest where
+    parseJSON = withObject "service manifest" $ \o -> do
+        serviceManifestId <- o .: "id"
+        serviceManifestTitle <- o .: "title"
+        serviceManifestVersion <- o .: "version"
+        serviceManifestDescriptionLong <- o .: "description" >>= (.: "long")
+        serviceManifestDescriptionShort <- o .: "description" >>= (.: "short")
+        serviceManifestReleaseNotes <- o .: "release-notes"
+        serviceManifestAlerts <- o .: "alerts"
+        serviceManifestDependencies <- o .: "dependencies"
+        pure ServiceManifest { .. }
+instance ToJSON ServiceManifest where
+    toJSON ServiceManifest {..} = object
+        [ "id" .= serviceManifestId
+        , "title" .= serviceManifestTitle
+        , "version" .= serviceManifestVersion
+        , "description" .= object ["short" .= serviceManifestDescriptionShort, "long" .= serviceManifestDescriptionLong]
+        , "release-notes" .= serviceManifestReleaseNotes
+        , "alerts" .= serviceManifestAlerts
+        , "dependencies" .= serviceManifestDependencies
+        ]

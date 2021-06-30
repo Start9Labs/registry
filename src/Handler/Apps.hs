@@ -9,13 +9,12 @@
 
 module Handler.Apps where
 
-import           Startlude
+import           Startlude hiding (Handler)
 
 import           Control.Monad.Logger
 import           Data.Aeson
 import qualified Data.Attoparsec.Text          as Atto
 import qualified Data.ByteString.Lazy          as BS
-import           Data.Char
 import           Data.Conduit
 import qualified Data.Conduit.Binary           as CB
 import qualified Data.HashMap.Strict           as HM
@@ -101,6 +100,7 @@ getAppsManifestR = do
 getSysR :: Extension "" -> Handler TypedContent
 getSysR e = do
     sysResourceDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
+    -- @TODO update with new response type here
     getApp sysResourceDir e
 
 getAppManifestR :: AppIdentifier -> Handler TypedContent
@@ -145,10 +145,10 @@ getApp rootDir ext@(Extension appId) = do
     case best of
         Nothing -> notFound
         Just (RegisteredAppVersion (appVersion, filePath)) -> do
-            exists <- liftIO $ doesFileExist filePath >>= \case
+            exists' <- liftIO $ doesFileExist filePath >>= \case
                 True  -> pure Existent
                 False -> pure NonExistent
-            determineEvent exists (extension ext) filePath appVersion
+            determineEvent exists' (extension ext) filePath appVersion
     where
         determineEvent :: FileExistence -> String -> FilePath -> Version -> HandlerFor RegistryCtx TypedContent
         -- for app files

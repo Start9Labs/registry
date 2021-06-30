@@ -14,3 +14,6 @@
 
 /sys/status                             SystemStatusR      GET -- get system update status and version
 !/sys/#SYS_EXTENSIONLESS                SysR               GET -- get most recent sys app -- ?spec={semver-spec}
+/marketplace/data                       CategoriesR        GET -- get all marketplace categories
+/marketplace/available/list             ServiceListR       GET -- filter marketplace services by various query params
+/marketplace/available                  ServiceR           GET -- get service information

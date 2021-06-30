@@ -8,7 +8,7 @@ module TestImport
     )
 where
 
-import           Startlude
+import           Startlude hiding (Handler)
 import           Application                    ( makeFoundation
                                                 , makeLogWare
                                                 )
@@ -23,6 +23,8 @@ import           Database.Persist.Sql
 import           Text.Shakespeare.Text          ( st )
 import           Yesod.Core
 import qualified Data.Text                     as T
+import Database.Esqueleto.Internal.Internal
+import Database.Persist.Sql.Types.Internal
 
 runHandler :: Handler a -> YesodExample RegistryCtx a
 runHandler handler = do
@@ -55,8 +57,8 @@ wipeDB app = runDBWithApp app $ do
     tables     <- getTables
     sqlBackend <- ask
 
-    let escapedTables = map (T.unpack . connEscapeName sqlBackend . DBName) tables
-        query         = "TRUNCATE TABLE " ++ (intercalate ", " escapedTables)
+    let escapedTables = map (T.unpack . connEscapeRawName sqlBackend . unDBName . DBName) tables
+        query         = "TRUNCATE TABLE " ++ intercalate ", " escapedTables
     rawExecute (T.pack query) []
 
 runDBtest :: SqlPersistM a -> YesodExample RegistryCtx a

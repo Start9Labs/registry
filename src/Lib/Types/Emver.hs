@@ -48,9 +48,11 @@ import           Control.Applicative            ( liftA2
                                                 )
 import           Data.String                    ( IsString(..) )
 import qualified Data.Text                     as T
+import Data.Aeson
+import Startlude (Hashable)
 
 -- | AppVersion is the core representation of the SemverQuad type.
-newtype Version = Version { unVersion :: (Word, Word, Word, Word) } deriving (Eq, Ord)
+newtype Version = Version { unVersion :: (Word, Word, Word, Word) } deriving (Eq, Ord, ToJSONKey, Hashable)
 instance Show Version where
     show (Version (x, y, z, q)) =
         let postfix = if q == 0 then "" else '.' : show q in show x <> "." <> show y <> "." <> show z <> postfix

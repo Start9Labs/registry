@@ -11,6 +11,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Application
     ( appMain
+    , develMain
     , makeFoundation
     , makeLogWare
     , shutdownApp
@@ -25,7 +26,7 @@ module Application
     , handler
     ) where
 
-import           Startlude
+import           Startlude hiding (Handler)
 
 import           Control.Monad.Logger                  (liftLoc, runLoggingT)
 import           Data.Default
@@ -53,6 +54,7 @@ import           Foundation
 import           Handler.Apps
 import           Handler.Icons
 import           Handler.Version
+import           Handler.Marketplace
 import           Lib.Ssl
 import           Settings
 import           System.Posix.Process
@@ -310,15 +312,31 @@ shutdownWeb RegistryCtx{..} = do
 -- Functions for DevelMain.hs (a way to run the RegistryCtx from GHCi)
 --------------------------------------------------------------
 
-getApplicationRepl :: AppPort -> IO (Int, RegistryCtx, Application)
-getApplicationRepl port = do
+getApplicationRepl ::  IO (Int, RegistryCtx, Application)
+getApplicationRepl = do
+    settings <- getAppSettings
     foundation <- getAppSettings >>= makeFoundation
-    wsettings <- getDevSettings $ warpSettings port foundation
+    wsettings <- getDevSettings $ warpSettings (appPort settings) foundation
     app1 <- makeApplication foundation
     return (getPort wsettings, foundation,  app1)
 
 shutdownApp :: RegistryCtx -> IO ()
 shutdownApp _ = return ()
+
+-- | For yesod devel, return the Warp settings and WAI Application.
+getApplicationDev :: AppPort -> IO (Settings, Application)
+getApplicationDev port = do
+    settings <- getAppSettings
+    foundation <- makeFoundation settings
+    app <- makeApplication foundation
+    wsettings <- getDevSettings $ warpSettings port foundation
+    return (wsettings, app)
+
+-- | main function for use by yesod devel
+develMain :: IO ()
+develMain = do
+    settings <- getAppSettings
+    develMainHelper $ getApplicationDev $ appPort settings
 
 ---------------------------------------------
 -- Functions for use in development with GHCi
