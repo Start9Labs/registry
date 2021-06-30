@@ -62,6 +62,7 @@ Category
     name CategoryTitle
     parent CategoryId Maybe
     description Text
+    UniqueName name
     deriving Eq
     deriving Show
 
