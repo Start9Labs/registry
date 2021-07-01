@@ -111,6 +111,7 @@ getAppManifestR appId = do
         Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
     manifest <- handleS9ErrT $ getManifest appMgrDir appDir appExt
+    addPackageHeader appMgrDir appDir appExt
     pure $ TypedContent "application/json" (toContent manifest)
     where appExt = Extension (toS appId) :: Extension "s9pk"
 
@@ -124,6 +125,7 @@ getAppConfigR appId = do
         Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
     config <- handleS9ErrT $ getConfig appMgrDir appDir appExt
+    addPackageHeader appMgrDir appDir appExt
     pure $ TypedContent "application/json" (toContent config)
     where appExt = Extension (toS appId) :: Extension "s9pk"
 
