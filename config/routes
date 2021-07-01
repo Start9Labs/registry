@@ -1,8 +1,8 @@
 
 
 /apps                                   AppsManifestR      GET -- get current apps listing
-/package/manifest/#AppIdentifier           AppManifestR       GET -- get app manifest from appmgr -- ?spec={semver-spec}
-/package/config/#AppIdentifier             AppConfigR         GET -- get app config from appmgr -- ?spec={semver-spec}
+/package/manifest/#AppIdentifier           AppManifestR    GET -- get app manifest from appmgr -- ?spec={semver-spec}
+/package/config/#AppIdentifier             AppConfigR      GET -- get app config from appmgr -- ?spec={semver-spec}
 
 /version                                VersionR           GET
 

@@ -36,6 +36,7 @@ import Data.Aeson
 import qualified Data.ByteString.Lazy     as BS
 import qualified Data.Text as T
 import Data.String.Interpolate.IsString
+import Util.Shared
 
 
 newtype CategoryRes = CategoryRes {
@@ -206,6 +207,7 @@ getServiceR = do
     -- let deps = HM.toList (versionInfoDependencies $ Data.List.head versionInfo)
     d <- traverse (mapDependencyMetadata appsDir appMgrDir) (HM.toList $ serviceManifestDependencies manifest)
     icon <- decodeIcon appMgrDir appsDir appExt
+    addPackageHeader appMgrDir appDir appExt
     pure $ ServiceRes
         { serviceResIcon = icon
         , serviceResManifest = manifest -- TypedContent "application/json" (toContent manifest)

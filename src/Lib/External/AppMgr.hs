@@ -62,3 +62,10 @@ getIcon appmgrPath appPath e@(Extension icon) = do
     case ec of
         ExitSuccess -> pure bs
         ExitFailure n -> throwE $ AppMgrE [i|icon #{icon} \--json|] n
+
+getPackageHash ::  (MonadIO m, KnownSymbol a)  => FilePath -> FilePath ->  Extension a -> S9ErrT m ByteString
+getPackageHash appmgrPath appPath e@(Extension appId) = do
+    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "hash", appPath <> show e] ""
+    case ec of
+        ExitSuccess -> pure bs
+        ExitFailure n -> throwE $ AppMgrE [i|hash #{appId} \--json|] n
