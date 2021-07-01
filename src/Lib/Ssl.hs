@@ -51,6 +51,6 @@ renewSslCerts :: ReaderT RegistryCtx IO ()
 renewSslCerts = do
     domain      <- asks $ registryHostname . appSettings
     (cert, key) <- asks $ (sslCertLocation &&& sslKeyLocation) . appSettings
-    void . liftIO $ system [i|certbot renew|]
+    void . liftIO $ system [i|certbot renew --webroot|]
     void . liftIO $ system [i|cp /etc/letsencrypt/live/#{domain}/fullchain.pem #{cert}|]
     void . liftIO $ system [i|cp /etc/letsencrypt/live/#{domain}/privkey.pem #{key}|]
