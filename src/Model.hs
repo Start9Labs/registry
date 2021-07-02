@@ -37,6 +37,7 @@ SVersion sql=version
     releaseNotes Text
     osVersionRequired VersionRange default='*'
     osVersionRecommended VersionRange default='*'
+    arch Text
     UniqueBin appId number
     deriving Eq
     deriving Show

@@ -7,7 +7,6 @@ module Lib.Types.Category where
 import Startlude 
 import Database.Persist.Postgresql
 import Data.Aeson
-import qualified Data.Text as T
 import Control.Monad
 import Yesod.Core
 import Data.String.Interpolate.IsString

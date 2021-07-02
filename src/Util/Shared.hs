@@ -3,7 +3,6 @@ module Util.Shared where
 import           Startlude hiding (Handler)
 
 import qualified Data.Text                     as T
-import Data.Text.Encoding
 import           Network.HTTP.Types
 import           Yesod.Core
 

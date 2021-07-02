@@ -31,6 +31,7 @@ getVersionAppR appId = do
     getVersionWSpec appsDir appExt
     where appExt = Extension (toS appId) :: Extension "s9pk"
 
+-- @TODO update to using db record
 getVersionSysR :: Text -> Handler (Maybe AppVersionRes)
 getVersionSysR sysAppId = runMaybeT $ do
     sysDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
