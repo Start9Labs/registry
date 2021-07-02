@@ -52,13 +52,16 @@ import Data.Aeson
 import Startlude (Hashable)
 
 -- | AppVersion is the core representation of the SemverQuad type.
-newtype Version = Version { unVersion :: (Word, Word, Word, Word) } deriving (Eq, Ord, ToJSONKey, Hashable, Read)
+newtype Version = Version { unVersion :: (Word, Word, Word, Word) } deriving (Eq, Ord, ToJSONKey, Hashable)
 instance Show Version where
     show (Version (x, y, z, q)) =
         let postfix = if q == 0 then "" else '.' : show q in show x <> "." <> show y <> "." <> show z <> postfix
 instance IsString Version where
     fromString s = either error id $ Atto.parseOnly parseVersion (T.pack s)
-
+instance Read Version where
+    readsPrec _ s = case Atto.parseOnly parseVersion (T.pack s) of
+        Left  _ -> []
+        Right a -> [(a, "")]
 -- | A change in the value found at 'major' implies a breaking change in the API that this version number describes
 major :: Version -> Word
 major (Version (x, _, _, _)) = x
