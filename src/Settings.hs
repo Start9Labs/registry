@@ -24,7 +24,6 @@ import           System.FilePath                ( (</>) )
 import           Yesod.Default.Config2          ( configSettingsYml )
 
 import           Lib.Types.Emver
-import           Lib.Types.AppIndex
 import           Orphans.Emver                  ( )
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
@@ -90,8 +89,3 @@ compileTimeAppSettings :: AppSettings
 compileTimeAppSettings = case fromJSON $ applyEnvValue False mempty configSettingsYmlValue of
     Error   e        -> panic $ toS e
     Success settings -> settings
-
-getAppManifest :: FilePath -> IO AppManifest
-getAppManifest resourcesDir = do
-    let appFile = (</> "apps.yaml") resourcesDir
-    loadYamlSettings [appFile] [] useEnv
