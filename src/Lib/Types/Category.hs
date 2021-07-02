@@ -9,8 +9,6 @@ import Database.Persist.Postgresql
 import Data.Aeson
 import Control.Monad
 import Yesod.Core
-import Data.String.Interpolate.IsString
-import qualified Data.ByteString.Lazy     as BS
 
 data CategoryTitle = FEATURED 
         | BITCOIN
@@ -41,7 +39,4 @@ instance ToContent CategoryTitle where
     toContent = toContent . toJSON
 instance ToTypedContent CategoryTitle where
     toTypedContent = toTypedContent . toJSON
-
-cat :: BS.ByteString
-cat = [i|"featured"|]
 

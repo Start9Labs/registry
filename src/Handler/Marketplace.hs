@@ -169,20 +169,22 @@ getServiceListR = do
         , serviceListResServices = services
     }
 
+-- >>> readMaybe $ "0.3.0" :: Maybe Version
+-- Just 0.3.0
+
 getServiceR :: Handler ServiceRes
 getServiceR = do
     getParameters <- reqGetParams <$> getRequest
     (service, version) <- case lookup "id" getParameters of
                     Nothing -> sendResponseStatus status404 ("id param should exist" :: Text)
                     Just appId' -> do
-                        versionString <- T.filter (not . isSpace) . fromMaybe "*" <$> lookupGetParam "version"
-                        case readMaybe versionString of
-                            Nothing -> do
-                                        sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
-                                        -- default to latest - need to determine best available based on OS version?
-                                        -- runDB $ fetchLatestApp appId' >>= errOnNothing status404 "service not found"
-                            Just v -> runDB $ fetchLatestAppAtVersion appId' v >>= errOnNothing status404 ("service at version " <> show v <> " not found")
-    $logInfo $ "*******************" <> show version
+                        case lookup "version" getParameters of
+                            -- default to latest - need to determine best available based on OS version?
+                            Nothing -> runDB $ fetchLatestApp appId' >>= errOnNothing status404 "service not found"
+                            Just v -> do
+                                case readMaybe v of 
+                                    Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
+                                    Just vv -> runDB $ fetchLatestAppAtVersion appId' vv >>= errOnNothing status404 ("service at version " <> show v <> " not found")
     (versions, mappedVersions) <- fetchAllAppVersions (entityKey service)
     categories <- runDB $ fetchAppCategories (entityKey service)
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
