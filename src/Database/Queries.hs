@@ -32,7 +32,7 @@ createAppVersion sId VersionInfo {..} arch = do
                             versionInfoReleaseNotes
                             versionInfoOsRequired
                             versionInfoOsRecommended
-                            arch
+                            (Just arch)
 
 createMetric :: MonadIO m => Key SApp -> Key SVersion -> ReaderT SqlBackend m ()
 createMetric appId versionId = do

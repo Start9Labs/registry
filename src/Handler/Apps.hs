@@ -17,9 +17,7 @@ import qualified Data.Attoparsec.Text          as Atto
 import qualified Data.ByteString.Lazy          as BS
 import           Data.Conduit
 import qualified Data.Conduit.Binary           as CB
-import qualified Data.HashMap.Strict           as HM
 import qualified Data.Text                     as T
-import qualified Data.Yaml                     as Yaml
 import           Database.Persist
 import qualified GHC.Show                       ( Show(..) )
 import           Network.HTTP.Types
