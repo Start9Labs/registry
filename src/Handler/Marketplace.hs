@@ -188,7 +188,6 @@ getServiceR = do
     categories <- runDB $ fetchAppCategories (entityKey service)
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     let appId = sAppAppId $ entityVal service
-    let appVersion = sVersionNumber (entityVal version)
     let appDir = (<> "/") . (</> show version) . (</> toS appId) $ appsDir
     let appExt = Extension (toS appId) :: Extension "s9pk"
     manifest' <- handleS9ErrT $ getManifest appMgrDir appDir appExt
@@ -198,13 +197,6 @@ getServiceR = do
                 $logError (show e)
                 sendResponseStatus status500 ("Internal Server Error" :: Text)
             Right (a :: ServiceManifest) -> pure a
-    -- @TODO uncomment when new apps.yaml
-    -- let storeApp = fromMaybe
-    --       _
-    --       (HM.lookup (sAppAppId $ entityVal service)
-    --          $ unAppManifest manifest)
-    -- let versionInfo = filter (\v -> versionInfoVersion v == appVersion) $ NE.toList $ storeAppVersionInfo storeApp
-    -- let deps = HM.toList (versionInfoDependencies $ Data.List.head versionInfo)
     d <- traverse (mapDependencyMetadata appsDir appMgrDir) (HM.toList $ serviceManifestDependencies manifest)
     icon <- decodeIcon appMgrDir appsDir appExt
     addPackageHeader appMgrDir appDir appExt

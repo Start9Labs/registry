@@ -45,7 +45,6 @@ import           Database.Queries
 import           Network.Wai                    ( Request(requestHeaderUserAgent) )
 import           Util.Shared
 
-
 pureLog :: Show a => a -> Handler a
 pureLog = liftA2 (*>) ($logInfo . show) pure
 
@@ -67,35 +66,6 @@ getEmbassyOsVersion = userAgentOsVersion
     where
         userAgentOsVersion =
             (hush . Atto.parseOnly userAgentOsVersionParser . decodeUtf8 <=< requestHeaderUserAgent) <$> waiRequest
-
-getAppsManifestR :: Handler TypedContent
-getAppsManifestR = do
-    osVersion                              <- getEmbassyOsVersion
-    appsDir <- (</> "apps") . resourcesDir . appSettings <$> getYesod
-    let appResourceFile = appsDir </> "apps.yaml"
-    manifest  <- liftIO (Yaml.decodeFileEither appResourceFile) >>= \case
-        Left e -> do
-            $logError "COULD NOT PARSE APP INDEX! CORRECT IMMEDIATELY!"
-            $logError (show e)
-            sendResponseStatus status500 ("Internal Server Error" :: Text)
-        Right a -> pure a
-    m <- mapM (addFileTimestamp' appsDir) (HM.toList $ unAppManifest manifest)
-    let withServiceTimestamps = AppManifest $ HM.fromList m
-    let pruned = case osVersion of
-            Nothing -> withServiceTimestamps
-            Just av -> AppManifest $ HM.mapMaybe (filterOsRecommended av) $ unAppManifest withServiceTimestamps
-    pure $ TypedContent "application/x-yaml" (toContent $ Yaml.encode pruned)
-    where
-        addFileTimestamp' :: (MonadHandler m, MonadIO m) => FilePath -> (AppIdentifier, StoreApp) -> m (AppIdentifier, StoreApp)
-        addFileTimestamp' dir (appId, service) = do
-            let ext = (Extension (toS appId) :: Extension "s9pk")
-            mostRecentVersion <- liftIO $ getMostRecentAppVersion dir ext
-            (v, _) <- case mostRecentVersion of
-                    Nothing -> notFound
-                    Just a -> pure $ unRegisteredAppVersion a
-            liftIO (addFileTimestamp dir ext service v) >>= \case
-                            Nothing -> notFound
-                            Just appWithTimestamp -> pure (appId, appWithTimestamp)
 
 getSysR :: Extension "" -> Handler TypedContent
 getSysR e = do
@@ -155,7 +125,7 @@ getApp rootDir ext@(Extension appId) = do
         determineEvent :: FileExistence -> String -> FilePath -> Version -> HandlerFor RegistryCtx TypedContent
         -- for app files
         determineEvent Existent "s9pk" fp av = do
-            _ <- recordMetrics appId rootDir av
+            _ <- recordMetrics appId av
             chunkIt fp
         -- for png, system, etc
         determineEvent Existent    _ fp _ = chunkIt fp
@@ -167,35 +137,20 @@ chunkIt fp = do
     addHeader "Content-Length" (show sz)
     respondSource typeOctet $ CB.sourceFile fp .| awaitForever sendChunkBS
 
-recordMetrics :: String -> FilePath -> Version -> HandlerFor RegistryCtx ()
-recordMetrics appId rootDir appVersion = do
+recordMetrics :: String -> Version -> HandlerFor RegistryCtx ()
+recordMetrics appId appVersion = do
     let appId' = T.pack appId
-    manifest                <- liftIO $ getAppManifest rootDir
-    (storeApp, versionInfo) <- case HM.lookup appId' $ unAppManifest manifest of
-        Nothing -> sendResponseStatus status400 ("App not present in manifest" :: Text)
-        Just sa -> do
-            -- look up at specfic version
-            vi <- case find ((appVersion ==) . versionInfoVersion) (storeAppVersionInfo sa) of
-                Nothing -> sendResponseStatus status400 ("App version not present in manifest" :: Text)
-                Just x  -> pure x
-            pure (sa, vi)
-    -- lazy load app at requested version if it does not yet exist to automatically transfer from using apps.yaml
-    sa                   <- runDB $ fetchApp appId'
-    (appKey, versionKey) <- case sa of
+    sa <- runDB $ fetchApp appId'
+    case sa of
         Nothing -> do
-            appKey'     <- runDB $ createApp appId' storeApp >>= errOnNothing status500 "duplicate app created"
-            versionKey' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing
-                status500
-                "duplicate app version created"
-            pure (appKey', versionKey')
+            $logError $ appId' <> " not found in database"
+            notFound 
         Just a -> do
             let appKey' = entityKey a
             existingVersion <- runDB $ fetchAppVersion appVersion appKey'
             case existingVersion of
                 Nothing -> do
-                    appVersion' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing
-                        status500
-                        "duplicate app version created"
-                    pure (appKey', appVersion')
-                Just v -> pure (appKey', entityKey v)
-    runDB $ createMetric appKey versionKey
+                    $logError $ "Version: " <> show appVersion <> " not found in database"
+                    notFound
+                Just v -> runDB $ createMetric (entityKey a) (entityKey v)
+    

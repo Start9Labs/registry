@@ -22,8 +22,8 @@ createApp appId StoreApp {..} = do
     time <- liftIO getCurrentTime
     insertUnique $ SApp time Nothing storeAppTitle appId storeAppDescShort storeAppDescLong storeAppIconType
 
-createAppVersion :: MonadIO m => Key SApp -> VersionInfo -> ReaderT SqlBackend m (Maybe (Key SVersion))
-createAppVersion sId VersionInfo {..} = do
+createAppVersion :: MonadIO m => Key SApp -> VersionInfo -> Text -> ReaderT SqlBackend m (Maybe (Key SVersion))
+createAppVersion sId VersionInfo {..} arch = do
     time <- liftIO getCurrentTime
     insertUnique $ SVersion time
                             Nothing
@@ -32,6 +32,7 @@ createAppVersion sId VersionInfo {..} = do
                             versionInfoReleaseNotes
                             versionInfoOsRequired
                             versionInfoOsRecommended
+                            arch
 
 createMetric :: MonadIO m => Key SApp -> Key SVersion -> ReaderT SqlBackend m ()
 createMetric appId versionId = do

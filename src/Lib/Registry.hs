@@ -27,7 +27,7 @@ instance Semigroup (MaxVersion a) where
     (MaxVersion (a, f)) <> (MaxVersion (b, g)) = if f a > g b then MaxVersion (a, f) else MaxVersion (b, g)
 
 -- retrieve all valid semver folder names with queried for file: rootDirectory/appId/[0.0.0 ...]/appId.extension
--- TODO move to db query after all appversions are seeded qith post 0.3.0 migration script
+-- @TODO move to db query after all appversions are seeded qith post 0.3.0 migration script
 getAvailableAppVersions :: KnownSymbol a => FilePath -> Extension a -> IO [RegisteredAppVersion]
 getAvailableAppVersions rootDirectory ext@(Extension appId) = do
     versions <- mapMaybe (hush . Atto.parseOnly parseVersion . toS) <$> getSubDirectories (rootDirectory </> appId)
