@@ -52,7 +52,7 @@ import Data.Aeson
 import Startlude (Hashable)
 
 -- | AppVersion is the core representation of the SemverQuad type.
-newtype Version = Version { unVersion :: (Word, Word, Word, Word) } deriving (Eq, Ord, ToJSONKey, Hashable)
+newtype Version = Version { unVersion :: (Word, Word, Word, Word) } deriving (Eq, Ord, ToJSONKey, Hashable, Read)
 instance Show Version where
     show (Version (x, y, z, q)) =
         let postfix = if q == 0 then "" else '.' : show q in show x <> "." <> show y <> "." <> show z <> postfix

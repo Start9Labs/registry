@@ -19,7 +19,6 @@ import Yesod.Persist.Core
 import Database.Marketplace
 import Data.List
 import Lib.Types.Category
-import Text.Read hiding (readMaybe)
 import Lib.Types.AppIndex
 import qualified Data.HashMap.Strict as HM
 import Data.HashMap.Strict (HashMap)
@@ -37,7 +36,6 @@ import qualified Data.ByteString.Lazy     as BS
 import qualified Data.Text as T
 import Data.String.Interpolate.IsString
 import Util.Shared
-
 
 newtype CategoryRes = CategoryRes {
     categories :: [CategoryTitle]
@@ -177,19 +175,21 @@ getServiceR = do
     (service, version) <- case lookup "id" getParameters of
                     Nothing -> sendResponseStatus status404 ("id param should exist" :: Text)
                     Just appId' -> do
-                        case lookup "version" getParameters of
+                        versionString <- T.filter (not . isSpace) . fromMaybe "*" <$> lookupGetParam "version"
+                        case readMaybe versionString of
                             Nothing -> do
+                                        sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
                                         -- default to latest - need to determine best available based on OS version?
-                                        runDB $ fetchLatestApp appId' >>= errOnNothing status404 "service not found"
-                            Just c -> do
-                                let version' = Version $ read $ toS c
-                                runDB $ fetchLatestAppAtVersion appId' version' >>= errOnNothing status404 ("service at version " <> show version' <> " not found")
+                                        -- runDB $ fetchLatestApp appId' >>= errOnNothing status404 "service not found"
+                            Just v -> runDB $ fetchLatestAppAtVersion appId' v >>= errOnNothing status404 ("service at version " <> show v <> " not found")
+    $logInfo $ "*******************" <> show version
     (versions, mappedVersions) <- fetchAllAppVersions (entityKey service)
     categories <- runDB $ fetchAppCategories (entityKey service)
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     let appId = sAppAppId $ entityVal service
     let appDir = (<> "/") . (</> show version) . (</> toS appId) $ appsDir
     let appExt = Extension (toS appId) :: Extension "s9pk"
+    $logInfo $ "*******************" <> show appDir
     manifest' <- handleS9ErrT $ getManifest appMgrDir appDir appExt
     manifest <- case eitherDecode $ BS.fromStrict manifest' of
             Left e -> do
