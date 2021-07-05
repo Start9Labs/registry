@@ -20,7 +20,6 @@ import Data.List
 import Lib.Types.Category
 import Lib.Types.AppIndex
 import qualified Data.HashMap.Strict as HM
-import Data.HashMap.Strict (HashMap)
 import Lib.Types.Emver
 import qualified Data.List.NonEmpty as NE
 import Database.Esqueleto.Experimental
@@ -50,9 +49,14 @@ data ServiceRes =  ServiceRes
     , serviceResManifest :: ServiceManifest
     , serviceResCategories :: [CategoryTitle]
     , serviceResVersions :: [Version]
-    , serviceResDependencyInfo :: HashMap AppIdentifier DependencyInfo
-    , serviceResReleaseNotes :: HashMap Version Text
-    } deriving (Show)
+    , serviceResDependencyInfo :: HM.HashMap AppIdentifier DependencyInfo
+    , serviceResReleaseNotes :: HM.HashMap Version Text
+    } deriving (Show, Generic)
+
+-- newtype ReleaseNotes = ReleaseNotes (HM.HashMap Version Text)
+--     deriving(Eq, Show)
+-- instance ToJSON ReleaseNotes where 
+--     toJSON kvs = object [ t .= v | (k,v) <- kvs, let (String t) = toJSON k ] 
 instance ToJSON ServiceRes where
     toJSON ServiceRes {..} = object
         [ "icon" .= serviceResIcon
@@ -60,8 +64,14 @@ instance ToJSON ServiceRes where
         , "categories" .= serviceResCategories
         , "versions" .= serviceResVersions
         , "dependency-metadata" .= serviceResDependencyInfo
-        , "release-notes" .= serviceResReleaseNotes
+        , "release-notes" .= object [ t .= v | (k,v) <- HM.toList serviceResReleaseNotes, let (String t) = toJSON k ]
         ]
+-- >>> encode hm
+-- "{\"0.2.0\":\"some notes\"}"
+hm :: Data.Aeson.Value
+hm = do 
+  object [ t .= v | (k,v) <- [("0.2.0", "some notes") :: (Version, Text)], let (String t) = toJSON k ]
+ 
 instance ToContent ServiceRes where
     toContent = toContent . toJSON
 instance ToTypedContent ServiceRes where
@@ -240,7 +250,7 @@ decodeIcon appmgrPath depPath e@(Extension icon) = do
             sendResponseStatus status400 e'
         Right (i' :: URL) -> pure $ i' <> T.pack icon
 
-fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], HashMap Version Text)
+fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], HM.HashMap Version Text)
 fetchAllAppVersions appId = do
     entityAppVersions <- runDB $ P.selectList [SVersionAppId P.==. appId] [] -- orderby version
     let vers = entityVal <$> entityAppVersions

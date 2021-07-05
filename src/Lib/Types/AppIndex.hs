@@ -197,7 +197,7 @@ instance ToJSON ServiceManifest where
         , "version" .= serviceManifestVersion
         , "description" .= object ["short" .= serviceManifestDescriptionShort, "long" .= serviceManifestDescriptionLong]
         , "release-notes" .= serviceManifestReleaseNotes
-        , "alerts" .= serviceManifestAlerts
+        , "alerts" .= object [ t .= v | (k,v) <- HM.toList serviceManifestAlerts, let (String t) = toJSON k ]
         , "dependencies" .= serviceManifestDependencies
         ]
 
