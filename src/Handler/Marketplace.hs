@@ -199,7 +199,10 @@ getServiceR = do
                 sendResponseStatus status500 ("Internal Server Error" :: Text)
             Right (a :: ServiceManifest) -> pure a
     d <- traverse (mapDependencyMetadata appsDir appMgrDir domain) (HM.toList $ serviceManifestDependencies manifest)
-    icon <- decodeIcon appMgrDir appsDir appExt
+    let depPath = appsDir </> toS appId </> show version
+    -- @TODO uncomment when sdk icon working
+    -- icon <- decodeIcon appMgrDir depPath appExt
+    let icon = [i|https://#{domain}/icons/#{appId}.png|]
     addPackageHeader appMgrDir appDir appExt
     pure $ ServiceRes
         { serviceResIcon = icon
@@ -221,9 +224,10 @@ mapDependencyMetadata appsDir appmgrPath domain (appId, depInfo) = do
     let depPath = appsDir </> toS appId </> show version
     -- @TODO uncomment when sdk icon working
     -- icon <- decodeIcon appmgrPath depPath ext
+    let icon = [i|https://#{domain}/icons/#{appId}.png|]
     pure (appId, DependencyInfo
             { dependencyInfoTitle = appId
-            , dependencyInfoIcon = [i|https://#{domain}/icons/#{appId}.png|]
+            , dependencyInfoIcon = icon
 
             })
 
