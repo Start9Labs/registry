@@ -179,7 +179,7 @@ getServiceR = do
                     Nothing -> sendResponseStatus status404 ("id param should exist" :: Text)
                     Just appId' -> do
                         case lookup "version" getParameters of
-                            -- default to latest - need to determine best available based on OS version?
+                            -- default to latest - @TODO need to determine best available based on OS version?
                             Nothing -> runDB $ fetchLatestApp appId' >>= errOnNothing status404 "service not found"
                             Just v -> do
                                 case readMaybe v of 
@@ -191,7 +191,6 @@ getServiceR = do
     let appId = sAppAppId $ entityVal service
     let appDir = (<> "/") . (</> show (sVersionNumber $ entityVal version)) . (</> toS appId) $ appsDir
     let appExt = Extension (toS appId) :: Extension "s9pk"
-    $logInfo $ "*******************" <> show appDir
     manifest' <- handleS9ErrT $ getManifest appMgrDir appDir appExt
     manifest <- case eitherDecode $ BS.fromStrict manifest' of
             Left e -> do
