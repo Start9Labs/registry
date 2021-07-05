@@ -9,7 +9,6 @@
 
 
 module Handler.Marketplace where
-
 import Startlude hiding (from, Handler, on)
 import Foundation
 import Yesod.Core
@@ -188,6 +187,7 @@ getServiceR = do
     (versions, mappedVersions) <- fetchAllAppVersions (entityKey service)
     categories <- runDB $ fetchAppCategories (entityKey service)
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
+    domain <- getsYesod $ registryHostname . appSettings
     let appId = sAppAppId $ entityVal service
     let appDir = (<> "/") . (</> show (sVersionNumber $ entityVal version)) . (</> toS appId) $ appsDir
     let appExt = Extension (toS appId) :: Extension "s9pk"
@@ -198,7 +198,7 @@ getServiceR = do
                 $logError (show e)
                 sendResponseStatus status500 ("Internal Server Error" :: Text)
             Right (a :: ServiceManifest) -> pure a
-    d <- traverse (mapDependencyMetadata appsDir appMgrDir) (HM.toList $ serviceManifestDependencies manifest)
+    d <- traverse (mapDependencyMetadata appsDir appMgrDir domain) (HM.toList $ serviceManifestDependencies manifest)
     icon <- decodeIcon appMgrDir appsDir appExt
     addPackageHeader appMgrDir appDir appExt
     pure $ ServiceRes
@@ -211,18 +211,20 @@ getServiceR = do
         }
 
 type URL = Text
-mapDependencyMetadata :: (MonadIO m, MonadHandler m) => FilePath -> FilePath -> (AppIdentifier, ServiceDependencyInfo) -> m (AppIdentifier, DependencyInfo)
-mapDependencyMetadata appsDir appmgrPath (appId, depInfo) = do
+mapDependencyMetadata :: (MonadIO m, MonadHandler m) => FilePath -> FilePath -> Text -> (AppIdentifier, ServiceDependencyInfo) -> m (AppIdentifier, DependencyInfo)
+mapDependencyMetadata appsDir appmgrPath domain (appId, depInfo) = do
     let ext = (Extension (toS appId) :: Extension "s9pk")
-    -- use if we have VersionRange instead of Version
-    -- version <- getBestVersion appsDir ext (snd dep) >>= \case
-    --     Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
-    --     Just v -> pure v
-    let depPath = appsDir </> toS appId </> show (serviceDependencyInfoVersion depInfo)
-    icon <- decodeIcon appmgrPath depPath ext
+    -- get best version from VersionRange of dependency
+    version <- getBestVersion appsDir ext (serviceDependencyInfoVersion depInfo) >>= \case
+        Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
+        Just v -> pure v
+    let depPath = appsDir </> toS appId </> show version
+    -- @TODO uncomment when sdk icon working
+    -- icon <- decodeIcon appmgrPath depPath ext
     pure (appId, DependencyInfo
             { dependencyInfoTitle = appId
-            , dependencyInfoIcon = icon
+            , dependencyInfoIcon = [i|https://#{domain}/icons/#{appId}.png|]
+
             })
 
 decodeIcon :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m URL
