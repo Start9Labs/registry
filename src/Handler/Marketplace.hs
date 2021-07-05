@@ -203,7 +203,7 @@ getServiceR = do
     -- @TODO uncomment when sdk icon working
     -- icon <- decodeIcon appMgrDir depPath appExt
     let icon = [i|https://#{domain}/icons/#{appId}.png|]
-    addPackageHeader appMgrDir appDir appExt
+    -- addPackageHeader appMgrDir appDir appExt
     pure $ ServiceRes
         { serviceResIcon = icon
         , serviceResManifest = manifest -- TypedContent "application/json" (toContent manifest)
