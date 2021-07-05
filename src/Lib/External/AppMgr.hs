@@ -54,18 +54,18 @@ getManifest appmgrPath appPath e@(Extension appId) = do
     (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "manifest", appPath <> show e] ""
     case ec of
         ExitSuccess -> pure bs
-        ExitFailure n -> throwE $ AppMgrE [i|info manifest #{appId} \--json|] n
+        ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect manifest #{appId}|] n
 
 getIcon ::  (MonadIO m, KnownSymbol a)  => FilePath -> FilePath ->  Extension a -> S9ErrT m ByteString
 getIcon appmgrPath appPath e@(Extension icon) = do
     (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "icon", appPath <> show e] ""
     case ec of
         ExitSuccess -> pure bs
-        ExitFailure n -> throwE $ AppMgrE [i|icon #{icon} \--json|] n
+        ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect icon #{icon}|] n
 
 getPackageHash ::  (MonadIO m, KnownSymbol a)  => FilePath -> FilePath ->  Extension a -> S9ErrT m ByteString
 getPackageHash appmgrPath appPath e@(Extension appId) = do
     (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "hash", appPath <> show e] ""
     case ec of
         ExitSuccess -> pure bs
-        ExitFailure n -> throwE $ AppMgrE [i|hash #{appId} \--json|] n
+        ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect hash #{appId}|] n
