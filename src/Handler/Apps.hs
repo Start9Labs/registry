@@ -112,12 +112,16 @@ getApp rootDir ext@(Extension appId) = do
     putStrLn $ "valid appversion for " <> (show ext :: String) <> ": " <> show appVersions
     let satisfactory = filter ((<|| spec) . fst . unRegisteredAppVersion) appVersions
     let best = fst . getMaxVersion <$> foldMap (Just . MaxVersion . (, fst . unRegisteredAppVersion)) satisfactory
+    (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     case best of
         Nothing -> notFound
         Just (RegisteredAppVersion (appVersion, filePath)) -> do
             exists' <- liftIO $ doesFileExist filePath >>= \case
                 True  -> pure Existent
                 False -> pure NonExistent
+            let appDir = (<> "/") . (</> show appVersion) . (</> toS appId) $ appsDir
+            let appExt = Extension (toS appId) :: Extension "s9pk"
+            addPackageHeader appMgrDir appDir appExt
             determineEvent exists' (extension ext) filePath appVersion
     where
         determineEvent :: FileExistence -> String -> FilePath -> Version -> HandlerFor RegistryCtx TypedContent
