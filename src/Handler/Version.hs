@@ -27,8 +27,14 @@ getVersionR = do
 
 getVersionAppR :: Text -> Handler (Maybe AppVersionRes)
 getVersionAppR appId = do
-    appsDir <- (</> "apps") . resourcesDir . appSettings <$> getYesod
-    getVersionWSpec appsDir appExt
+    (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
+    res <- getVersionWSpec appsDir appExt
+    case res of
+        Nothing -> pure res
+        Just r -> do
+            let appDir = (<> "/") . (</> (show $ appVersionVersion r)) . (</> toS appId) $ appsDir
+            addPackageHeader appMgrDir appDir appExt
+            pure res
     where appExt = Extension (toS appId) :: Extension "s9pk"
 
 -- @TODO update to using db record
