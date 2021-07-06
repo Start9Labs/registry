@@ -34,7 +34,7 @@ import           Database.Persist.Postgresql           (createPostgresqlPool, pg
 import           Language.Haskell.TH.Syntax            (qLocation)
 import           Network.Wai
 import           Network.Wai.Handler.Warp              (Settings, defaultSettings, defaultShouldDisplayException,
-                                                        getPort, setHost, setOnException, setPort, runSettings)
+                                                        getPort, setHost, setOnException, setPort, runSettings, setHTTP2Disabled)
 import           Network.Wai.Handler.WarpTLS
 import           Network.Wai.Middleware.AcceptOverride
 import           Network.Wai.Middleware.Autohead
@@ -218,7 +218,7 @@ warpSettings port foundation =
             "yesod"
             LevelError
             (toLogStr $ "Exception from Warp: " ++ show e))
-      defaultSettings
+      (setHTTP2Disabled defaultSettings)
 
 getAppSettings :: IO AppSettings
 getAppSettings = loadYamlSettings [configSettingsYml] [] useEnv
