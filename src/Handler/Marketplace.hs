@@ -136,7 +136,7 @@ getCategoriesR = do
     allCategories <- runDB $ select $ do from $ table @Category
     pure $ CategoryRes $ categoryName . entityVal <$>allCategories
 
-getServiceListR :: Handler ServiceListRes
+getServiceListR :: Handler [ServiceAvailable]
 getServiceListR = do
     getParameters <- reqGetParams <$> getRequest
     let defaults = ServiceListDefaults {
@@ -172,14 +172,7 @@ getServiceListR = do
     filteredServices <- runDB $ searchServices category limit' ((page - 1) * limit') query
     domain <- getsYesod $ registryHostname . appSettings
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    services <- runDB $ traverse (mapEntityToServiceAvailable appMgrDir appsDir domain) filteredServices
-    pure $ ServiceListRes {
-          serviceListResCategories = [FEATURED .. MESSAGING]
-        , serviceListResServices = services
-    }
-
--- >>> readMaybe $ "0.3.0" :: Maybe Version
--- Just 0.3.0
+    runDB $ traverse (mapEntityToServiceAvailable appMgrDir appsDir domain) filteredServices
 
 getServiceR :: Handler ServiceRes
 getServiceR = do
