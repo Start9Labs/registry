@@ -64,6 +64,7 @@ Category
     parent CategoryId Maybe
     description Text
     UniqueName name
+    priority Int default=0
     deriving Eq
     deriving Show
 
