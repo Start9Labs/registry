@@ -69,3 +69,17 @@ getPackageHash appmgrPath appPath e@(Extension appId) = do
     case ec of
         ExitSuccess -> pure bs
         ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect hash #{appId}|] n
+
+getInstructions ::  (MonadIO m, KnownSymbol a)  => FilePath -> FilePath ->  Extension a -> S9ErrT m ByteString
+getInstructions appmgrPath appPath e@(Extension appId) = do
+    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "instructions", appPath <> show e] ""
+    case ec of
+        ExitSuccess -> pure bs
+        ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect instructions #{appId}|] n
+
+getLicense ::  (MonadIO m, KnownSymbol a)  => FilePath -> FilePath ->  Extension a -> S9ErrT m ByteString
+getLicense appmgrPath appPath e@(Extension appId) = do
+    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "license", appPath <> show e] ""
+    case ec of
+        ExitSuccess -> pure bs
+        ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect license #{appId}|] n
