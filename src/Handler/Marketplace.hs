@@ -150,7 +150,10 @@ instance ToTypedContent EosRes where
 
 getCategoriesR :: Handler CategoryRes
 getCategoriesR = do
-    allCategories <- runDB $ select $ do from $ table @Category
+    allCategories <- runDB $ select $ do 
+        cats <- from $ table @Category
+        orderBy [desc (cats ^. CategoryPriority)]
+        pure cats
     pure $ CategoryRes $ categoryName . entityVal <$>allCategories
 
 getEosR :: Handler EosRes
