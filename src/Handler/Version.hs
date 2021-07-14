@@ -37,7 +37,7 @@ getVersionAppR appId = do
             pure res
     where appExt = Extension (toS appId) :: Extension "s9pk"
 
--- @TODO update to using db record
+-- @TODO - deprecate
 getVersionSysR :: Text -> Handler (Maybe AppVersionRes)
 getVersionSysR sysAppId = runMaybeT $ do
     sysDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
@@ -51,8 +51,3 @@ getVersionWSpec :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe Ap
 getVersionWSpec rootDir ext = do
     av <- getVersionFromQuery rootDir ext
     pure $ liftA3 AppVersionRes av (pure Nothing) (pure Nothing)
-
-getSystemStatusR :: Handler OSVersionRes
-getSystemStatusR = do
-    -- hardcoded to the next major version release so the UI can by dynamic. this might change depending on the version number we decide to release.
-    pure $ OSVersionRes INSTRUCTIONS $ Version (0,3,0,0)

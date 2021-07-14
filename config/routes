@@ -1,15 +1,16 @@
-/package/manifest/#AppIdentifier        AppManifestR       GET -- get app manifest from appmgr -- ?spec={semver-spec}
-/package/config/#AppIdentifier          AppConfigR         GET -- get app config from appmgr -- ?spec={semver-spec}
 
-/version                                VersionR           GET
-
-/package/version/#Text                  VersionAppR        GET -- get most recent appId version
-/sys/version/#Text                      VersionSysR        GET -- get most recent sys app version
-
-/icons/#PNG                             IconsR             GET -- get icons
 !/package/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
-
-!/sys/#SYS_EXTENSIONLESS                SysR               GET -- get most recent sys app -- ?spec={semver-spec}
 /marketplace/data                       CategoriesR        GET -- get all marketplace categories
 /marketplace/available/list             ServiceListR       GET -- filter marketplace services by various query params
 /marketplace/available                  ServiceR           GET -- get service information
+/marketplace/Extension                  EosR               GET -- get eos information
+
+
+-- TODO deprecate
+!/sys/#SYS_EXTENSIONLESS                SysR               GET -- get most recent sys app -- ?spec={semver-spec}
+/version                                VersionR           GET
+/icons/#PNG                             IconsR             GET -- get icons
+/sys/version/#Text                      VersionSysR        GET -- get most recent sys app version
+/package/manifest/#AppIdentifier        AppManifestR       GET -- get app manifest from appmgr -- ?spec={semver-spec}
+/package/config/#AppIdentifier          AppConfigR         GET -- get app config from appmgr -- ?spec={semver-spec}
+/package/version/#Text                  VersionAppR        GET -- get most recent appId version

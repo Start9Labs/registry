@@ -48,30 +48,28 @@ data ServiceRes =  ServiceRes
     { serviceResIcon :: Text
     , serviceResManifest :: ServiceManifest
     , serviceResCategories :: [CategoryTitle]
+    , serviceResInstructions :: Text -- markdown
+    , serviceResLicense :: Text
     , serviceResVersions :: [Version]
     , serviceResDependencyInfo :: HM.HashMap AppIdentifier DependencyInfo
-    , serviceResReleaseNotes :: HM.HashMap Version Text
+    , serviceResReleaseNotes :: ReleaseNotes
     } deriving (Show, Generic)
 
--- newtype ReleaseNotes = ReleaseNotes (HM.HashMap Version Text)
---     deriving(Eq, Show)
--- instance ToJSON ReleaseNotes where 
---     toJSON kvs = object [ t .= v | (k,v) <- kvs, let (String t) = toJSON k ] 
+newtype ReleaseNotes = ReleaseNotes { unReleaseNotes :: HM.HashMap Version Text }
+    deriving (Eq, Show)
+instance ToJSON ReleaseNotes where
+    toJSON ReleaseNotes { .. } = object [ t .= v | (k,v) <- HM.toList unReleaseNotes, let (String t) = toJSON k ]
 instance ToJSON ServiceRes where
     toJSON ServiceRes {..} = object
         [ "icon" .= serviceResIcon
         , "manifest" .= serviceResManifest
         , "categories" .= serviceResCategories
+        , "instructions" .= serviceResInstructions
+        , "license" .= serviceResLicense
         , "versions" .= serviceResVersions
         , "dependency-metadata" .= serviceResDependencyInfo
-        , "release-notes" .= object [ t .= v | (k,v) <- HM.toList serviceResReleaseNotes, let (String t) = toJSON k ]
+        , "release-notes" .= serviceResReleaseNotes
         ]
--- >>> encode hm
--- "{\"0.2.0\":\"some notes\"}"
-hm :: Data.Aeson.Value
-hm = do 
-  object [ t .= v | (k,v) <- [("0.2.0", "some notes") :: (Version, Text)], let (String t) = toJSON k ]
- 
 instance ToContent ServiceRes where
     toContent = toContent . toJSON
 instance ToTypedContent ServiceRes where
@@ -120,6 +118,14 @@ instance ToContent ServiceAvailable where
 instance ToTypedContent ServiceAvailable where
     toTypedContent = toTypedContent . toJSON
 
+newtype ServiceAvailableRes = ServiceAvailableRes [ServiceAvailable]
+    deriving (Show, Generic)
+instance ToJSON ServiceAvailableRes
+instance ToContent ServiceAvailableRes where
+    toContent = toContent . toJSON
+instance ToTypedContent ServiceAvailableRes where
+    toTypedContent = toTypedContent . toJSON
+
 data OrderArrangement = ASC | DESC
     deriving (Eq, Show, Read)
 data ServiceListDefaults = ServiceListDefaults
@@ -131,12 +137,38 @@ data ServiceListDefaults = ServiceListDefaults
     }
     deriving (Eq, Show, Read)
 
+data EosRes = EosRes
+    { eosResVersion :: Version
+    , eosResHeadline :: Text
+    , eosResReleaseNotes :: ReleaseNotes
+} deriving (Eq, Show, Generic)
+instance ToJSON EosRes
+instance ToContent EosRes where
+    toContent = toContent . toJSON
+instance ToTypedContent EosRes where
+    toTypedContent = toTypedContent . toJSON
+
 getCategoriesR :: Handler CategoryRes
 getCategoriesR = do
     allCategories <- runDB $ select $ do from $ table @Category
     pure $ CategoryRes $ categoryName . entityVal <$>allCategories
 
-getServiceListR :: Handler [ServiceAvailable]
+getEosR :: Handler EosRes
+getEosR = do
+    allEosVersions <- runDB $ select $ do
+        vers <- from $ table @OsVersion
+        orderBy [desc (vers ^. OsVersionUpdatedAt)]
+        pure vers
+    let osV = entityVal <$> allEosVersions
+    let latest = Data.List.head osV
+    let mappedVersions = ReleaseNotes $ HM.fromList $ (\v -> (osVersionNumber v, osVersionReleaseNotes v)) <$> osV
+    pure $ EosRes
+        { eosResVersion = osVersionNumber latest
+        , eosResHeadline = osVersionHeadline latest
+        , eosResReleaseNotes = mappedVersions
+        }
+
+getServiceListR :: Handler ServiceAvailableRes
 getServiceListR = do
     getParameters <- reqGetParams <$> getRequest
     let defaults = ServiceListDefaults {
@@ -172,7 +204,8 @@ getServiceListR = do
     filteredServices <- runDB $ searchServices category limit' ((page - 1) * limit') query
     domain <- getsYesod $ registryHostname . appSettings
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    runDB $ traverse (mapEntityToServiceAvailable appMgrDir appsDir domain) filteredServices
+    res <- runDB $ traverse (mapEntityToServiceAvailable appMgrDir appsDir domain) filteredServices
+    pure $ ServiceAvailableRes res
 
 getServiceR :: Handler ServiceRes
 getServiceR = do
@@ -184,7 +217,7 @@ getServiceR = do
                             -- default to latest - @TODO need to determine best available based on OS version?
                             Nothing -> runDB $ fetchLatestApp appId' >>= errOnNothing status404 "service not found"
                             Just v -> do
-                                case readMaybe v of 
+                                case readMaybe v of
                                     Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
                                     Just vv -> runDB $ fetchLatestAppAtVersion appId' vv >>= errOnNothing status404 ("service at version " <> show v <> " not found")
     (versions, mappedVersions) <- fetchAllAppVersions (entityKey service)
@@ -206,11 +239,15 @@ getServiceR = do
     -- @TODO uncomment when sdk icon working
     -- icon <- decodeIcon appMgrDir depPath appExt
     let icon = [i|https://#{domain}/icons/#{appId}.png|]
+    instructions <- decodeInstructions appMgrDir depPath appExt
+    license <- decodeLicense appMgrDir depPath appExt
     addPackageHeader appMgrDir appDir appExt
     pure $ ServiceRes
         { serviceResIcon = icon
         , serviceResManifest = manifest -- TypedContent "application/json" (toContent manifest)
         , serviceResCategories = serviceCategoryCategoryName . entityVal <$> categories
+        , serviceResInstructions = instructions
+        , serviceResLicense = license
         , serviceResVersions = versionInfoVersion <$> versions
         , serviceResDependencyInfo = HM.fromList d
         , serviceResReleaseNotes = mappedVersions
@@ -243,19 +280,37 @@ decodeIcon appmgrPath depPath e@(Extension icon) = do
             sendResponseStatus status400 e'
         Right (i' :: URL) -> pure $ i' <> T.pack icon
 
-fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], HM.HashMap Version Text)
+decodeInstructions :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m Text
+decodeInstructions appmgrPath depPath package = do
+    instructions <- handleS9ErrT $ getInstructions appmgrPath depPath package
+    case eitherDecode $ BS.fromStrict instructions of
+        Left e -> do
+            $logInfo $ T.pack e
+            sendResponseStatus status400 e
+        Right a -> pure a
+
+decodeLicense :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m Text
+decodeLicense appmgrPath depPath package = do
+    license <- handleS9ErrT $ getLicense appmgrPath depPath package
+    case eitherDecode $ BS.fromStrict license of
+        Left e -> do
+            $logInfo $ T.pack e
+            sendResponseStatus status400 e
+        Right a -> pure a
+
+fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do
     entityAppVersions <- runDB $ P.selectList [SVersionAppId P.==. appId] [] -- orderby version
     let vers = entityVal <$> entityAppVersions
     let vv = mapSVersionToVersionInfo vers
-    let mappedVersions = HM.fromList $ (\v -> (versionInfoVersion v, versionInfoReleaseNotes v)) <$> vv
+    let mappedVersions = ReleaseNotes $ HM.fromList $ (\v -> (versionInfoVersion v, versionInfoReleaseNotes v)) <$> vv
     pure (vv, mappedVersions)
 
 fetchMostRecentAppVersions :: MonadIO m => Key SApp -> ReaderT SqlBackend m [Entity SVersion]
 fetchMostRecentAppVersions appId = select $ do
                                         version <- from $ table @SVersion
                                         where_ (version ^. SVersionAppId ==. val appId)
-                                        orderBy [ asc (version ^. SVersionNumber) ]
+                                        orderBy [ desc (version ^. SVersionNumber) ]
                                         limit 1
                                         pure version
 
@@ -321,3 +376,24 @@ mapEntityToServiceAvailable appMgrDir appsDir domain service = do
             , serviceAvailableVersion = appVersion
             , serviceAvailableIcon = icon
             }
+
+-- >>> encode hm
+-- "{\"0.2.0\":\"some notes\"}"
+hm :: Data.Aeson.Value
+hm = object [ t .= v | (k,v) <- [("0.2.0", "some notes") :: (Version, Text)], let (String t) = toJSON k ]
+
+-- >>> encode rn
+-- "{\"0.2.0\":\"notes one\",\"0.3.0\":\"notes two\"}"
+rn :: ReleaseNotes
+rn = ReleaseNotes $ HM.fromList [("0.2.0", "notes one"), ("0.3.0", "notes two")]
+
+-- >>> readMaybe $ cc :: Maybe CategoryTitle
+-- Just FEATURED
+cc :: Text
+cc = T.toUpper "featured"
+
+-- >>> encode ccc
+-- "\"featured\""
+ccc :: CategoryTitle
+ccc = FEATURED
+

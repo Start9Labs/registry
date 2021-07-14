@@ -22,8 +22,6 @@ import Model
 import qualified Data.Text as T
 import Data.String.Interpolate.IsString
 import qualified Data.ByteString.Lazy as BS
-import Data.Tuple.Extra
-import qualified Data.Attoparsec.Text          as Atto
 
 type AppIdentifier = Text
 
