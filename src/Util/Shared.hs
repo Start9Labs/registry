@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell  #-}
+
 module Util.Shared where
 
 import           Startlude hiding (Handler)
@@ -23,9 +25,15 @@ getVersionFromQuery rootDir ext = do
 
 getBestVersion :: (MonadIO m, KnownSymbol a, MonadLogger m) => FilePath -> Extension a -> VersionRange -> m (Maybe Version)
 getBestVersion rootDir ext spec = do
+    -- @TODO change to db query?
     appVersions <- liftIO $ getAvailableAppVersions rootDir ext
+    $logInfo $ show appVersions
+    $logInfo $ show spec
+    $logInfo $ show ext
     let satisfactory = filter ((<|| spec) . fst . unRegisteredAppVersion) appVersions
     let best         = getMax <$> foldMap (Just . Max . fst . unRegisteredAppVersion) satisfactory
+    $logInfo $ show satisfactory
+    $logInfo $ show best
     pure best
 
 addPackageHeader :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m ()

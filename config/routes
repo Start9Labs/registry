@@ -1,9 +1,9 @@
 
 !/package/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
-/marketplace/data                       CategoriesR        GET -- get all marketplace categories
-/marketplace/available/list             ServiceListR       GET -- filter marketplace services by various query params
-/marketplace/available                  ServiceR           GET -- get service information
-/marketplace/Extension                  EosR               GET -- get eos information
+/data                                   CategoriesR        GET -- get all marketplace categories
+/packages                               PackageListR       GET -- filter marketplace services by various query params
+/eos                                    EosR               GET -- get eos information
+/version/latest                         VersionLatestR     GET -- get latest version of apps in query param id
 
 
 -- TODO deprecate
