@@ -6,10 +6,11 @@
 {-# LANGUAGE TemplateHaskell  #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TupleSections #-}
 
 
 module Handler.Marketplace where
-import Startlude hiding (from, Handler, on)
+import Startlude hiding (from, Handler, on, sortOn)
 import Foundation
 import Yesod.Core
 import qualified Database.Persist as P
@@ -52,7 +53,6 @@ data ServiceRes =  ServiceRes
     , serviceResLicense :: Text
     , serviceResVersions :: [Version]
     , serviceResDependencyInfo :: HM.HashMap AppIdentifier DependencyInfo
-    , serviceResReleaseNotes :: ReleaseNotes
     } deriving (Show, Generic)
 
 newtype ReleaseNotes = ReleaseNotes { unReleaseNotes :: HM.HashMap Version Text }
@@ -62,13 +62,12 @@ instance ToJSON ReleaseNotes where
 instance ToJSON ServiceRes where
     toJSON ServiceRes {..} = object
         [ "icon" .= serviceResIcon
+        , "license" .= serviceResLicense
+        , "instructions" .= serviceResInstructions
         , "manifest" .= serviceResManifest
         , "categories" .= serviceResCategories
-        , "instructions" .= serviceResInstructions
-        , "license" .= serviceResLicense
         , "versions" .= serviceResVersions
         , "dependency-metadata" .= serviceResDependencyInfo
-        , "release-notes" .= serviceResReleaseNotes
         ]
 instance ToContent ServiceRes where
     toContent = toContent . toJSON
@@ -118,7 +117,7 @@ instance ToContent ServiceAvailable where
 instance ToTypedContent ServiceAvailable where
     toTypedContent = toTypedContent . toJSON
 
-newtype ServiceAvailableRes = ServiceAvailableRes [ServiceAvailable]
+newtype ServiceAvailableRes = ServiceAvailableRes [ServiceRes]
     deriving (Show, Generic)
 instance ToJSON ServiceAvailableRes
 instance ToContent ServiceAvailableRes where
@@ -126,6 +125,13 @@ instance ToContent ServiceAvailableRes where
 instance ToTypedContent ServiceAvailableRes where
     toTypedContent = toTypedContent . toJSON
 
+newtype VersionLatestRes = VersionLatestRes (HM.HashMap AppIdentifier (Maybe Version))
+    deriving (Show, Generic)
+instance ToJSON VersionLatestRes
+instance ToContent VersionLatestRes where
+    toContent = toContent . toJSON
+instance ToTypedContent VersionLatestRes where
+    toTypedContent = toTypedContent . toJSON
 data OrderArrangement = ASC | DESC
     deriving (Eq, Show, Read)
 data ServiceListDefaults = ServiceListDefaults
@@ -136,7 +142,6 @@ data ServiceListDefaults = ServiceListDefaults
     , serviceListQuery :: Text
     }
     deriving (Eq, Show, Read)
-
 data EosRes = EosRes
     { eosResVersion :: Version
     , eosResHeadline :: Text
@@ -148,9 +153,19 @@ instance ToContent EosRes where
 instance ToTypedContent EosRes where
     toTypedContent = toTypedContent . toJSON
 
+data PackageVersion = PackageVersion
+    { packageVersionId :: AppIdentifier
+    , packageVersionVersion :: VersionRange
+    } deriving (Show)
+instance FromJSON PackageVersion where
+    parseJSON = withObject "package version" $ \o -> do
+        packageVersionId <- o .: "id"
+        packageVersionVersion <- o .: "version"
+        pure PackageVersion { .. }
+
 getCategoriesR :: Handler CategoryRes
 getCategoriesR = do
-    allCategories <- runDB $ select $ do 
+    allCategories <- runDB $ select $ do
         cats <- from $ table @Category
         orderBy [desc (cats ^. CategoryPriority)]
         pure cats
@@ -160,55 +175,100 @@ getEosR :: Handler EosRes
 getEosR = do
     allEosVersions <- runDB $ select $ do
         vers <- from $ table @OsVersion
-        orderBy [desc (vers ^. OsVersionUpdatedAt)]
+        orderBy [desc (vers ^. OsVersionCreatedAt)]
         pure vers
     let osV = entityVal <$> allEosVersions
     let latest = Data.List.head osV
-    let mappedVersions = ReleaseNotes $ HM.fromList $ (\v -> (osVersionNumber v, osVersionReleaseNotes v)) <$> osV
+    let mappedVersions = ReleaseNotes $ HM.fromList $ sortOn (Down . fst) $ (\v -> (osVersionNumber v, osVersionReleaseNotes v)) <$> osV
     pure $ EosRes
         { eosResVersion = osVersionNumber latest
         , eosResHeadline = osVersionHeadline latest
         , eosResReleaseNotes = mappedVersions
         }
 
-getServiceListR :: Handler ServiceAvailableRes
-getServiceListR = do
+getReleaseNotesR :: Handler ReleaseNotes
+getReleaseNotesR = do
     getParameters <- reqGetParams <$> getRequest
-    let defaults = ServiceListDefaults {
-              serviceListOrder = DESC
+    case lookup "id" getParameters of
+        Nothing -> sendResponseStatus status400 ("expected query param \"id\" to exist" :: Text)
+        Just package -> do
+            (service, _) <- runDB $ fetchLatestApp package >>= errOnNothing status404 "package not found"
+            (_, mappedVersions) <- fetchAllAppVersions (entityKey service)
+            pure mappedVersions
+
+getVersionLatestR :: Handler VersionLatestRes
+getVersionLatestR = do
+    getParameters <- reqGetParams <$> getRequest
+    case lookup "ids" getParameters of
+        Nothing -> sendResponseStatus status400 ("expected query param \"ids\" to exist" :: Text)
+        Just packages -> case eitherDecode $ BS.fromStrict $ encodeUtf8 packages of
+                Left e -> sendResponseStatus status400 ("could not parse query param \"ids\"" <> show e :: Text)
+                Right (p :: [AppIdentifier])-> do
+                    let packageList :: [(AppIdentifier, Maybe Version)] =  (, Nothing) <$> p
+                    found <- runDB $ traverse fetchLatestApp $ fst <$> packageList
+                    pure $ VersionLatestRes $ HM.union (HM.fromList $ (\v -> (sAppAppId $ entityVal $ fst v :: AppIdentifier, Just $ sVersionNumber $ entityVal $ snd v)) <$> catMaybes found) $ HM.fromList packageList
+
+getPackageListR :: Handler ServiceAvailableRes
+getPackageListR = do
+    getParameters <- reqGetParams <$> getRequest
+    let defaults = ServiceListDefaults 
+            { serviceListOrder = DESC
             , serviceListPageLimit = 20
             , serviceListPageNumber = 1
             , serviceListCategory = ANY
             , serviceListQuery = ""
-        }
-    category <- case lookup "category" getParameters of
-                    Nothing -> pure $ serviceListCategory defaults
-                    Just c -> case readMaybe $ T.toUpper c of
-                        Nothing -> do
-                            $logInfo c
-                            sendResponseStatus status400 ("could not read category" :: Text)
-                        Just t -> pure t
-    page <- case lookup "page" getParameters of
-                    Nothing -> pure $ serviceListPageNumber defaults
-                    Just p -> case readMaybe p of
-                        Nothing -> do
-                            $logInfo p
-                            sendResponseStatus status400 ("could not read page" :: Text)
-                        Just t -> pure $ case t of
-                                0 -> 1 -- disallow page 0 so offset is not negative
-                                _ -> t
-    limit' <- case lookup "per-page" getParameters of
-                    Nothing -> pure $ serviceListPageLimit defaults
-                    Just c -> case readMaybe $ toS c of
-                        Nothing -> sendResponseStatus status400 ("could not read per-page" :: Text)
-                        Just l -> pure l
-    query <- T.filter (not . isSpace) . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
-    $logInfo $ show category
-    filteredServices <- runDB $ searchServices category limit' ((page - 1) * limit') query
-    domain <- getsYesod $ registryHostname . appSettings
-    (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    res <- runDB $ traverse (mapEntityToServiceAvailable appMgrDir appsDir domain) filteredServices
-    pure $ ServiceAvailableRes res
+            }
+    case lookup "ids" getParameters of
+        Nothing -> do
+            -- query for all
+            category <- case lookup "category" getParameters of
+                            Nothing -> pure $ serviceListCategory defaults
+                            Just c -> case readMaybe $ T.toUpper c of
+                                Nothing -> do
+                                    $logInfo c
+                                    sendResponseStatus status400 ("could not read category" :: Text)
+                                Just t -> pure t
+            page <- case lookup "page" getParameters of
+                            Nothing -> pure $ serviceListPageNumber defaults
+                            Just p -> case readMaybe p of
+                                Nothing -> do
+                                    $logInfo p
+                                    sendResponseStatus status400 ("could not read page" :: Text)
+                                Just t -> pure $ case t of
+                                        0 -> 1 -- disallow page 0 so offset is not negative
+                                        _ -> t
+            limit' <- case lookup "per-page" getParameters of
+                            Nothing -> pure $ serviceListPageLimit defaults
+                            Just c -> case readMaybe $ toS c of
+                                Nothing -> sendResponseStatus status400 ("could not read per-page" :: Text)
+                                Just l -> pure l
+            query <- T.filter (not . isSpace) . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
+            filteredServices <- runDB $ searchServices category limit' ((page - 1) * limit') query
+            -- domain <- getsYesod $ registryHostname . appSettings
+            -- (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
+            -- res <- runDB $ traverse (mapEntityToServiceAvailable appMgrDir appsDir domain) filteredServices
+            res <- traverse (getServiceDetails Nothing) filteredServices
+            pure $ ServiceAvailableRes res
+
+        Just packageVersionList -> case eitherDecode $ BS.fromStrict $ encodeUtf8 packageVersionList of
+                        Left e -> sendResponseStatus status400 ("could not parse query param \"ids\"" <> show e :: Text)
+                        Right (packages :: [PackageVersion])-> do
+                            -- for each item in list get best available from version range
+                            availableServices <- traverse getPackageDetails packages
+                            services <- traverse (uncurry getServiceDetails) availableServices
+                            pure $ ServiceAvailableRes services
+            where
+                getPackageDetails :: PackageVersion -> HandlerFor RegistryCtx (Maybe (Entity SVersion), Entity SApp)
+                getPackageDetails pv = do
+                    appsDir <- getsYesod $ ((</> "apps") . resourcesDir) . appSettings
+                    let appId = packageVersionId pv
+                    let spec = packageVersionVersion pv
+                    let appExt = Extension (toS appId) :: Extension "s9pk"
+                    getBestVersion appsDir appExt spec >>= \case
+                        Nothing -> sendResponseStatus status404 ("best version could not be found for " <> appId <> " with spec " <> show spec :: Text)
+                        Just v -> do
+                            (service, version) <- runDB $ fetchLatestAppAtVersion appId v >>= errOnNothing status404 ("service at version " <> show v <> " not found")
+                            pure (Just version, service)
 
 getServiceR :: Handler ServiceRes
 getServiceR = do
@@ -223,11 +283,20 @@ getServiceR = do
                                 case readMaybe v of
                                     Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
                                     Just vv -> runDB $ fetchLatestAppAtVersion appId' vv >>= errOnNothing status404 ("service at version " <> show v <> " not found")
+    getServiceDetails (Just version) service
+
+getServiceDetails :: Maybe (Entity SVersion) -> Entity SApp -> HandlerFor RegistryCtx ServiceRes
+getServiceDetails maybeVersion service = do
     (versions, mappedVersions) <- fetchAllAppVersions (entityKey service)
     categories <- runDB $ fetchAppCategories (entityKey service)
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     domain <- getsYesod $ registryHostname . appSettings
     let appId = sAppAppId $ entityVal service
+    version <- case maybeVersion of
+            Nothing -> do
+                (_, version) <- runDB $ fetchLatestApp appId >>= errOnNothing status404 "service not found"
+                pure version
+            Just v -> pure v
     let appDir = (<> "/") . (</> show (sVersionNumber $ entityVal version)) . (</> toS appId) $ appsDir
     let appExt = Extension (toS appId) :: Extension "s9pk"
     manifest' <- handleS9ErrT $ getManifest appMgrDir appDir appExt
@@ -244,7 +313,6 @@ getServiceR = do
     let icon = [i|https://#{domain}/icons/#{appId}.png|]
     instructions <- decodeInstructions appMgrDir depPath appExt
     license <- decodeLicense appMgrDir depPath appExt
-    addPackageHeader appMgrDir appDir appExt
     pure $ ServiceRes
         { serviceResIcon = icon
         , serviceResManifest = manifest -- TypedContent "application/json" (toContent manifest)
@@ -253,7 +321,6 @@ getServiceR = do
         , serviceResLicense = license
         , serviceResVersions = versionInfoVersion <$> versions
         , serviceResDependencyInfo = HM.fromList d
-        , serviceResReleaseNotes = mappedVersions
         }
 
 type URL = Text
@@ -261,8 +328,9 @@ mapDependencyMetadata :: (MonadIO m, MonadHandler m) => FilePath -> FilePath -> 
 mapDependencyMetadata appsDir appmgrPath domain (appId, depInfo) = do
     let ext = (Extension (toS appId) :: Extension "s9pk")
     -- get best version from VersionRange of dependency
+    $logInfo $ show appsDir
     version <- getBestVersion appsDir ext (serviceDependencyInfoVersion depInfo) >>= \case
-        Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
+        Nothing -> sendResponseStatus status404 ("best version not found for dependent package " <> appId :: Text)
         Just v -> pure v
     let depPath = appsDir </> toS appId </> show version
     -- @TODO uncomment when sdk icon working
