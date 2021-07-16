@@ -29,8 +29,6 @@ getBestVersion rootDir ext spec = do
     appVersions <- liftIO $ getAvailableAppVersions rootDir ext
     let satisfactory = filter ((<|| spec) . fst . unRegisteredAppVersion) appVersions
     let best         = getMax <$> foldMap (Just . Max . fst . unRegisteredAppVersion) satisfactory
-    $logInfo $ show satisfactory
-    $logInfo $ show best
     pure best
 
 addPackageHeader :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m ()

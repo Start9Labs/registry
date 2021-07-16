@@ -49,7 +49,7 @@ data ServiceRes =  ServiceRes
     { serviceResIcon :: Text
     , serviceResManifest :: ServiceManifest
     , serviceResCategories :: [CategoryTitle]
-    , serviceResInstructions :: Text -- markdown
+    , serviceResInstructions :: Text
     , serviceResLicense :: Text
     , serviceResVersions :: [Version]
     , serviceResDependencyInfo :: HM.HashMap AppIdentifier DependencyInfo
@@ -307,7 +307,6 @@ getServiceDetails maybeVersion service = do
                 sendResponseStatus status500 ("Internal Server Error" :: Text)
             Right (a :: ServiceManifest) -> pure a
     d <- traverse (mapDependencyMetadata appsDir appMgrDir domain) (HM.toList $ serviceManifestDependencies manifest)
-    $logInfo $ show appDir
     -- @TODO uncomment when sdk icon working
     -- icon <- decodeIcon appMgrDir appDir appExt
     let icon = [i|https://#{domain}/icons/#{appId}.png|]
@@ -352,20 +351,12 @@ decodeIcon appmgrPath depPath e@(Extension icon) = do
 decodeInstructions :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m Text
 decodeInstructions appmgrPath depPath package = do
     instructions <- handleS9ErrT $ getInstructions appmgrPath depPath package
-    case eitherDecode $ BS.fromStrict instructions of
-        Left e -> do
-            $logInfo $ T.pack e
-            sendResponseStatus status400 e
-        Right a -> pure a
+    pure $ decodeUtf8 instructions
 
 decodeLicense :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m Text
 decodeLicense appmgrPath depPath package = do
     license <- handleS9ErrT $ getLicense appmgrPath depPath package
-    case eitherDecode $ BS.fromStrict license of
-        Left e -> do
-            $logInfo $ T.pack e
-            sendResponseStatus status400 e
-        Right a -> pure a
+    pure $ decodeUtf8 license
 
 fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do
