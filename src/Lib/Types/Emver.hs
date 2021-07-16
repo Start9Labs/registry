@@ -208,6 +208,8 @@ parseVersion = do
 -- >>> Atto.parseOnly parseRange "=2.3.4 1.2.3.4 - 2.3.4.5 (>3.0.0 || <3.4.5)"
 -- Right =2.3.4 >=1.2.3.4 <=2.3.4.5 ((>3.0.0 || <3.4.5))
 -- >>> Atto.parseOnly parseRange "0.2.6"
+-- >>> Atto.parseOnly parseRange ">=2.14.1.1 <3.0.0"
+-- Right >=2.14.1.1 <3.0.0
 parseRange :: Atto.Parser VersionRange
 parseRange = s <|> (Atto.char '*' *> pure Any) <|> (Anchor (Right EQ) <$> parseVersion)
     where

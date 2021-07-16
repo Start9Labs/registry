@@ -295,9 +295,9 @@ getServiceDetails maybeVersion service = do
     version <- case maybeVersion of
             Nothing -> do
                 (_, version) <- runDB $ fetchLatestApp appId >>= errOnNothing status404 "service not found"
-                pure version
-            Just v -> pure v
-    let appDir = (<> "/") . (</> show (sVersionNumber $ entityVal version)) . (</> toS appId) $ appsDir
+                pure $  sVersionNumber $ entityVal version
+            Just v -> pure $ sVersionNumber $ entityVal v
+    let appDir = (<> "/") . (</> show version) . (</> toS appId) $ appsDir
     let appExt = Extension (toS appId) :: Extension "s9pk"
     manifest' <- handleS9ErrT $ getManifest appMgrDir appDir appExt
     manifest <- case eitherDecode $ BS.fromStrict manifest' of
@@ -307,12 +307,12 @@ getServiceDetails maybeVersion service = do
                 sendResponseStatus status500 ("Internal Server Error" :: Text)
             Right (a :: ServiceManifest) -> pure a
     d <- traverse (mapDependencyMetadata appsDir appMgrDir domain) (HM.toList $ serviceManifestDependencies manifest)
-    let depPath = appsDir </> toS appId </> show version
+    $logInfo $ show appDir
     -- @TODO uncomment when sdk icon working
-    -- icon <- decodeIcon appMgrDir depPath appExt
+    -- icon <- decodeIcon appMgrDir appDir appExt
     let icon = [i|https://#{domain}/icons/#{appId}.png|]
-    instructions <- decodeInstructions appMgrDir depPath appExt
-    license <- decodeLicense appMgrDir depPath appExt
+    instructions <- decodeInstructions appMgrDir appDir appExt
+    license <- decodeLicense appMgrDir appDir appExt
     pure $ ServiceRes
         { serviceResIcon = icon
         , serviceResManifest = manifest -- TypedContent "application/json" (toContent manifest)
@@ -328,7 +328,6 @@ mapDependencyMetadata :: (MonadIO m, MonadHandler m) => FilePath -> FilePath -> 
 mapDependencyMetadata appsDir appmgrPath domain (appId, depInfo) = do
     let ext = (Extension (toS appId) :: Extension "s9pk")
     -- get best version from VersionRange of dependency
-    $logInfo $ show appsDir
     version <- getBestVersion appsDir ext (serviceDependencyInfoVersion depInfo) >>= \case
         Nothing -> sendResponseStatus status404 ("best version not found for dependent package " <> appId :: Text)
         Just v -> pure v
@@ -339,7 +338,6 @@ mapDependencyMetadata appsDir appmgrPath domain (appId, depInfo) = do
     pure (appId, DependencyInfo
             { dependencyInfoTitle = appId
             , dependencyInfoIcon = icon
-
             })
 
 decodeIcon :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m URL
