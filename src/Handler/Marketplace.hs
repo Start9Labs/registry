@@ -147,7 +147,12 @@ data EosRes = EosRes
     , eosResHeadline :: Text
     , eosResReleaseNotes :: ReleaseNotes
 } deriving (Eq, Show, Generic)
-instance ToJSON EosRes
+instance ToJSON EosRes where
+    toJSON EosRes { .. } = object 
+        [ "version" .= eosResVersion
+        , "headline" .= eosResHeadline
+        , "release-notes" .= eosResReleaseNotes
+        ]
 instance ToContent EosRes where
     toContent = toContent . toJSON
 instance ToTypedContent EosRes where
