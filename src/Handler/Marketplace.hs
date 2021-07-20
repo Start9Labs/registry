@@ -47,13 +47,13 @@ instance ToTypedContent CategoryRes where
     toTypedContent = toTypedContent . toJSON
 data ServiceRes =  ServiceRes
     { serviceResIcon :: Text
-    , serviceResManifest :: ServiceManifest
+    , serviceResManifest :: Maybe Data.Aeson.Value -- ServiceManifest
     , serviceResCategories :: [CategoryTitle]
     , serviceResInstructions :: Text
     , serviceResLicense :: Text
     , serviceResVersions :: [Version]
     , serviceResDependencyInfo :: HM.HashMap AppIdentifier DependencyInfo
-    } deriving (Show, Generic)
+    } deriving (Generic)
 
 newtype ReleaseNotes = ReleaseNotes { unReleaseNotes :: HM.HashMap Version Text }
     deriving (Eq, Show)
@@ -118,7 +118,7 @@ instance ToTypedContent ServiceAvailable where
     toTypedContent = toTypedContent . toJSON
 
 newtype ServiceAvailableRes = ServiceAvailableRes [ServiceRes]
-    deriving (Show, Generic)
+    deriving (Generic)
 instance ToJSON ServiceAvailableRes
 instance ToContent ServiceAvailableRes where
     toContent = toContent . toJSON
@@ -310,7 +310,7 @@ getServiceDetails maybeVersion service = do
                 $logError "could not parse service manifest!"
                 $logError (show e)
                 sendResponseStatus status500 ("Internal Server Error" :: Text)
-            Right (a :: ServiceManifest) -> pure a
+            Right a -> pure a
     d <- traverse (mapDependencyMetadata appsDir appMgrDir domain) (HM.toList $ serviceManifestDependencies manifest)
     -- @TODO uncomment when sdk icon working
     -- icon <- decodeIcon appMgrDir appDir appExt
@@ -319,7 +319,7 @@ getServiceDetails maybeVersion service = do
     license <- decodeLicense appMgrDir appDir appExt
     pure $ ServiceRes
         { serviceResIcon = icon
-        , serviceResManifest = manifest -- TypedContent "application/json" (toContent manifest)
+        , serviceResManifest = decode $ BS.fromStrict manifest' -- pass through raw JSON Value
         , serviceResCategories = serviceCategoryCategoryName . entityVal <$> categories
         , serviceResInstructions = instructions
         , serviceResLicense = license
