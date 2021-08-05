@@ -4,13 +4,12 @@
 /packages                               PackageListR       GET -- filter marketplace services by various query params
 /eos                                    EosR               GET -- get eos information
 /version/latest                         VersionLatestR     GET -- get latest version of apps in query param id
-
+/package/manifest/#AppIdentifier        AppManifestR       GET -- get app manifest from appmgr -- ?version={semver-spec}
 
 -- TODO deprecate
 !/sys/#SYS_EXTENSIONLESS                SysR               GET -- get most recent sys app -- ?spec={semver-spec}
 /version                                VersionR           GET
 /icons/#PNG                             IconsR             GET -- get icons
 /sys/version/#Text                      VersionSysR        GET -- get most recent sys app version
-/package/manifest/#AppIdentifier        AppManifestR       GET -- get app manifest from appmgr -- ?spec={semver-spec}
 /package/config/#AppIdentifier          AppConfigR         GET -- get app config from appmgr -- ?spec={semver-spec}
 /package/version/#Text                  VersionAppR        GET -- get most recent appId version
