@@ -1,16 +1,19 @@
 
 !/package/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
-/marketplace/package/data               CategoriesR        GET -- get all marketplace categories
-/marketplace/package/index              PackageListR       GET -- filter marketplace services by various query params
-/eos                                    EosR               GET -- get eos information
-/marketplace/latest-version             VersionLatestR     GET -- get latest version of apps in query param id
+/package/data                           CategoriesR        GET -- get all marketplace categories
+/package/index                          PackageListR       GET -- filter marketplace services by various query params
+/eos/latest                             EosR        GET -- get eos information
+/latest-version             VersionLatestR     GET -- get latest version of apps in query param id
 /package/manifest/#AppIdentifier        AppManifestR       GET -- get app manifest from appmgr -- ?version={semver-spec}
-/marketplace/package/release-notes      getReleaseNotesR   GET -- get release notes for package - expects query param of id=<pacakge-id>
+/marketplace/package/release-notes      ReleaseNotesR      GET -- get release notes for package - expects query param of id=<pacakge-id>
+/icons/#PNG                             IconsR             GET -- get icons - expects ?version=<emver>
+
+-- TODO confirm needed
+/package/config/#AppIdentifier          AppConfigR         GET -- get app config from appmgr -- ?spec={semver-spec}
+/package/version/#Text                  VersionAppR        GET -- get most recent appId version
+
 
 -- TODO deprecate
 !/sys/#SYS_EXTENSIONLESS                SysR               GET -- get most recent sys app -- ?spec={semver-spec}
 /version                                VersionR           GET
-/icons/#PNG                             IconsR             GET -- get icons
 /sys/version/#Text                      VersionSysR        GET -- get most recent sys app version
-/package/config/#AppIdentifier          AppConfigR         GET -- get app config from appmgr -- ?spec={semver-spec}
-/package/version/#Text                  VersionAppR        GET -- get most recent appId version
