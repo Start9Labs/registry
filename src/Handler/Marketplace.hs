@@ -59,6 +59,10 @@ newtype ReleaseNotes = ReleaseNotes { unReleaseNotes :: HM.HashMap Version Text 
     deriving (Eq, Show)
 instance ToJSON ReleaseNotes where
     toJSON ReleaseNotes { .. } = object [ t .= v | (k,v) <- HM.toList unReleaseNotes, let (String t) = toJSON k ]
+instance ToContent ReleaseNotes where
+    toContent = toContent . toJSON
+instance ToTypedContent ReleaseNotes where
+    toTypedContent = toTypedContent . toJSON
 instance ToJSON ServiceRes where
     toJSON ServiceRes {..} = object
         [ "icon" .= serviceResIcon
