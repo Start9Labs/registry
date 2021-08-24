@@ -75,7 +75,7 @@ getAppManifestR :: AppIdentifier -> Handler TypedContent
 getAppManifestR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     av <- getVersionFromQuery appsDir appExt >>= \case
-        Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
+        Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
     manifest <- handleS9ErrT $ getManifest appMgrDir appDir appExt
@@ -89,7 +89,7 @@ getAppConfigR appId = do
     let appsDir   = (</> "apps") . resourcesDir $ appSettings
     let appMgrDir = staticBinDir appSettings
     av <- getVersionFromQuery appsDir appExt >>= \case
-        Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
+        Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
     config <- handleS9ErrT $ getConfig appMgrDir appDir appExt

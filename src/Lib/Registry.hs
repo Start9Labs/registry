@@ -2,6 +2,7 @@
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
 module Lib.Registry where
 

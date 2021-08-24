@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds        #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RecordWildCards  #-}
+{-# LANGUAGE TemplateHaskell  #-}
 
 module Handler.Icons where
 
@@ -18,44 +19,53 @@ import           System.FilePath ((</>))
 import Util.Shared
 import Lib.External.AppMgr
 import Lib.Error
+import Data.Conduit.Process
+import Conduit
 import qualified Data.ByteString.Lazy as BS
+import Network.HTTP.Types
+import Lib.Types.AppIndex
 
-getIconsR :: Extension "png" -> Handler TypedContent
-getIconsR ext = do
+getIconsR :: AppIdentifier -> Handler TypedContent
+getIconsR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    spec <- getVersionFromQuery appsDir ext >>= \case 
-        Nothing -> notFound 
-        Just v -> pure v
-    servicePath <- liftIO $ getVersionedFileFromDir (appsDir </> show spec) ext spec
+    $logInfo $ show ext
+    spec <- getVersionFromQuery appsDir ext >>= \case
+        Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
+        Just v  -> pure v
+    servicePath <- liftIO $ getVersionedFileFromDir appsDir ext spec
     case servicePath of
         Nothing -> notFound
         Just p -> do
-            icon <- handleS9ErrT $ getIcon appMgrDir p ext
-            respondSource typePlain $ CB.sourceLazy (BS.fromStrict icon) .| awaitForever sendChunkBS
+            -- (_, Just hout, _, _) <- liftIO (createProcess $ iconBs { std_out = CreatePipe })
+            -- respondSource typePlain (runConduit $ yieldMany () [iconBs])
+            -- respondSource typePlain $ sourceHandle hout .| awaitForever sendChunkBS
+            respondSource typePlain (sendChunkBS =<< handleS9ErrT (getIcon appMgrDir p ext))
+    where ext = Extension (toS appId) :: Extension "s9pk"
 
--- getLicenseR :: Extension "" -> Handler TypedContent
--- getLicenseR ext = do
---     AppSettings{..} <- appSettings <$> getYesod
---     mPng <- liftIO $ getUnversionedFileFromDir (resourcesDir </> "icons") ext
---     case mPng of
---         Nothing -> notFound
---         Just pngPath -> do
---             putStrLn @Text $ show pngPath
---             exists <- liftIO $ doesFileExist pngPath
---             if exists
---                 then respondSource typePlain $ CB.sourceFile pngPath .| awaitForever sendChunkBS
---                 else notFound
+getLicenseR :: AppIdentifier -> Handler TypedContent
+getLicenseR appId = do
+    (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
+    $logInfo $ show ext
+    spec <- getVersionFromQuery appsDir ext >>= \case
+        Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
+        Just v  -> pure v
+    servicePath <- liftIO $ getVersionedFileFromDir appsDir ext spec
+    case servicePath of
+        Nothing -> notFound
+        Just p -> do
+            respondSource typePlain (sendChunkBS =<< handleS9ErrT (getLicense appMgrDir p ext))
+    where ext = Extension (toS appId) :: Extension "s9pk"
 
--- getMarkdownR :: Extension "md" -> Handler TypedContent
--- getMarkdownR ext = do
---     -- @TODO switch to getting from service directory
---     AppSettings{..} <- appSettings <$> getYesod
---     mPng <- liftIO $ getUnversionedFileFromDir (resourcesDir </> "icons") ext
---     case mPng of
---         Nothing -> notFound
---         Just pngPath -> do
---             putStrLn @Text $ show pngPath
---             exists <- liftIO $ doesFileExist pngPath
---             if exists
---                 then respondSource typePlain $ CB.sourceFile pngPath .| awaitForever sendChunkBS
---                 else notFound
+getInstructionsR :: AppIdentifier -> Handler TypedContent
+getInstructionsR appId = do
+    (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
+    $logInfo $ show ext
+    spec <- getVersionFromQuery appsDir ext >>= \case
+        Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
+        Just v  -> pure v
+    servicePath <- liftIO $ getVersionedFileFromDir appsDir ext spec
+    case servicePath of
+        Nothing -> notFound
+        Just p -> do
+            respondSource typePlain (sendChunkBS =<< handleS9ErrT (getInstructions appMgrDir p ext))
+    where ext = Extension (toS appId) :: Extension "s9pk"

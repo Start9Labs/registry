@@ -46,11 +46,11 @@ instance ToContent CategoryRes where
 instance ToTypedContent CategoryRes where
     toTypedContent = toTypedContent . toJSON
 data ServiceRes =  ServiceRes
-    { serviceResIcon :: Text
+    { serviceResIcon :: URL
     , serviceResManifest :: Maybe Data.Aeson.Value -- ServiceManifest
     , serviceResCategories :: [CategoryTitle]
-    , serviceResInstructions :: Text
-    , serviceResLicense :: Text
+    , serviceResInstructions :: URL
+    , serviceResLicense :: URL
     , serviceResVersions :: [Version]
     , serviceResDependencyInfo :: HM.HashMap AppIdentifier DependencyInfo
     } deriving (Generic)
@@ -296,7 +296,7 @@ getServiceR = do
 
 getServiceDetails :: Maybe (Entity SVersion) -> Entity SApp -> HandlerFor RegistryCtx ServiceRes
 getServiceDetails maybeVersion service = do
-    (versions, mappedVersions) <- fetchAllAppVersions (entityKey service)
+    (versions, _) <- fetchAllAppVersions (entityKey service)
     categories <- runDB $ fetchAppCategories (entityKey service)
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     domain <- getsYesod $ registryHostname . appSettings
@@ -315,37 +315,28 @@ getServiceDetails maybeVersion service = do
                 $logError (show e)
                 sendResponseStatus status500 ("Internal Server Error" :: Text)
             Right a -> pure a
-    d <- traverse (mapDependencyMetadata appsDir appMgrDir domain) (HM.toList $ serviceManifestDependencies manifest)
-    -- @TODO uncomment when sdk icon working
-    -- icon <- decodeIcon appMgrDir appDir appExt
-    let icon = [i|https://#{domain}/icons/#{appId}.png|]
-    instructions <- decodeInstructions appMgrDir appDir appExt
-    license <- decodeLicense appMgrDir appDir appExt
+    d <- traverse (mapDependencyMetadata appsDir domain) (HM.toList $ serviceManifestDependencies manifest)
     pure $ ServiceRes
-        { serviceResIcon = icon
+        { serviceResIcon = [i|https://#{domain}/package/icon/#{appId}|]
         , serviceResManifest = decode $ BS.fromStrict manifest' -- pass through raw JSON Value
         , serviceResCategories = serviceCategoryCategoryName . entityVal <$> categories
-        , serviceResInstructions = instructions
-        , serviceResLicense = license
+        , serviceResInstructions = [i|https://#{domain}/package/license/#{appId}|]
+        , serviceResLicense = [i|https://#{domain}/package/instructions/#{appId}|]
         , serviceResVersions = versionInfoVersion <$> versions
         , serviceResDependencyInfo = HM.fromList d
         }
 
 type URL = Text
-mapDependencyMetadata :: (MonadIO m, MonadHandler m) => FilePath -> FilePath -> Text -> (AppIdentifier, ServiceDependencyInfo) -> m (AppIdentifier, DependencyInfo)
-mapDependencyMetadata appsDir appmgrPath domain (appId, depInfo) = do
+mapDependencyMetadata :: (MonadIO m, MonadHandler m) => FilePath -> Text -> (AppIdentifier, ServiceDependencyInfo) -> m (AppIdentifier, DependencyInfo)
+mapDependencyMetadata appsDir domain (appId, depInfo) = do
     let ext = (Extension (toS appId) :: Extension "s9pk")
     -- get best version from VersionRange of dependency
     version <- getBestVersion appsDir ext (serviceDependencyInfoVersion depInfo) >>= \case
         Nothing -> sendResponseStatus status404 ("best version not found for dependent package " <> appId :: Text)
         Just v -> pure v
-    let depPath = appsDir </> toS appId </> show version
-    -- @TODO uncomment when sdk icon working
-    -- icon <- decodeIcon appmgrPath depPath ext
-    let icon = [i|https://#{domain}/icons/#{appId}.png|]
     pure (appId, DependencyInfo
             { dependencyInfoTitle = appId
-            , dependencyInfoIcon = icon
+            , dependencyInfoIcon = [i|https://#{domain}/package/icon/#{appId}?spec==#{version}|]
             })
 
 decodeIcon :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m URL
@@ -430,12 +421,9 @@ mapEntityToStoreApp serviceEntity = do
         , storeAppTimestamp = Just (sAppCreatedAt service) -- case on if updatedAt? or always use updated time? was file timestamp
         }
 
-mapEntityToServiceAvailable :: (MonadIO m, MonadHandler m) => FilePath -> FilePath -> Text -> Entity SApp ->  ReaderT SqlBackend m ServiceAvailable
-mapEntityToServiceAvailable appMgrDir appsDir domain service = do
-        -- @TODO uncomment and replace icon when portable embassy-sdk live
-        -- icon <- decodeIcon appMgrDir appsDir (Extension "png")
+mapEntityToServiceAvailable :: (MonadIO m, MonadHandler m) => Text -> Entity SApp ->  ReaderT SqlBackend m ServiceAvailable
+mapEntityToServiceAvailable domain service = do
         let appId = sAppAppId $ entityVal service
-        let icon = [i|https://#{domain}/icons/#{appId}.png|]
         (_, v) <- fetchLatestApp appId >>= errOnNothing status404 "service not found"
         let appVersion = sVersionNumber (entityVal v)
         pure $ ServiceAvailable
@@ -443,7 +431,7 @@ mapEntityToServiceAvailable appMgrDir appsDir domain service = do
             , serviceAvailableTitle = sAppTitle $ entityVal service
             , serviceAvailableDescShort = sAppDescShort $ entityVal service
             , serviceAvailableVersion = appVersion
-            , serviceAvailableIcon = icon
+            , serviceAvailableIcon = [i|https://#{domain}/package/icon/#{appId}?spec==#{appVersion}|]
             }
 
 -- >>> encode hm
