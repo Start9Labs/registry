@@ -320,8 +320,8 @@ getServiceDetails maybeVersion service = do
         { serviceResIcon = [i|https://#{domain}/package/icon/#{appId}|]
         , serviceResManifest = decode $ BS.fromStrict manifest' -- pass through raw JSON Value
         , serviceResCategories = serviceCategoryCategoryName . entityVal <$> categories
-        , serviceResInstructions = [i|https://#{domain}/package/license/#{appId}|]
-        , serviceResLicense = [i|https://#{domain}/package/instructions/#{appId}|]
+        , serviceResInstructions = [i|https://#{domain}/package/instructions/#{appId}|]
+        , serviceResLicense = [i|https://#{domain}/package/license/#{appId}|]
         , serviceResVersions = versionInfoVersion <$> versions
         , serviceResDependencyInfo = HM.fromList d
         }
