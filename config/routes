@@ -2,11 +2,13 @@
 !/package/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
 /package/data                           CategoriesR        GET -- get all marketplace categories
 /package/index                          PackageListR       GET -- filter marketplace services by various query params
-/eos/latest                             EosR        GET -- get eos information
-/latest-version             VersionLatestR     GET -- get latest version of apps in query param id
+/eos/latest                             EosR               GET -- get eos information
+/latest-version                         VersionLatestR     GET -- get latest version of apps in query param id
 /package/manifest/#AppIdentifier        AppManifestR       GET -- get app manifest from appmgr -- ?version={semver-spec}
 /marketplace/package/release-notes      ReleaseNotesR      GET -- get release notes for package - expects query param of id=<pacakge-id>
-/icons/#PNG                             IconsR             GET -- get icons - expects ?version=<emver>
+/package/icon/#AppIdentifier            IconsR             GET -- get icons - can specify version with ?spec=<emver>
+/package/license/#AppIdentifier         LicenseR           GET -- get icons - can specify version with ?spec=<emver>
+/package/instructions/#AppIdentifier    InstructionsR      GET -- get icons - can specify version with ?spec=<emver>
 
 -- TODO confirm needed
 /package/config/#AppIdentifier          AppConfigR         GET -- get app config from appmgr -- ?spec={semver-spec}
