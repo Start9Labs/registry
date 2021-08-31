@@ -5,7 +5,7 @@
 /eos/latest                             EosR               GET -- get eos information
 /latest-version                         VersionLatestR     GET -- get latest version of apps in query param id
 /package/manifest/#AppIdentifier        AppManifestR       GET -- get app manifest from appmgr -- ?version={semver-spec}
-/marketplace/package/release-notes      ReleaseNotesR      GET -- get release notes for package - expects query param of id=<pacakge-id>
+/package/release-notes                  ReleaseNotesR      GET -- get release notes for package - expects query param of id=<pacakge-id>
 /package/icon/#AppIdentifier            IconsR             GET -- get icons - can specify version with ?spec=<emver>
 /package/license/#AppIdentifier         LicenseR           GET -- get icons - can specify version with ?spec=<emver>
 /package/instructions/#AppIdentifier    InstructionsR      GET -- get icons - can specify version with ?spec=<emver>
