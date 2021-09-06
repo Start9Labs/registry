@@ -32,6 +32,8 @@ searchServices category pageItems offset' query = select $ do
                 `innerJoin` table @ServiceCategory
                 `on` (\(s :& sc) ->
                         sc ^. ServiceCategoryServiceId ==. s ^. SAppId)
+                        -- if there is a cateogry, only search in category
+                        -- weight title, short, long (bitcoin should equal Bitcoin Core)
             where_ $ sc ^. ServiceCategoryCategoryName ==. val category
                 &&. ((service ^. SAppDescShort `ilike` (%) ++. val query ++. (%)) 
                     ||. (service ^. SAppDescLong `ilike` (%) ++. val query ++. (%))
