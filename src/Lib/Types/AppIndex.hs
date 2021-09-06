@@ -167,6 +167,7 @@ data ServiceManifest = ServiceManifest
     , serviceManifestDescriptionLong :: Text
     , serviceManifestDescriptionShort :: Text
     , serviceManifestReleaseNotes :: Text
+    , serviceManifestIcon :: Maybe Text
     , serviceManifestAlerts :: HM.HashMap ServiceAlert (Maybe Text)
     , serviceManifestDependencies :: HM.HashMap AppIdentifier ServiceDependencyInfo
     } deriving (Show)
@@ -177,6 +178,7 @@ instance FromJSON ServiceManifest where
         serviceManifestVersion <- o .: "version"
         serviceManifestDescriptionLong <- o .: "description" >>= (.: "long")
         serviceManifestDescriptionShort <- o .: "description" >>= (.: "short")
+        serviceManifestIcon <- o .: "assets" >>= (.: "icon")
         serviceManifestReleaseNotes <- o .: "release-notes"
         alerts <- o .: "alerts"
         a <- for (HM.toList alerts) $ \(key, value) -> do
@@ -200,7 +202,7 @@ instance ToJSON ServiceManifest where
         ]
 
 -- >>> eitherDecode testManifest :: Either String ServiceManifest
--- Right (ServiceManifest {serviceManifestId = "embassy-pages", serviceManifestTitle = "Embassy Pages", serviceManifestVersion = 0.1.3, serviceManifestDescriptionLong = "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites.", serviceManifestDescriptionShort = "Create Tor websites, hosted on your Embassy.", serviceManifestReleaseNotes = "Upgrade to EmbassyOS v0.3.0", serviceManifestAlerts = fromList [(INSTALL,Nothing),(UNINSTALL,Nothing),(STOP,Nothing),(RESTORE,Nothing),(START,Nothing)], serviceManifestDependencies = fromList [("filebrowser",ServiceDependencyInfo {serviceDependencyInfoOptional = Nothing, serviceDependencyInfoVersion = >=2.14.1.1 <3.0.0, serviceDependencyInfoDescription = Just "Used to upload files to serve.", serviceDependencyInfoCritical = False})]})
+-- Right (ServiceManifest {serviceManifestId = "embassy-pages", serviceManifestTitle = "Embassy Pages", serviceManifestVersion = 0.1.3, serviceManifestDescriptionLong = "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites.", serviceManifestDescriptionShort = "Create Tor websites, hosted on your Embassy.", serviceManifestReleaseNotes = "Upgrade to EmbassyOS v0.3.0", serviceManifestIcon = Just "icon.png", serviceManifestAlerts = fromList [(INSTALL,Nothing),(UNINSTALL,Nothing),(STOP,Nothing),(RESTORE,Nothing),(START,Nothing)], serviceManifestDependencies = fromList [("filebrowser",ServiceDependencyInfo {serviceDependencyInfoOptional = Nothing, serviceDependencyInfoVersion = >=2.14.1.1 <3.0.0, serviceDependencyInfoDescription = Just "Used to upload files to serve.", serviceDependencyInfoCritical = False})]})
 testManifest :: BS.ByteString
 testManifest = [i|{
   "id": "embassy-pages",
