@@ -118,6 +118,7 @@ makeApplication foundation = do
 
 dynamicCorsResourcePolicy :: Request -> Maybe CorsResourcePolicy
 dynamicCorsResourcePolicy req = Just . policy . lookup hOrigin $ requestHeaders req
+    $logInfo $ show $ requestHeaders req
     where
         policy o = simpleCorsResourcePolicy
             { corsOrigins        = (\o' -> ([o'], True)) <$> o
