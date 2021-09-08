@@ -142,7 +142,7 @@ data ServiceListDefaults = ServiceListDefaults
     { serviceListOrder :: OrderArrangement
     , serviceListPageLimit :: Int64 -- the number of items per page
     , serviceListPageNumber :: Int64 -- the page you are on
-    , serviceListCategory :: CategoryTitle
+    , serviceListCategory :: Maybe CategoryTitle
     , serviceListQuery :: Text
     }
     deriving (Eq, Show, Read)
@@ -224,7 +224,7 @@ getPackageListR = do
             { serviceListOrder = DESC
             , serviceListPageLimit = 20
             , serviceListPageNumber = 1
-            , serviceListCategory = ANY
+            , serviceListCategory = Nothing
             , serviceListQuery = ""
             }
     case lookup "ids" getParameters of
@@ -236,7 +236,7 @@ getPackageListR = do
                                 Nothing -> do
                                     $logInfo c
                                     sendResponseStatus status400 ("could not read category" :: Text)
-                                Just t -> pure t
+                                Just t -> pure $ Just t
             page <- case lookup "page" getParameters of
                             Nothing -> pure $ serviceListPageNumber defaults
                             Just p -> case readMaybe p of

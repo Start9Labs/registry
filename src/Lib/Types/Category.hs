@@ -8,15 +8,14 @@ import Database.Persist.Postgresql
 import Data.Aeson
 import Control.Monad
 import Yesod.Core
-import qualified Data.Text as T
+
 data CategoryTitle = FEATURED 
         | BITCOIN
         | LIGHTNING
         | DATA
         | MESSAGING
         | SOCIAL
-        | NONE
-        | ANY
+        | ALTCOIN
     deriving (Eq, Enum, Show, Read)
 instance PersistField CategoryTitle where
     fromPersistValue = fromPersistValueJSON
@@ -24,7 +23,15 @@ instance PersistField CategoryTitle where
 instance PersistFieldSql CategoryTitle where
   sqlType _ = SqlString
 instance ToJSON CategoryTitle where
-    toJSON = String . T.toLower . show
+    -- toJSON = String . T.toLower . show
+    toJSON = \case 
+        FEATURED -> "featured"
+        BITCOIN -> "bitcoin"
+        LIGHTNING -> "lightning"
+        DATA -> "data"
+        MESSAGING -> "messaging"
+        SOCIAL -> "social"
+        ALTCOIN -> "alt coin"
 instance FromJSON CategoryTitle where
     parseJSON = withText "CategoryTitle" $ \case
         "featured"   -> pure FEATURED
@@ -33,8 +40,7 @@ instance FromJSON CategoryTitle where
         "data"       -> pure DATA
         "messaging"  -> pure MESSAGING
         "social"     -> pure SOCIAL
-        "none"       -> pure NONE
-        "any"        -> pure ANY
+        "alt coin"     -> pure ALTCOIN
         _            -> fail "unknown category title"
 instance ToContent CategoryTitle where
     toContent = toContent . toJSON
