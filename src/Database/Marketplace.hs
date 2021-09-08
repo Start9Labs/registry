@@ -13,8 +13,8 @@ import Data.HashMap.Strict
 import Data.Version
 import Data.Aeson
 
-searchServices :: MonadIO m => CategoryTitle -> Int64 ->  Int64 -> Text -> ReaderT SqlBackend m [P.Entity SApp]
-searchServices ANY pageItems offset' query = select $ do
+searchServices :: MonadIO m => Maybe CategoryTitle -> Int64 ->  Int64 -> Text -> ReaderT SqlBackend m [P.Entity SApp]
+searchServices Nothing pageItems offset' query = select $ do
         service <- from $ table @SApp
         where_ ((service ^. SAppDescShort `ilike` (%) ++. val query ++. (%)) 
             ||. (service ^. SAppDescLong `ilike` (%) ++. val query ++. (%))
@@ -24,7 +24,7 @@ searchServices ANY pageItems offset' query = select $ do
         limit pageItems
         offset offset'
         pure service
-searchServices category pageItems offset' query = select $ do
+searchServices (Just category) pageItems offset' query = select $ do
     services <- from
         (do
             (service :& sc) <-
