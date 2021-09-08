@@ -64,6 +64,7 @@ import           Control.Lens
 import           Control.Arrow ((***))
 import           Network.HTTP.Types.Header ( hOrigin )
 import           Data.List (lookup)
+import Network.Wai.Middleware.RequestLogger.JSON
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
@@ -118,7 +119,6 @@ makeApplication foundation = do
 
 dynamicCorsResourcePolicy :: Request -> Maybe CorsResourcePolicy
 dynamicCorsResourcePolicy req = Just . policy . lookup hOrigin $ requestHeaders req
-    $logInfo $ show $ requestHeaders req
     where
         policy o = simpleCorsResourcePolicy
             { corsOrigins        = (\o' -> ([o'], True)) <$> o
@@ -181,10 +181,6 @@ dynamicCorsResourcePolicy req = Just . policy . lookup hOrigin $ requestHeaders 
                                    ]
             , corsIgnoreFailures = True
             }
--- TODO: create a middle ware which will attempt to verify an ecdsa signed transaction against one of the public keys
--- in the validDevices table.
--- makeCheckSigWare :: RegistryCtx -> IO Middleware
--- makeCheckSigWare = _
 
 makeLogWare :: RegistryCtx -> IO Middleware
 makeLogWare foundation =
@@ -192,14 +188,10 @@ makeLogWare foundation =
         { outputFormat =
             if appDetailedRequestLogging $ appSettings foundation
                 then Detailed True
-                else Apache
-                        (if appIpFromHeader $ appSettings foundation
-                            then FromFallback
-                            else FromSocket)
+                else CustomOutputFormatWithDetailsAndHeaders formatAsJSONWithHeaders
         , destination = Logger $ loggerSet $ appLogger foundation
         }
 
--- TODO : what kind of auth is needed here
 makeAuthWare :: RegistryCtx -> Middleware
 makeAuthWare _ app req res = next
     where
