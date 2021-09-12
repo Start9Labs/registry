@@ -11,11 +11,11 @@ import           Paths_start9_registry          ( version )
 import           Startlude
 
 import qualified Control.Exception             as Exception
-import           Data.Maybe
 import           Data.Aeson
 import           Data.Aeson.Types
-import           Data.Version                   ( showVersion )
 import           Data.FileEmbed                 ( embedFile )
+import           Data.Maybe
+import           Data.Version                   ( showVersion )
 import           Data.Yaml                      ( decodeEither' )
 import           Data.Yaml.Config
 import           Database.Persist.Postgresql    ( PostgresConf )
@@ -24,6 +24,7 @@ import           System.FilePath                ( (</>) )
 import           Yesod.Default.Config2          ( configSettingsYml )
 
 import           Lib.Types.Emver
+import           Network.Wai                    ( FilePart )
 import           Orphans.Emver                  ( )
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
@@ -52,6 +53,7 @@ data AppSettings = AppSettings
     , sslCertLocation           :: FilePath
     , torPort                   :: AppPort
     , staticBinDir              :: FilePath
+    , errorLogRoot              :: FilePath
     }
 
 instance FromJSON AppSettings where
@@ -68,6 +70,7 @@ instance FromJSON AppSettings where
         registryHostname          <- o .: "registry-hostname"
         torPort                   <- o .: "tor-port"
         staticBinDir              <- o .: "static-bin-dir"
+        errorLogRoot              <- o .: "error-log-root"
 
         let sslKeyLocation  = sslPath </> "key.pem"
         let sslCsrLocation  = sslPath </> "certificate.csr"

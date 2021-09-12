@@ -1,4 +1,3 @@
-
 !/package/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
 /package/data                           CategoriesR        GET -- get all marketplace categories
 /package/index                          PackageListR       GET -- filter marketplace services by various query params
@@ -19,3 +18,5 @@
 !/sys/#SYS_EXTENSIONLESS                SysR               GET -- get most recent sys app -- ?spec={semver-spec}
 /version                                VersionR           GET
 /sys/version/#Text                      VersionSysR        GET -- get most recent sys app version
+
+/error-logs                              ErrorLogsR         POST
