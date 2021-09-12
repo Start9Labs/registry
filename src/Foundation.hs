@@ -6,7 +6,7 @@
 {-# LANGUAGE ViewPatterns          #-}
 module Foundation where
 
-import           Startlude hiding (Handler)
+import           Startlude               hiding ( Handler )
 
 import           Control.Monad.Logger           ( LogSource )
 import           Database.Persist.Sql
@@ -15,10 +15,9 @@ import           Yesod.Core
 import           Yesod.Core.Types               ( Logger )
 import qualified Yesod.Core.Unsafe             as Unsafe
 
+import           Lib.Types.AppIndex
 import           Settings
 import           Yesod.Persist.Core
-import           Lib.Types.AppIndex
-import Network.Wai
 
 -- | The foundation datatype for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application
