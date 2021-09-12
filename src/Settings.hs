@@ -24,7 +24,6 @@ import           System.FilePath                ( (</>) )
 import           Yesod.Default.Config2          ( configSettingsYml )
 
 import           Lib.Types.Emver
-import           Network.Wai                    ( FilePart )
 import           Orphans.Emver                  ( )
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
