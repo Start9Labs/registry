@@ -52,6 +52,7 @@ import           Yesod.Default.Config2
 -- Don't forget to add new modules to your cabal file!
 import           Foundation
 import           Handler.Apps
+import           Handler.ErrorLogs
 import           Handler.Icons
 import           Handler.Version
 import           Handler.Marketplace
@@ -65,6 +66,7 @@ import           Control.Arrow ((***))
 import           Network.HTTP.Types.Header ( hOrigin )
 import           Data.List (lookup)
 import Network.Wai.Middleware.RequestLogger.JSON
+import System.Directory (createDirectoryIfMissing)
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
@@ -95,6 +97,8 @@ makeFoundation appSettings = do
         -- https://ocharles.org.uk/blog/posts/2014-12-04-record-wildcards.html
         tempFoundation = mkFoundation $ panic "connPool forced in tempFoundation"
         logFunc = messageLoggerSource tempFoundation appLogger
+
+    createDirectoryIfMissing True (errorLogRoot appSettings)
 
     -- Create the database connection pool
     pool <- flip runLoggingT logFunc $ createPostgresqlPool
