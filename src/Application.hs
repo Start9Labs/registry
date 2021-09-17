@@ -40,7 +40,7 @@ import           Network.Wai.Middleware.AcceptOverride
 import           Network.Wai.Middleware.Autohead
 import           Network.Wai.Middleware.Cors           (CorsResourcePolicy (..), cors, simpleCorsResourcePolicy)
 import           Network.Wai.Middleware.MethodOverride
-import           Network.Wai.Middleware.RequestLogger  (Destination (Logger), IPAddrSource (..), OutputFormat (..),
+import           Network.Wai.Middleware.RequestLogger  (Destination (Logger), OutputFormat (..),
                                                         destination, mkRequestLogger, outputFormat)
 import           System.IO                             (hSetBuffering, BufferMode (..))
 import           System.Log.FastLogger                 (defaultBufSize, newStdoutLoggerSet, toLogStr)
