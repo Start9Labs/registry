@@ -24,8 +24,6 @@ data ErrorLog = ErrorLog
     }
     deriving (Eq, Show)
 
--- >>> eitherDecode "{ \"log-epoch\": \"1234\", \"log-message\": \"This is the famous budweiser beer\" }" :: Either String ErrorLog
--- <command line>: /lib/x86_64-linux-gnu/libkrb5.so.26: symbol pthread_cond_destroy version GLIBC_2.3.2 not defined in file libpthread.so.0 with link time reference
 instance FromJSON ErrorLog where
     parseJSON = withObject "Error Log" $ \o -> do
         errorLogEpoch <- o .: "log-epoch" >>= withText
