@@ -5,7 +5,6 @@ module Handler.ErrorLogs where
 import           Control.Monad                  ( MonadFail(fail) )
 import           Data.Aeson                     ( (.:)
                                                 , FromJSON(parseJSON)
-                                                , eitherDecode
                                                 , withObject
                                                 , withText
                                                 )
@@ -25,8 +24,6 @@ data ErrorLog = ErrorLog
     }
     deriving (Eq, Show)
 
--- >>> eitherDecode "{ \"log-epoch\": \"1234\", \"log-message\": \"This is the famous budweiser beer\" }" :: Either String ErrorLog
--- Variable not in scope: eitherDecode :: t0 -> Either String ErrorLog
 instance FromJSON ErrorLog where
     parseJSON = withObject "Error Log" $ \o -> do
         errorLogEpoch <- o .: "log-epoch" >>= withText
