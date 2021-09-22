@@ -8,8 +8,6 @@ import Database.Persist.Postgresql
 import Data.Aeson
 import Control.Monad
 import Yesod.Core
-import Database.PostgreSQL.Simple.FromField
-import Database.PostgreSQL.Simple.ToField
 
 data CategoryTitle = FEATURED
         | BITCOIN
@@ -47,6 +45,7 @@ instance FromJSON CategoryTitle where
 instance ToContent CategoryTitle where
     toContent = toContent . toJSON
 instance ToTypedContent CategoryTitle where
+<<<<<<< HEAD
     toTypedContent = toTypedContent . toJSON
 <<<<<<< HEAD
 =======
@@ -68,3 +67,6 @@ parseCT = \case
         "alt coin"   -> ALTCOIN
         -- _            ->  fail "unknown category title"
 >>>>>>> aggregate query functions
+=======
+    toTypedContent = toTypedContent . toJSON
+>>>>>>> clean up
