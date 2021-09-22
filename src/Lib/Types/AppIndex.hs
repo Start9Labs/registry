@@ -27,9 +27,6 @@ import           Yesod
 import           Data.Functor.Contravariant     ( Contravariant(contramap) )
 import qualified GHC.Read                       ( Read(..) )
 import qualified GHC.Show                       ( Show(..) )
-import           Database.PostgreSQL.Simple.ToField
-import           Database.PostgreSQL.Simple.FromField
-import           Data.Binary.Builder
 
 newtype AppIdentifier = AppIdentifier { unAppIdentifier :: Text }
   deriving (Eq)
@@ -62,13 +59,6 @@ instance ToContent AppIdentifier where
     toContent = toContent . toJSON
 instance ToTypedContent AppIdentifier where
     toTypedContent = toTypedContent . toJSON
-instance ToField AppIdentifier where
-    toField a = toJSONField a
-    -- Escape $ BS.toStrict $ encode a
-    -- Plain $ inQuotes $ putStringUtf8 $ show a 
-    -- $ fromByteString $ BS.toStrict $ encode a
-instance FromField AppIdentifier where
-    fromField = fromJSONField
 
 data VersionInfo = VersionInfo
     { versionInfoVersion       :: Version
