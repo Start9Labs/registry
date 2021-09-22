@@ -13,9 +13,6 @@
 -- TODO confirm needed
 /package/config/#AppIdentifier          AppConfigR         GET -- get app config from appmgr -- ?spec={semver-spec}
 /package/version/#Text                  VersionAppR        GET -- get most recent appId version
-
-
--- TODO deprecate
 !/sys/#SYS_EXTENSIONLESS                SysR               GET -- get most recent sys app -- ?spec={semver-spec}
 /version                                VersionR           GET
 /sys/version/#Text                      VersionSysR        GET -- get most recent sys app version
