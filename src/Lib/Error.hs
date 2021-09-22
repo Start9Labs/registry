@@ -14,6 +14,7 @@ type S9ErrT m = ExceptT S9Error m
 data S9Error =
       PersistentE Text
     | AppMgrE Text Int
+    | NotFoundE Text
     deriving (Show, Eq)
 
 instance Exception S9Error
@@ -23,10 +24,12 @@ toError :: S9Error -> Error
 toError = \case
     PersistentE t    -> Error DATABASE_ERROR t
     AppMgrE cmd code -> Error APPMGR_ERROR [i|"appmgr #{cmd}" exited with #{code}|]
+    NotFoundE e      -> Error NOT_FOUND [i|#{e}|]
 
 data ErrorCode =
       DATABASE_ERROR
     | APPMGR_ERROR
+    | NOT_FOUND
 
     deriving (Eq, Show)
 instance ToJSON ErrorCode where
@@ -53,6 +56,7 @@ toStatus :: S9Error -> Status
 toStatus = \case
     PersistentE _ -> status500
     AppMgrE _ _   -> status500
+    NotFoundE _   -> status404
 
 
 handleS9ErrT :: MonadHandler m => S9ErrT m a -> m a

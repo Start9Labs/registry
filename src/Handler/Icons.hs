@@ -78,7 +78,7 @@ getLicenseR appId = do
         Nothing -> notFound
         Just p  -> do
             respondSource typePlain (sendChunkBS =<< handleS9ErrT (getLicense appMgrDir p ext))
-    where ext = Extension (toS appId) :: Extension "s9pk"
+    where ext = Extension (show appId) :: Extension "s9pk"
 
 getInstructionsR :: AppIdentifier -> Handler TypedContent
 getInstructionsR appId = do
@@ -91,4 +91,4 @@ getInstructionsR appId = do
         Nothing -> notFound
         Just p  -> do
             respondSource typePlain (sendChunkBS =<< handleS9ErrT (getInstructions appMgrDir p ext))
-    where ext = Extension (toS appId) :: Extension "s9pk"
+    where ext = Extension (show appId) :: Extension "s9pk"

@@ -3,11 +3,13 @@
 
 module Lib.Types.Category where
 
-import           Startlude
-import           Database.Persist.Postgresql
-import           Data.Aeson
-import           Control.Monad
-import           Yesod.Core
+import Startlude
+import Database.Persist.Postgresql
+import Data.Aeson
+import Control.Monad
+import Yesod.Core
+import Database.PostgreSQL.Simple.FromField
+import Database.PostgreSQL.Simple.ToField
 
 data CategoryTitle = FEATURED
         | BITCOIN
@@ -46,3 +48,23 @@ instance ToContent CategoryTitle where
     toContent = toContent . toJSON
 instance ToTypedContent CategoryTitle where
     toTypedContent = toTypedContent . toJSON
+<<<<<<< HEAD
+=======
+instance FromField CategoryTitle where
+    fromField a = fromJSONField a 
+instance FromField [CategoryTitle] where
+    fromField a = fromJSONField a 
+instance ToField [CategoryTitle] where
+    toField a = toJSONField a 
+
+parseCT :: Text -> CategoryTitle
+parseCT = \case
+        "featured"   -> FEATURED
+        "bitcoin"    -> BITCOIN
+        "lightning"  -> LIGHTNING
+        "data"       -> DATA
+        "messaging"  -> MESSAGING
+        "social"     -> SOCIAL
+        "alt coin"   -> ALTCOIN
+        -- _            ->  fail "unknown category title"
+>>>>>>> aggregate query functions

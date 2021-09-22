@@ -77,11 +77,11 @@ getAppManifestR appId = do
     av                   <- getVersionFromQuery appsDir appExt >>= \case
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
-    let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
+    let appDir = (<> "/") . (</> show av) . (</> show appId) $ appsDir
     manifest <- handleS9ErrT $ getManifest appMgrDir appDir appExt
     addPackageHeader appMgrDir appDir appExt
     pure $ TypedContent "application/json" (toContent manifest)
-    where appExt = Extension (toS appId) :: Extension "s9pk"
+    where appExt = Extension (show appId) :: Extension "s9pk"
 
 getAppConfigR :: AppIdentifier -> Handler TypedContent
 getAppConfigR appId = do
@@ -91,11 +91,11 @@ getAppConfigR appId = do
     av <- getVersionFromQuery appsDir appExt >>= \case
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
-    let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
+    let appDir = (<> "/") . (</> show av) . (</> show appId) $ appsDir
     config <- handleS9ErrT $ getConfig appMgrDir appDir appExt
     addPackageHeader appMgrDir appDir appExt
     pure $ TypedContent "application/json" (toContent config)
-    where appExt = Extension (toS appId) :: Extension "s9pk"
+    where appExt = Extension (show appId) :: Extension "s9pk"
 
 getAppR :: Extension "s9pk" -> Handler TypedContent
 getAppR e = do
@@ -142,7 +142,7 @@ chunkIt fp = do
 recordMetrics :: String -> Version -> HandlerFor RegistryCtx ()
 recordMetrics appId appVersion = do
     let appId' = T.pack appId
-    sa <- runDB $ fetchApp appId'
+    sa <- runDB $ fetchApp $ AppIdentifier appId'
     case sa of
         Nothing -> do
             $logError $ appId' <> " not found in database"
