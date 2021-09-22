@@ -13,6 +13,8 @@ import           Lib.Types.Emver
 import           Database.Persist.Sql
 import qualified Data.Text                     as T
 import           Control.Monad.Fail             ( MonadFail(fail) )
+import Database.PostgreSQL.Simple.FromField
+import Database.PostgreSQL.Simple.ToField
 
 instance FromJSON Version where
     parseJSON = withText "Emver Version" $ either fail pure . Atto.parseOnly parseVersion
@@ -33,3 +35,9 @@ instance PersistField VersionRange where
     fromPersistValue = first T.pack . Atto.parseOnly parseRange <=< fromPersistValue
 instance PersistFieldSql VersionRange where
     sqlType _ = SqlString
+instance FromField Version where
+    fromField a = fromJSONField a 
+instance FromField [Version] where
+    fromField a = fromJSONField a 
+instance ToField [Version] where
+    toField a = toJSONField a 

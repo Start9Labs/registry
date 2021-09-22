@@ -18,12 +18,57 @@ import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 import           System.Directory
 import           Lib.Registry
-import           Model
+-- import Model
 import qualified Data.Text                     as T
 import           Data.String.Interpolate.IsString
 import qualified Data.ByteString.Lazy          as BS
+import           Database.Persist.Postgresql
+import           Yesod
+import           Data.Functor.Contravariant     ( Contravariant(contramap) )
+import qualified GHC.Read                       ( Read(..) )
+import qualified GHC.Show                       ( Show(..) )
+import           Database.PostgreSQL.Simple.ToField
+import           Database.PostgreSQL.Simple.FromField
+import           Data.Binary.Builder
 
-type AppIdentifier = Text
+newtype AppIdentifier = AppIdentifier { unAppIdentifier :: Text }
+  deriving (Eq)
+instance IsString AppIdentifier where
+    fromString = AppIdentifier . fromString
+instance Show AppIdentifier where
+    show = toS . unAppIdentifier
+instance Read AppIdentifier where
+    readsPrec _ s = [(AppIdentifier $ toS s, "")]
+instance Hashable AppIdentifier where
+    hashWithSalt n = hashWithSalt n . unAppIdentifier
+instance FromJSON AppIdentifier where
+    parseJSON = fmap AppIdentifier . parseJSON
+instance ToJSON AppIdentifier where
+    toJSON = toJSON . unAppIdentifier
+instance FromJSONKey AppIdentifier where
+    fromJSONKey = fmap AppIdentifier fromJSONKey
+instance ToJSONKey AppIdentifier where
+    toJSONKey = contramap unAppIdentifier toJSONKey
+instance PersistField AppIdentifier where
+    toPersistValue = PersistText . show
+    fromPersistValue (PersistText t) = Right . AppIdentifier $ toS t
+    fromPersistValue other           = Left $ "Invalid AppId: " <> show other
+instance PersistFieldSql AppIdentifier where
+    sqlType _ = SqlString
+instance PathPiece AppIdentifier where
+    fromPathPiece = fmap AppIdentifier . fromPathPiece
+    toPathPiece   = unAppIdentifier
+instance ToContent AppIdentifier where
+    toContent = toContent . toJSON
+instance ToTypedContent AppIdentifier where
+    toTypedContent = toTypedContent . toJSON
+instance ToField AppIdentifier where
+    toField a = toJSONField a
+    -- Escape $ BS.toStrict $ encode a
+    -- Plain $ inQuotes $ putStringUtf8 $ show a 
+    -- $ fromByteString $ BS.toStrict $ encode a
+instance FromField AppIdentifier where
+    fromField = fromJSONField
 
 data VersionInfo = VersionInfo
     { versionInfoVersion       :: Version
@@ -34,18 +79,6 @@ data VersionInfo = VersionInfo
     , versionInfoInstallAlert  :: Maybe Text
     }
     deriving (Eq, Show)
-
-mapSVersionToVersionInfo :: [SVersion] -> [VersionInfo]
-mapSVersionToVersionInfo sv = do
-    (\v -> VersionInfo { versionInfoVersion       = sVersionNumber v
-                       , versionInfoReleaseNotes  = sVersionReleaseNotes v
-                       , versionInfoDependencies  = HM.empty
-                       , versionInfoOsRequired    = sVersionOsVersionRequired v
-                       , versionInfoOsRecommended = sVersionOsVersionRecommended v
-                       , versionInfoInstallAlert  = Nothing
-                       }
-        )
-        <$> sv
 
 instance Ord VersionInfo where
     compare = compare `on` versionInfoVersion

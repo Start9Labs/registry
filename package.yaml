@@ -16,6 +16,7 @@ dependencies:
 - base >=4.12 && <5
 - aeson
 - attoparsec
+- binary
 - bytestring
 - casing
 - conduit
@@ -23,10 +24,12 @@ dependencies:
 - data-default
 - directory
 - errors
+- esqueleto
 - extra
 - file-embed
 - fast-logger
 - filepath
+- foreign-store
 - http-types
 - interpolate
 - lens
@@ -34,14 +37,17 @@ dependencies:
 - persistent
 - persistent-postgresql
 - persistent-template
+- postgresql-simple
 - process
 - protolude
 - shakespeare
 - template-haskell
 - text
+- text-conversions
 - time
 - transformers
 - typed-process
+- unliftio
 - unordered-containers
 - unix
 - wai
@@ -53,9 +59,6 @@ dependencies:
 - yesod
 - yesod-core
 - yesod-persistent
-- esqueleto
-- text-conversions
-- foreign-store
 
 library:
   source-dirs: src
