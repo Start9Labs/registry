@@ -15,13 +15,14 @@ import           Database.Persist.TH
 import           Lib.Types.Emver
 import           Lib.Types.Category
 import           Orphans.Emver                  ( )
+import Lib.Types.AppIndex
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 SApp
     createdAt UTCTime
     updatedAt UTCTime Maybe
     title Text
-    appId Text
+    appId AppIdentifier
     descShort Text
     descLong Text
     iconType Text
