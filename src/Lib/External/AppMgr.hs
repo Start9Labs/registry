@@ -6,6 +6,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies     #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Lib.External.AppMgr where
 
@@ -52,7 +53,7 @@ getConfig appmgrPath appPath e@(Extension appId) = fmap decodeUtf8 $ do
 
 getManifest :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m LBS.ByteString
 getManifest appmgrPath appPath e@(Extension appId) = do
-    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "manifest", appPath <> show e] ""
+    (!ec, !bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "manifest", appPath <> show e] ""
     case ec of
         ExitSuccess   -> pure bs
         ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect manifest #{appId}|] n
