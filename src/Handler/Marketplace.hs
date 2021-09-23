@@ -287,7 +287,7 @@ getPackageListR = do
                                                                                 query
             let filteredServices' = sAppAppId . entityVal <$> filteredServices
             settings        <- getsYesod appSettings
-            packageMetadata <- time "metadata" $ runDB $ fetchPackageMetadata filteredServices'
+            packageMetadata <- time "metadata" $ runDB $ fetchPackageMetadata $ Just filteredServices'
             $logInfo $ show packageMetadata
             serviceDetailResult <- time "service details" $ liftIO $ mapConcurrently
                 (getServiceDetails settings packageMetadata Nothing)
@@ -303,12 +303,10 @@ getPackageListR = do
             Right (packages :: [PackageVersion]) -> do
                 -- for each item in list get best available from version range
                 settings                <- getsYesod appSettings
-                availableServicesResult <- time "availableServicesResult" $ liftIO $ mapConcurrently
-                    (getPackageDetails settings)
-                    packages
                 -- @TODO fix _ error
+                packageMetadata     <- time "metadata2" $ runDB $ fetchPackageMetadata Nothing
+                availableServicesResult <- traverse (getPackageDetails packageMetadata) packages
                 let (_, availableServices) = partitionEithers availableServicesResult
-                packageMetadata     <- time "metadata2" $ runDB $ fetchPackageMetadata (snd <$> availableServices)
                 serviceDetailResult <- time "service details 2" $ liftIO $ mapConcurrently
                     (uncurry $ getServiceDetails settings packageMetadata)
                     availableServices
@@ -328,22 +326,18 @@ getPackageListR = do
 
 
             where
-                getPackageDetails :: (MonadIO m)
-                                  => AppSettings
-                                  -> PackageVersion
-                                  -> m (Either Text ((Maybe Version), AppIdentifier))
-                getPackageDetails settings pv = do
-                    let appId  = packageVersionId pv
-                    let spec   = packageVersionVersion pv
-                    let appExt = Extension (show appId) :: Extension "s9pk"
-                    time "best version" $ getBestVersion ((</> "apps") . resourcesDir $ settings) appExt spec >>= \case
-                        Nothing ->
-                            pure
-                                $  Left
-                                $  "best version could not be found for "
-                                <> show appId
-                                <> " with spec "
-                                <> show spec
+                getPackageDetails :: MonadIO m => (HM.HashMap AppIdentifier ([Version], [CategoryTitle])) -> PackageVersion -> m (Either Text ((Maybe Version), AppIdentifier))
+                getPackageDetails metadata pv = do
+                    let appId = packageVersionId pv
+                    let spec = packageVersionVersion pv
+                    pacakgeMetadata <- case HM.lookup appId metadata of
+                        Nothing-> throwIO $ NotFoundE [i|dependency metadata for #{appId} not found.|]
+                        Just m -> pure m
+                    -- get best version from VersionRange of dependency
+                    let satisfactory = filter (<|| spec) (fst pacakgeMetadata)
+                    let best = getMax <$> foldMap (Just . Max) satisfactory
+                    case best of
+                        Nothing -> pure $ Left $ "best version could not be found for " <> show appId <> " with spec " <> show spec
                         Just v -> do
                             pure $ Right (Just v, appId)
 
@@ -478,7 +472,7 @@ fetchLatestAppAtVersion appId version' = selectOne $ do
     pure (service, version)
 
 fetchPackageMetadata :: MonadUnliftIO m
-                     => [AppIdentifier]
+                     => Maybe [AppIdentifier]
                      -> ReaderT SqlBackend m (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
 fetchPackageMetadata ids = do
     let categoriesQuery = select $ do

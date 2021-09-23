@@ -13,7 +13,7 @@ ip-from-header: "_env:YESOD_IP_FROM_HEADER:false"
 # By default, `yesod devel` runs in development, and built executables use
 # production settings (see below). To override this, use the following:
 #
-# development: false
+development: true
 
 # Optional values with the following production defaults.
 # In development, they default to the inverse.
