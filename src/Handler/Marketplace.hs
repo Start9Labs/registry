@@ -11,39 +11,39 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
 module Handler.Marketplace where
-import           Startlude               hiding ( from
-                                                , Handler
+import           Data.Aeson
+import qualified Data.ByteString.Lazy          as BS
+import qualified Data.HashMap.Strict           as HM
+import           Data.List
+import qualified Data.List.NonEmpty            as NE
+import           Data.Semigroup
+import           Data.String.Interpolate.IsString
+import qualified Data.Text                     as T
+import           Database.Esqueleto.Experimental
+import           Database.Esqueleto.PostgreSQL  ( arrayAggDistinct )
+import           Database.Marketplace
+import qualified Database.Persist              as P
+import           Foundation
+import           Lib.Error
+import           Lib.External.AppMgr
+import           Lib.Registry
+import           Lib.Types.AppIndex
+import           Lib.Types.AppIndex             ( )
+import           Lib.Types.Category
+import           Lib.Types.Emver
+import           Model
+import           Network.HTTP.Types
+import           Settings
+import           Startlude               hiding ( Handler
+                                                , from
                                                 , on
                                                 , sortOn
                                                 )
-import           Foundation
-import           Yesod.Core
-import qualified Database.Persist              as P
-import           Model
-import           Yesod.Persist.Core
-import           Database.Marketplace
-import           Data.List
-import           Lib.Types.Category
-import           Lib.Types.AppIndex
-import qualified Data.HashMap.Strict           as HM
-import           Lib.Types.Emver
-import qualified Data.List.NonEmpty            as NE
-import           Database.Esqueleto.Experimental
-import           Lib.Error
-import           Network.HTTP.Types
-import           Lib.Registry
-import           Settings
 import           System.FilePath.Posix
-import           Lib.External.AppMgr
-import           Data.Aeson
-import qualified Data.ByteString.Lazy          as BS
-import qualified Data.Text                     as T
-import           Data.String.Interpolate.IsString
-import           Util.Shared
-import           Lib.Types.AppIndex             ( )
 import           UnliftIO.Async
-import           Database.Esqueleto.PostgreSQL  ( arrayAggDistinct )
-import           Data.Semigroup
+import           Util.Shared
+import           Yesod.Core
+import           Yesod.Persist.Core
 
 type URL = Text
 newtype CategoryRes = CategoryRes {
@@ -55,15 +55,16 @@ instance ToContent CategoryRes where
     toContent = toContent . toJSON
 instance ToTypedContent CategoryRes where
     toTypedContent = toTypedContent . toJSON
-data ServiceRes =  ServiceRes
-    { serviceResIcon :: URL
-    , serviceResManifest :: Maybe Data.Aeson.Value -- ServiceManifest
-    , serviceResCategories :: [CategoryTitle]
-    , serviceResInstructions :: URL
-    , serviceResLicense :: URL
-    , serviceResVersions :: [Version]
+data ServiceRes = ServiceRes
+    { serviceResIcon           :: URL
+    , serviceResManifest       :: Maybe Data.Aeson.Value -- ServiceManifest
+    , serviceResCategories     :: [CategoryTitle]
+    , serviceResInstructions   :: URL
+    , serviceResLicense        :: URL
+    , serviceResVersions       :: [Version]
     , serviceResDependencyInfo :: HM.HashMap AppIdentifier DependencyInfo
-    } deriving (Generic)
+    }
+    deriving Generic
 
 newtype ReleaseNotes = ReleaseNotes { unReleaseNotes :: HM.HashMap Version Text }
     deriving (Eq, Show)
@@ -89,15 +90,17 @@ instance ToTypedContent ServiceRes where
     toTypedContent = toTypedContent . toJSON
 data DependencyInfo = DependencyInfo
     { dependencyInfoTitle :: AppIdentifier
-    , dependencyInfoIcon :: URL
-    } deriving (Eq, Show)
+    , dependencyInfoIcon  :: URL
+    }
+    deriving (Eq, Show)
 instance ToJSON DependencyInfo where
     toJSON DependencyInfo {..} = object ["icon" .= dependencyInfoIcon, "title" .= dependencyInfoTitle]
 
-data ServiceListRes = ServiceListRes {
-    serviceListResCategories :: [CategoryTitle]
-    , serviceListResServices :: [ServiceAvailable]
-} deriving (Show)
+data ServiceListRes = ServiceListRes
+    { serviceListResCategories :: [CategoryTitle]
+    , serviceListResServices   :: [ServiceAvailable]
+    }
+    deriving Show
 instance ToJSON ServiceListRes where
     toJSON ServiceListRes {..} =
         object ["categories" .= serviceListResCategories, "services" .= serviceListResServices]
@@ -107,12 +110,13 @@ instance ToTypedContent ServiceListRes where
     toTypedContent = toTypedContent . toJSON
 
 data ServiceAvailable = ServiceAvailable
-    { serviceAvailableId :: AppIdentifier
-    , serviceAvailableTitle :: Text
-    , serviceAvailableVersion :: Version
-    , serviceAvailableIcon :: URL
+    { serviceAvailableId        :: AppIdentifier
+    , serviceAvailableTitle     :: Text
+    , serviceAvailableVersion   :: Version
+    , serviceAvailableIcon      :: URL
     , serviceAvailableDescShort :: Text
-    } deriving (Show)
+    }
+    deriving Show
 instance ToJSON ServiceAvailable where
     toJSON ServiceAvailable {..} = object
         [ "id" .= serviceAvailableId
@@ -144,18 +148,19 @@ instance ToTypedContent VersionLatestRes where
 data OrderArrangement = ASC | DESC
     deriving (Eq, Show, Read)
 data ServiceListDefaults = ServiceListDefaults
-    { serviceListOrder :: OrderArrangement
-    , serviceListPageLimit :: Int64 -- the number of items per page
+    { serviceListOrder      :: OrderArrangement
+    , serviceListPageLimit  :: Int64 -- the number of items per page
     , serviceListPageNumber :: Int64 -- the page you are on
-    , serviceListCategory :: Maybe CategoryTitle
-    , serviceListQuery :: Text
+    , serviceListCategory   :: Maybe CategoryTitle
+    , serviceListQuery      :: Text
     }
     deriving (Eq, Show, Read)
 data EosRes = EosRes
-    { eosResVersion :: Version
-    , eosResHeadline :: Text
+    { eosResVersion      :: Version
+    , eosResHeadline     :: Text
     , eosResReleaseNotes :: ReleaseNotes
-} deriving (Eq, Show, Generic)
+    }
+    deriving (Eq, Show, Generic)
 instance ToJSON EosRes where
     toJSON EosRes {..} =
         object ["version" .= eosResVersion, "headline" .= eosResHeadline, "release-notes" .= eosResReleaseNotes]
@@ -165,9 +170,10 @@ instance ToTypedContent EosRes where
     toTypedContent = toTypedContent . toJSON
 
 data PackageVersion = PackageVersion
-    { packageVersionId :: AppIdentifier
+    { packageVersionId      :: AppIdentifier
     , packageVersionVersion :: VersionRange
-    } deriving (Show)
+    }
+    deriving Show
 instance FromJSON PackageVersion where
     parseJSON = withObject "package version" $ \o -> do
         packageVersionId      <- o .: "id"
@@ -207,8 +213,9 @@ getReleaseNotesR = do
     case lookup "id" getParameters of
         Nothing      -> sendResponseStatus status400 ("expected query param \"id\" to exist" :: Text)
         Just package -> do
-            (service, _             ) <- runDB $ fetchLatestApp package >>= errOnNothing status404 "package not found"
-            (_      , mappedVersions) <- fetchAllAppVersions (entityKey service)
+            (service, _) <- runDB $ fetchLatestApp (AppIdentifier package) >>= errOnNothing status404
+                                                                                            "package not found"
+            (_, mappedVersions) <- fetchAllAppVersions (entityKey service)
             pure mappedVersions
 
 getVersionLatestR :: Handler VersionLatestRes
@@ -225,14 +232,19 @@ getVersionLatestR = do
                     $ VersionLatestRes
                     $ HM.union
                           (   HM.fromList
-                          $   (\v ->
-                                  ( sAppAppId $ entityVal $ fst v :: AppIdentifier
-                                  , Just $ sVersionNumber $ entityVal $ snd v
-                                  )
-                              )
+                          $   (\v -> (sAppAppId $ entityVal $ fst v, Just $ sVersionNumber $ entityVal $ snd v))
                           <$> catMaybes found
                           )
                     $ HM.fromList packageList
+
+time :: MonadIO m => Text -> m a -> m a
+time label m = do
+    start <- liftIO getCurrentTime
+    res   <- m
+    end   <- liftIO getCurrentTime
+    putStrLn $ label <> show (diffUTCTime end start)
+    pure res
+
 
 getPackageListR :: Handler ServiceAvailableRes
 getPackageListR = do
@@ -267,14 +279,19 @@ getPackageListR = do
                 Just c  -> case readMaybe $ toS c of
                     Nothing -> sendResponseStatus status400 ("could not read per-page" :: Text)
                     Just l  -> pure l
-            query <- T.filter (not . isSpace) . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
-            filteredServices <- runDB $ searchServices category limit' ((page - 1) * limit') query
+            query <- time "filter" $ T.filter (not . isSpace) . fromMaybe (serviceListQuery defaults) <$> lookupGetParam
+                "query"
+            filteredServices <- time "search services" $ runDB $ searchServices category
+                                                                                limit'
+                                                                                ((page - 1) * limit')
+                                                                                query
             let filteredServices' = sAppAppId . entityVal <$> filteredServices
             settings        <- getsYesod appSettings
-            packageMetadata <- runDB $ fetchPackageMetadata filteredServices'
+            packageMetadata <- time "metadata" $ runDB $ fetchPackageMetadata filteredServices'
             $logInfo $ show packageMetadata
-            serviceDetailResult <- liftIO
-                $ mapConcurrently (getServiceDetails settings packageMetadata Nothing) filteredServices'
+            serviceDetailResult <- time "service details" $ liftIO $ mapConcurrently
+                (getServiceDetails settings packageMetadata Nothing)
+                filteredServices'
             let (_, services) = partitionEithers serviceDetailResult
             pure $ ServiceAvailableRes services
             -- if null errors
@@ -286,18 +303,24 @@ getPackageListR = do
             Right (packages :: [PackageVersion]) -> do
                 -- for each item in list get best available from version range
                 settings                <- getsYesod appSettings
-                availableServicesResult <- liftIO $ mapConcurrently (getPackageDetails settings) packages
+                availableServicesResult <- time "availableServicesResult" $ liftIO $ mapConcurrently
+                    (getPackageDetails settings)
+                    packages
                 -- @TODO fix _ error
                 let (_, availableServices) = partitionEithers availableServicesResult
-                packageMetadata     <- runDB $ fetchPackageMetadata (snd <$> availableServices)
-                serviceDetailResult <- liftIO
-                    $ mapConcurrently (uncurry $ getServiceDetails settings packageMetadata) availableServices
+                packageMetadata     <- time "metadata2" $ runDB $ fetchPackageMetadata (snd <$> availableServices)
+                serviceDetailResult <- time "service details 2" $ liftIO $ mapConcurrently
+                    (uncurry $ getServiceDetails settings packageMetadata)
+                    availableServices
                 -- @TODO fix _ error
                 let (_, services) = partitionEithers serviceDetailResult
                 pure $ ServiceAvailableRes services
                             -- if null errors
                             --     then pure $ ServiceAvailableRes services
                             --     else sendResponseStatus status500 ("Errors acquiring service details: " <> show <$> errors)
+
+
+
 
 
 
@@ -313,7 +336,7 @@ getPackageListR = do
                     let appId  = packageVersionId pv
                     let spec   = packageVersionVersion pv
                     let appExt = Extension (show appId) :: Extension "s9pk"
-                    getBestVersion ((</> "apps") . resourcesDir $ settings) appExt spec >>= \case
+                    time "best version" $ getBestVersion ((</> "apps") . resourcesDir $ settings) appExt spec >>= \case
                         Nothing ->
                             pure
                                 $  Left
@@ -442,7 +465,7 @@ fetchLatestApp appId = selectOne $ do
     pure (service, version)
 
 fetchLatestAppAtVersion :: MonadIO m
-                        => Text
+                        => AppIdentifier
                         -> Version
                         -> ReaderT SqlBackend m (Maybe (P.Entity SApp, P.Entity SVersion))
 fetchLatestAppAtVersion appId version' = selectOne $ do
