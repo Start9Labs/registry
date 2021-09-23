@@ -14,6 +14,7 @@ import           Lib.Types.Emver
 import           Data.Semigroup
 import           Lib.External.AppMgr
 import           Lib.Error
+import qualified Data.ByteString.Lazy          as BS
 
 getVersionFromQuery :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe Version)
 getVersionFromQuery rootDir ext = do
@@ -38,4 +39,4 @@ getBestVersion rootDir ext spec = do
 addPackageHeader :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m ()
 addPackageHeader appMgrDir appDir appExt = do
     packageHash <- handleS9ErrT $ getPackageHash appMgrDir appDir appExt
-    addHeader "X-S9PK-HASH" $ decodeUtf8 packageHash
+    addHeader "X-S9PK-HASH" $ decodeUtf8 $ BS.toStrict packageHash

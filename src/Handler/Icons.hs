@@ -41,7 +41,7 @@ getIconsR appId = do
         Just v  -> pure v
     let appDir = (<> "/") . (</> show spec) . (</> toS appId) $ appsDir
     manifest' <- handleS9ErrT $ getManifest appMgrDir appDir ext
-    manifest  <- case eitherDecode $ BS.fromStrict manifest' of
+    manifest  <- case eitherDecode manifest' of
         Left e -> do
             $logError "could not parse service manifest!"
             $logError (show e)
@@ -61,7 +61,7 @@ getIconsR appId = do
                     SVG  -> pure typeSvg
                     JPG  -> pure typeJpeg
                     JPEG -> pure typeJpeg
-    respondSource mimeType (sendChunkBS =<< handleS9ErrT (getIcon appMgrDir (appDir </> show ext) ext))
+    respondSource mimeType (sendChunkBS =<< BS.toStrict <$> handleS9ErrT (getIcon appMgrDir (appDir </> show ext) ext))
     -- (_, Just hout, _, _) <- liftIO (createProcess $ iconBs { std_out = CreatePipe })
     -- respondSource typePlain (runConduit $ yieldMany () [iconBs])
     -- respondSource typePlain $ sourceHandle hout .| awaitForever sendChunkBS
@@ -77,7 +77,7 @@ getLicenseR appId = do
     case servicePath of
         Nothing -> notFound
         Just p  -> do
-            respondSource typePlain (sendChunkBS =<< handleS9ErrT (getLicense appMgrDir p ext))
+            respondSource typePlain (sendChunkBS =<< BS.toStrict <$> handleS9ErrT (getLicense appMgrDir p ext))
     where ext = Extension (show appId) :: Extension "s9pk"
 
 getInstructionsR :: AppIdentifier -> Handler TypedContent
@@ -90,5 +90,5 @@ getInstructionsR appId = do
     case servicePath of
         Nothing -> notFound
         Just p  -> do
-            respondSource typePlain (sendChunkBS =<< handleS9ErrT (getInstructions appMgrDir p ext))
+            respondSource typePlain (sendChunkBS =<< BS.toStrict <$> handleS9ErrT (getInstructions appMgrDir p ext))
     where ext = Extension (show appId) :: Extension "s9pk"
