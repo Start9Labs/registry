@@ -43,7 +43,9 @@ import           Util.Shared
 import           Lib.Types.AppIndex             ( )
 import           UnliftIO.Async
 import           Database.Esqueleto.PostgreSQL  ( arrayAggDistinct )
+import           Data.Semigroup
 
+type URL = Text
 newtype CategoryRes = CategoryRes {
     categories :: [CategoryTitle]
 } deriving (Show, Generic)
@@ -283,11 +285,14 @@ getPackageListR = do
             Left e -> sendResponseStatus status400 ("could not parse query param \"ids\"" <> show e :: Text)
             Right (packages :: [PackageVersion]) -> do
                 -- for each item in list get best available from version range
-                settings            <- getsYesod appSettings
-                availableServices   <- traverse (getPackageDetails settings) packages
+                settings                <- getsYesod appSettings
+                availableServicesResult <- liftIO $ mapConcurrently (getPackageDetails settings) packages
+                -- @TODO fix _ error
+                let (_, availableServices) = partitionEithers availableServicesResult
                 packageMetadata     <- runDB $ fetchPackageMetadata (snd <$> availableServices)
                 serviceDetailResult <- liftIO
                     $ mapConcurrently (uncurry $ getServiceDetails settings packageMetadata) availableServices
+                -- @TODO fix _ error
                 let (_, services) = partitionEithers serviceDetailResult
                 pure $ ServiceAvailableRes services
                             -- if null errors
@@ -296,21 +301,28 @@ getPackageListR = do
 
 
 
+
+
+
             where
-                getPackageDetails :: (MonadHandler m)
+                getPackageDetails :: (MonadIO m)
                                   => AppSettings
                                   -> PackageVersion
-                                  -> m (Maybe Version, AppIdentifier)
+                                  -> m (Either Text ((Maybe Version), AppIdentifier))
                 getPackageDetails settings pv = do
                     let appId  = packageVersionId pv
                     let spec   = packageVersionVersion pv
                     let appExt = Extension (show appId) :: Extension "s9pk"
                     getBestVersion ((</> "apps") . resourcesDir $ settings) appExt spec >>= \case
-                        Nothing -> sendResponseStatus
-                            status404
-                            ("best version could not be found for " <> show appId <> " with spec " <> show spec :: Text)
+                        Nothing ->
+                            pure
+                                $  Left
+                                $  "best version could not be found for "
+                                <> show appId
+                                <> " with spec "
+                                <> show spec
                         Just v -> do
-                            pure (Just v, appId)
+                            pure $ Right (Just v, appId)
 
 getServiceDetails :: (MonadIO m, Monad m, MonadError IOException m)
                   => AppSettings
@@ -334,13 +346,13 @@ getServiceDetails settings metadata maybeVersion appId = do
     let appDir = (<> "/") . (</> show version) . (</> show appId) $ appsDir
     let appExt = Extension (show appId) :: Extension "s9pk"
     manifest' <- handleS9ErrNuclear $ getManifest appMgrDir appDir appExt
-    case eitherDecode $ BS.fromStrict manifest' of
+    case eitherDecode $ manifest' of
         Left  e -> pure $ Left $ "Could not parse service manifest for " <> show appId <> ": " <> show e
         Right m -> do
             d <- liftIO
-                $ mapConcurrently (mapDependencyMetadata appsDir domain) (HM.toList $ serviceManifestDependencies m)
+                $ mapConcurrently (mapDependencyMetadata domain metadata) (HM.toList $ serviceManifestDependencies m)
             pure $ Right $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{appId}|]
-                                      , serviceResManifest       = decode $ BS.fromStrict manifest' -- pass through raw JSON Value
+                                      , serviceResManifest       = decode $ manifest' -- pass through raw JSON Value
                                       , serviceResCategories     = snd packageMetadata
                                       , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{appId}|]
                                       , serviceResLicense        = [i|https://#{domain}/package/license/#{appId}|]
@@ -349,16 +361,19 @@ getServiceDetails settings metadata maybeVersion appId = do
                                       }
 
 
-type URL = Text
 mapDependencyMetadata :: (MonadIO m)
-                      => FilePath
-                      -> Text
+                      => Text
+                      -> HM.HashMap AppIdentifier ([Version], [CategoryTitle])
                       -> (AppIdentifier, ServiceDependencyInfo)
                       -> m (Either Text (AppIdentifier, DependencyInfo))
-mapDependencyMetadata appsDir domain (appId, depInfo) = do
-    let ext = (Extension (show appId) :: Extension "s9pk")
+mapDependencyMetadata domain metadata (appId, depInfo) = do
+    depMetadata <- case HM.lookup appId metadata of
+        Nothing -> throwIO $ NotFoundE [i|dependency metadata for #{appId} not found.|]
+        Just m  -> pure m
     -- get best version from VersionRange of dependency
-    version <- getBestVersion appsDir ext (serviceDependencyInfoVersion depInfo) >>= \case
+    let satisfactory = filter (<|| serviceDependencyInfoVersion depInfo) (fst depMetadata)
+    let best         = getMax <$> foldMap (Just . Max) satisfactory
+    version <- case best of
         Nothing -> throwIO $ NotFoundE $ "best version not found for dependent package " <> show appId
         Just v  -> pure v
     pure $ Right
@@ -371,7 +386,7 @@ mapDependencyMetadata appsDir domain (appId, depInfo) = do
 decodeIcon :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m URL
 decodeIcon appmgrPath depPath e@(Extension icon) = do
     icon' <- handleS9ErrT $ getIcon appmgrPath depPath e
-    case eitherDecode $ BS.fromStrict icon' of
+    case eitherDecode icon' of
         Left e' -> do
             $logInfo $ T.pack e'
             sendResponseStatus status400 e'
@@ -380,12 +395,12 @@ decodeIcon appmgrPath depPath e@(Extension icon) = do
 decodeInstructions :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m Text
 decodeInstructions appmgrPath depPath package = do
     instructions <- handleS9ErrT $ getInstructions appmgrPath depPath package
-    pure $ decodeUtf8 instructions
+    pure $ decodeUtf8 $ BS.toStrict instructions
 
 decodeLicense :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m Text
 decodeLicense appmgrPath depPath package = do
     license <- handleS9ErrT $ getLicense appmgrPath depPath package
-    pure $ decodeUtf8 license
+    pure $ decodeUtf8 $ BS.toStrict license
 
 fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do
@@ -453,7 +468,8 @@ fetchPackageMetadata ids = do
                                    ==. category
                                    ?.  ServiceCategoryServiceId
                            )
-            where_ $ service ^. SAppAppId `in_` valList ids
+            -- where_ $ 
+            --     service ^. SAppAppId `in_` valList ids
             Database.Esqueleto.Experimental.groupBy $ service ^. SAppAppId
             pure (service ^. SAppAppId, arrayAggDistinct (category ?. ServiceCategoryCategoryName))
     let versionsQuery = select $ do
@@ -462,7 +478,8 @@ fetchPackageMetadata ids = do
                 $           table @SApp
                 `innerJoin` table @SVersion
                 `on`        (\(service :& version) -> (service ^. SAppId) ==. version ^. SVersionAppId)
-            where_ $ service ^. SAppAppId `in_` valList ids
+            -- where_ $ 
+            --     service ^. SAppAppId `in_` valList ids
             orderBy [desc (version ^. SVersionNumber)]
             Database.Esqueleto.Experimental.groupBy $ (service ^. SAppAppId, version ^. SVersionNumber)
             pure (service ^. SAppAppId, arrayAggDistinct (version ^. SVersionNumber))
