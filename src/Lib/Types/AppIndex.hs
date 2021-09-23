@@ -14,19 +14,19 @@ import           Data.Aeson
 import qualified Data.HashMap.Strict           as HM
 import qualified Data.List.NonEmpty            as NE
 
+import qualified Data.ByteString.Lazy          as BS
+import           Data.Functor.Contravariant     ( Contravariant(contramap) )
+import           Data.String.Interpolate.IsString
+-- import Model
+import qualified Data.Text                     as T
+import           Database.Persist.Postgresql
+import qualified GHC.Read                       ( Read(..) )
+import qualified GHC.Show                       ( Show(..) )
+import           Lib.Registry
 import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 import           System.Directory
-import           Lib.Registry
--- import Model
-import qualified Data.Text                     as T
-import           Data.String.Interpolate.IsString
-import qualified Data.ByteString.Lazy          as BS
-import           Database.Persist.Postgresql
 import           Yesod
-import           Data.Functor.Contravariant     ( Contravariant(contramap) )
-import qualified GHC.Read                       ( Read(..) )
-import qualified GHC.Show                       ( Show(..) )
 
 newtype AppIdentifier = AppIdentifier { unAppIdentifier :: Text }
   deriving (Eq)
@@ -151,11 +151,12 @@ addFileTimestamp appDir ext service v = do
             pure $ Just service { storeAppTimestamp = Just time }
 
 data ServiceDependencyInfo = ServiceDependencyInfo
-    { serviceDependencyInfoOptional :: Maybe Text
-    , serviceDependencyInfoVersion :: VersionRange
+    { serviceDependencyInfoOptional    :: Maybe Text
+    , serviceDependencyInfoVersion     :: VersionRange
     , serviceDependencyInfoDescription :: Maybe Text
-    , serviceDependencyInfoCritical :: Bool
-    } deriving (Show)
+    , serviceDependencyInfoCritical    :: Bool
+    }
+    deriving Show
 instance FromJSON ServiceDependencyInfo where
     parseJSON = withObject "service dependency info" $ \o -> do
         serviceDependencyInfoOptional    <- o .:? "optional"
@@ -185,16 +186,17 @@ instance FromJSON ServiceAlert where
         "stop"      -> pure STOP
         _           -> fail "unknown service alert type"
 data ServiceManifest = ServiceManifest
-    { serviceManifestId :: AppIdentifier
-    , serviceManifestTitle :: Text
-    , serviceManifestVersion :: Version
-    , serviceManifestDescriptionLong :: Text
-    , serviceManifestDescriptionShort :: Text
-    , serviceManifestReleaseNotes :: Text
-    , serviceManifestIcon :: Maybe Text
-    , serviceManifestAlerts :: HM.HashMap ServiceAlert (Maybe Text)
-    , serviceManifestDependencies :: HM.HashMap AppIdentifier ServiceDependencyInfo
-    } deriving (Show)
+    { serviceManifestId               :: !AppIdentifier
+    , serviceManifestTitle            :: !Text
+    , serviceManifestVersion          :: !Version
+    , serviceManifestDescriptionLong  :: !Text
+    , serviceManifestDescriptionShort :: !Text
+    , serviceManifestReleaseNotes     :: !Text
+    , serviceManifestIcon             :: !(Maybe Text)
+    , serviceManifestAlerts           :: !(HM.HashMap ServiceAlert (Maybe Text))
+    , serviceManifestDependencies     :: !(HM.HashMap AppIdentifier ServiceDependencyInfo)
+    }
+    deriving Show
 instance FromJSON ServiceManifest where
     parseJSON = withObject "service manifest" $ \o -> do
         serviceManifestId               <- o .: "id"
