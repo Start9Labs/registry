@@ -368,7 +368,7 @@ getServiceDetails settings metadata maybeVersion appId = do
         Just v -> pure v
     let appDir = (<> "/") . (</> show version) . (</> show appId) $ appsDir
     let appExt = Extension (show appId) :: Extension "s9pk"
-    manifest' <- handleS9ErrNuclear $ getManifest appMgrDir appDir appExt
+    manifest' <- time "appmgr sucks" $ handleS9ErrNuclear $ getManifest appMgrDir appDir appExt
     case eitherDecode $ manifest' of
         Left  e -> pure $ Left $ "Could not parse service manifest for " <> show appId <> ": " <> show e
         Right m -> do
