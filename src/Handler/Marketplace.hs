@@ -242,7 +242,7 @@ time label m = do
     start <- liftIO getCurrentTime
     res   <- m
     end   <- liftIO getCurrentTime
-    putStrLn $ label <> show (diffUTCTime end start)
+    putStrLn $ label <> ": " <> show (diffUTCTime end start)
     pure res
 
 
