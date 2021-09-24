@@ -36,45 +36,40 @@ ixt = toS $ toUpper <$> drop 1 ".png"
 getIconsR :: AppIdentifier -> Handler TypedContent
 getIconsR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    $logInfo $ show ext
     spec <- getVersionFromQuery appsDir ext >>= \case
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
-    servicePath <- liftIO $ getVersionedFileFromDir appsDir ext spec
-    case servicePath of
-        Nothing -> notFound
-        Just p  -> do
-            -- (_, Just hout, _, _) <- liftIO (createProcess $ iconBs { std_out = CreatePipe })
-            -- respondSource typePlain (runConduit $ yieldMany () [iconBs])
-            -- respondSource typePlain $ sourceHandle hout .| awaitForever sendChunkBS
-            manifest' <- handleS9ErrT $ getManifest appMgrDir appsDir ext
-            manifest  <- case eitherDecode $ BS.fromStrict manifest' of
-                Left e -> do
-                    $logError "could not parse service manifest!"
-                    $logError (show e)
-                    sendResponseStatus status500 ("Internal Server Error" :: Text)
-                Right a -> pure a
-            mimeType <- case serviceManifestIcon manifest of
-                Nothing -> pure typePng
-                Just a  -> do
-                    let (_, iconExt) = splitExtension $ toS a
-                    let x            = toUpper <$> drop 1 iconExt
-                    case readMaybe $ toS x of
-                        Nothing -> do
-                            $logInfo $ "unknown icon extension type: " <> show x <> ". Sending back typePlain."
-                            pure typePlain
-                        Just iconType -> case iconType of
-                            PNG  -> pure typePng
-                            SVG  -> pure typeSvg
-                            JPG  -> pure typeJpeg
-                            JPEG -> pure typeJpeg
-            respondSource mimeType (sendChunkBS =<< handleS9ErrT (getIcon appMgrDir p ext))
+    let appDir = (<> "/") . (</> show spec) . (</> toS appId) $ appsDir
+    manifest' <- handleS9ErrT $ getManifest appMgrDir appDir ext
+    manifest  <- case eitherDecode $ BS.fromStrict manifest' of
+        Left e -> do
+            $logError "could not parse service manifest!"
+            $logError (show e)
+            sendResponseStatus status500 ("Internal Server Error" :: Text)
+        Right a -> pure a
+    mimeType <- case serviceManifestIcon manifest of
+        Nothing -> pure typePng
+        Just a  -> do
+            let (_, iconExt) = splitExtension $ toS a
+            let x            = toUpper <$> drop 1 iconExt
+            case readMaybe $ toS x of
+                Nothing -> do
+                    $logInfo $ "unknown icon extension type: " <> show x <> ". Sending back typePlain."
+                    pure typePlain
+                Just iconType -> case iconType of
+                        PNG  -> pure typePng
+                        SVG  -> pure typeSvg
+                        JPG  -> pure typeJpeg
+                        JPEG -> pure typeJpeg
+    respondSource mimeType (sendChunkBS =<< handleS9ErrT (getIcon appMgrDir (appDir </> show ext) ext))
+    -- (_, Just hout, _, _) <- liftIO (createProcess $ iconBs { std_out = CreatePipe })
+    -- respondSource typePlain (runConduit $ yieldMany () [iconBs])
+    -- respondSource typePlain $ sourceHandle hout .| awaitForever sendChunkBS
     where ext = Extension (toS appId) :: Extension "s9pk"
 
 getLicenseR :: AppIdentifier -> Handler TypedContent
 getLicenseR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    $logInfo $ show ext
     spec <- getVersionFromQuery appsDir ext >>= \case
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
@@ -88,7 +83,6 @@ getLicenseR appId = do
 getInstructionsR :: AppIdentifier -> Handler TypedContent
 getInstructionsR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    $logInfo $ show ext
     spec <- getVersionFromQuery appsDir ext >>= \case
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
