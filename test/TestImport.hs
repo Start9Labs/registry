@@ -8,7 +8,7 @@ module TestImport
     )
 where
 
-import           Startlude hiding (Handler)
+import           Startlude               hiding ( Handler )
 import           Application                    ( makeFoundation
                                                 , makeLogWare
                                                 )
@@ -23,8 +23,8 @@ import           Database.Persist.Sql
 import           Text.Shakespeare.Text          ( st )
 import           Yesod.Core
 import qualified Data.Text                     as T
-import Database.Esqueleto.Internal.Internal
-import Database.Persist.Sql.Types.Internal
+import           Database.Esqueleto.Internal.Internal
+import           Database.Persist.Sql.Types.Internal
 
 runHandler :: Handler a -> YesodExample RegistryCtx a
 runHandler handler = do

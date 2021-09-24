@@ -9,7 +9,7 @@
 
 module Handler.Apps where
 
-import           Startlude hiding (Handler)
+import           Startlude               hiding ( Handler )
 
 import           Control.Monad.Logger
 import           Data.Aeson
@@ -74,7 +74,7 @@ getSysR e = do
 getAppManifestR :: AppIdentifier -> Handler TypedContent
 getAppManifestR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    av <- getVersionFromQuery appsDir appExt >>= \case
+    av                   <- getVersionFromQuery appsDir appExt >>= \case
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
@@ -146,7 +146,7 @@ recordMetrics appId appVersion = do
     case sa of
         Nothing -> do
             $logError $ appId' <> " not found in database"
-            notFound 
+            notFound
         Just a -> do
             let appKey' = entityKey a
             existingVersion <- runDB $ fetchAppVersion appVersion appKey'
@@ -155,4 +155,4 @@ recordMetrics appId appVersion = do
                     $logError $ "Version: " <> show appVersion <> " not found in database"
                     notFound
                 Just v -> runDB $ createMetric (entityKey a) (entityKey v)
-    
+

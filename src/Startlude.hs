@@ -1,7 +1,7 @@
 module Startlude
-  ( module X
-  , module Startlude
-  )
+    ( module X
+    , module Startlude
+    )
 where
 
 import           Control.Arrow                 as X

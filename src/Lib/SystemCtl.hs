@@ -1,7 +1,7 @@
 module Lib.SystemCtl where
 
-import           Startlude      hiding (words)
-import Protolude.Unsafe
+import           Startlude               hiding ( words )
+import           Protolude.Unsafe
 
 import           Data.String
 import           System.Process

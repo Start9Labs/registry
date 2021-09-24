@@ -1,4 +1,4 @@
-import           Application (appMain)
+import           Application                    ( appMain )
 import           Startlude
 
 main :: IO ()
