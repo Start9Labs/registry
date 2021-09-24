@@ -318,27 +318,6 @@ getPackageListR = do
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
             where
                 getPackageDetails :: MonadIO m
                                   => (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
