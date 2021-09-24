@@ -6,7 +6,7 @@
 
 module Handler.Version where
 
-import           Startlude hiding (Handler)
+import           Startlude               hiding ( Handler )
 
 import           Control.Monad.Trans.Maybe
 import           Yesod.Core
@@ -28,10 +28,10 @@ getVersionR = do
 getVersionAppR :: Text -> Handler (Maybe AppVersionRes)
 getVersionAppR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    res <- getVersionWSpec appsDir appExt
+    res                  <- getVersionWSpec appsDir appExt
     case res of
         Nothing -> pure res
-        Just r -> do
+        Just r  -> do
             let appDir = (<> "/") . (</> (show $ appVersionVersion r)) . (</> toS appId) $ appsDir
             addPackageHeader appMgrDir appDir appExt
             pure res

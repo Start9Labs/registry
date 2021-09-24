@@ -18,10 +18,10 @@ import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 import           System.Directory
 import           Lib.Registry
-import Model
-import qualified Data.Text as T
-import Data.String.Interpolate.IsString
-import qualified Data.ByteString.Lazy as BS
+import           Model
+import qualified Data.Text                     as T
+import           Data.String.Interpolate.IsString
+import qualified Data.ByteString.Lazy          as BS
 
 type AppIdentifier = Text
 
@@ -37,14 +37,15 @@ data VersionInfo = VersionInfo
 
 mapSVersionToVersionInfo :: [SVersion] -> [VersionInfo]
 mapSVersionToVersionInfo sv = do
-    (\v -> VersionInfo {
-      versionInfoVersion = sVersionNumber v
-    , versionInfoReleaseNotes = sVersionReleaseNotes v
-    , versionInfoDependencies = HM.empty
-    , versionInfoOsRequired = sVersionOsVersionRequired v
-    , versionInfoOsRecommended = sVersionOsVersionRecommended v
-    , versionInfoInstallAlert = Nothing
-    }) <$> sv
+    (\v -> VersionInfo { versionInfoVersion       = sVersionNumber v
+                       , versionInfoReleaseNotes  = sVersionReleaseNotes v
+                       , versionInfoDependencies  = HM.empty
+                       , versionInfoOsRequired    = sVersionOsVersionRequired v
+                       , versionInfoOsRecommended = sVersionOsVersionRecommended v
+                       , versionInfoInstallAlert  = Nothing
+                       }
+        )
+        <$> sv
 
 instance Ord VersionInfo where
     compare = compare `on` versionInfoVersion
@@ -102,7 +103,7 @@ instance FromJSON AppManifest where
             storeAppVersionInfo <- config .: "version-info" >>= \case
                 []       -> fail "No Valid Version Info"
                 (x : xs) -> pure $ x :| xs
-            storeAppTimestamp   <- config .:? "timestamp"
+            storeAppTimestamp <- config .:? "timestamp"
             pure (appId, StoreApp { .. })
         return $ AppManifest (HM.fromList apps)
 instance ToJSON AppManifest where
@@ -121,10 +122,10 @@ filterOsRecommended av sa = case NE.filter ((av <||) . versionInfoOsRecommended)
 addFileTimestamp :: KnownSymbol a => FilePath -> Extension a -> StoreApp -> Version -> IO (Maybe StoreApp)
 addFileTimestamp appDir ext service v = do
     getVersionedFileFromDir appDir ext v >>= \case
-                Nothing -> pure Nothing
-                Just file -> do
-                    time <- getModificationTime file
-                    pure $ Just service {storeAppTimestamp = Just time }
+        Nothing   -> pure Nothing
+        Just file -> do
+            time <- getModificationTime file
+            pure $ Just service { storeAppTimestamp = Just time }
 
 data ServiceDependencyInfo = ServiceDependencyInfo
     { serviceDependencyInfoOptional :: Maybe Text
@@ -134,10 +135,10 @@ data ServiceDependencyInfo = ServiceDependencyInfo
     } deriving (Show)
 instance FromJSON ServiceDependencyInfo where
     parseJSON = withObject "service dependency info" $ \o -> do
-        serviceDependencyInfoOptional <- o .:? "optional"
-        serviceDependencyInfoVersion <- o .: "version"
+        serviceDependencyInfoOptional    <- o .:? "optional"
+        serviceDependencyInfoVersion     <- o .: "version"
         serviceDependencyInfoDescription <- o .:? "description"
-        serviceDependencyInfoCritical <- o .: "critical"
+        serviceDependencyInfoCritical    <- o .: "critical"
         pure ServiceDependencyInfo { .. }
 instance ToJSON ServiceDependencyInfo where
     toJSON ServiceDependencyInfo {..} = object
@@ -173,18 +174,18 @@ data ServiceManifest = ServiceManifest
     } deriving (Show)
 instance FromJSON ServiceManifest where
     parseJSON = withObject "service manifest" $ \o -> do
-        serviceManifestId <- o .: "id"
-        serviceManifestTitle <- o .: "title"
-        serviceManifestVersion <- o .: "version"
-        serviceManifestDescriptionLong <- o .: "description" >>= (.: "long")
+        serviceManifestId               <- o .: "id"
+        serviceManifestTitle            <- o .: "title"
+        serviceManifestVersion          <- o .: "version"
+        serviceManifestDescriptionLong  <- o .: "description" >>= (.: "long")
         serviceManifestDescriptionShort <- o .: "description" >>= (.: "short")
-        serviceManifestIcon <- o .: "assets" >>= (.: "icon")
-        serviceManifestReleaseNotes <- o .: "release-notes"
-        alerts <- o .: "alerts"
-        a <- for (HM.toList alerts) $ \(key, value) -> do
+        serviceManifestIcon             <- o .: "assets" >>= (.: "icon")
+        serviceManifestReleaseNotes     <- o .: "release-notes"
+        alerts                          <- o .: "alerts"
+        a                               <- for (HM.toList alerts) $ \(key, value) -> do
             alertType <- case readMaybe $ T.toUpper key of
-                    Nothing -> fail "could not parse alert key as ServiceAlert"
-                    Just t -> pure t
+                Nothing -> fail "could not parse alert key as ServiceAlert"
+                Just t  -> pure t
             alertDesc <- parseJSON value
             pure (alertType, alertDesc)
         let serviceManifestAlerts = HM.fromList a
@@ -197,7 +198,7 @@ instance ToJSON ServiceManifest where
         , "version" .= serviceManifestVersion
         , "description" .= object ["short" .= serviceManifestDescriptionShort, "long" .= serviceManifestDescriptionLong]
         , "release-notes" .= serviceManifestReleaseNotes
-        , "alerts" .= object [ t .= v | (k,v) <- HM.toList serviceManifestAlerts, let (String t) = toJSON k ]
+        , "alerts" .= object [ t .= v | (k, v) <- HM.toList serviceManifestAlerts, let (String t) = toJSON k ]
         , "dependencies" .= serviceManifestDependencies
         ]
 

@@ -4,45 +4,53 @@
 
 module Database.Marketplace where
 
-import Startlude hiding ((%), from, on)
-import Database.Esqueleto.Experimental
-import Lib.Types.Category
-import Model
-import qualified Database.Persist as P
-import Data.HashMap.Strict
-import Data.Version
-import Data.Aeson
+import           Startlude               hiding ( (%)
+                                                , from
+                                                , on
+                                                )
+import           Database.Esqueleto.Experimental
+import           Lib.Types.Category
+import           Model
+import qualified Database.Persist              as P
+import           Data.HashMap.Strict
+import           Data.Version
+import           Data.Aeson
 
-searchServices :: MonadIO m => Maybe CategoryTitle -> Int64 ->  Int64 -> Text -> ReaderT SqlBackend m [P.Entity SApp]
+searchServices :: MonadIO m => Maybe CategoryTitle -> Int64 -> Int64 -> Text -> ReaderT SqlBackend m [P.Entity SApp]
 searchServices Nothing pageItems offset' query = select $ do
-        service <- from $ table @SApp
-        where_ ((service ^. SAppDescShort `ilike` (%) ++. val query ++. (%)) 
-            ||. (service ^. SAppDescLong `ilike` (%) ++. val query ++. (%))
-            ||. (service ^. SAppTitle `ilike` (%) ++. val query ++. (%))
-            ||. (service ^. SAppAppId `ilike` (%) ++. val query ++. (%)))
-        orderBy [ desc (service ^. SAppUpdatedAt) ]
-        limit pageItems
-        offset offset'
-        pure service
+    service <- from $ table @SApp
+    where_
+        (   (service ^. SAppDescShort `ilike` (%) ++. val query ++. (%))
+        ||. (service ^. SAppDescLong `ilike` (%) ++. val query ++. (%))
+        ||. (service ^. SAppTitle `ilike` (%) ++. val query ++. (%))
+        ||. (service ^. SAppAppId `ilike` (%) ++. val query ++. (%))
+        )
+    orderBy [desc (service ^. SAppUpdatedAt)]
+    limit pageItems
+    offset offset'
+    pure service
 searchServices (Just category) pageItems offset' query = select $ do
     services <- from
         (do
             (service :& sc) <-
-                from $ table @SApp
+                from
+                $           table @SApp
                 `innerJoin` table @ServiceCategory
-                `on` (\(s :& sc) ->
-                        sc ^. ServiceCategoryServiceId ==. s ^. SAppId)
+                `on`        (\(s :& sc) -> sc ^. ServiceCategoryServiceId ==. s ^. SAppId)
                         -- if there is a cateogry, only search in category
                         -- weight title, short, long (bitcoin should equal Bitcoin Core)
-            where_ $ sc ^. ServiceCategoryCategoryName ==. val category
-                &&. ((service ^. SAppDescShort `ilike` (%) ++. val query ++. (%)) 
+            where_
+                $   sc
+                ^.  ServiceCategoryCategoryName
+                ==. val category
+                &&. (   (service ^. SAppDescShort `ilike` (%) ++. val query ++. (%))
                     ||. (service ^. SAppDescLong `ilike` (%) ++. val query ++. (%))
                     ||. (service ^. SAppTitle `ilike` (%) ++. val query ++. (%))
                     ||. (service ^. SAppAppId `ilike` (%) ++. val query ++. (%))
                     )
             pure service
         )
-    orderBy [ desc (services ^. SAppUpdatedAt) ]
+    orderBy [desc (services ^. SAppUpdatedAt)]
     limit pageItems
     offset offset'
     pure services
@@ -51,7 +59,7 @@ newtype VersionsWithReleaseNotes = VersionsWithReleaseNotes (HashMap Version Tex
 instance FromJSON VersionsWithReleaseNotes
 instance PersistField VersionsWithReleaseNotes where
     fromPersistValue = fromPersistValueJSON
-    toPersistValue = PersistText . show
+    toPersistValue   = PersistText . show
 
 -- in progress attempt to do postgres aggregation with raw sql in esqueleto
 -- getServiceVersionsWithReleaseNotes :: MonadIO m => Text -> ReaderT SqlBackend m (Entity SApp)

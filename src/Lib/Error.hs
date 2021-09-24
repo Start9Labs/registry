@@ -11,7 +11,7 @@ import           Data.String.Interpolate.IsString
 
 type S9ErrT m = ExceptT S9Error m
 
-data S9Error = 
+data S9Error =
       PersistentE Text
     | AppMgrE Text Int
     deriving (Show, Eq)
@@ -21,10 +21,10 @@ instance Exception S9Error
 -- | Redact any sensitive data in this function
 toError :: S9Error -> Error
 toError = \case
-    PersistentE t -> Error DATABASE_ERROR t
+    PersistentE t    -> Error DATABASE_ERROR t
     AppMgrE cmd code -> Error APPMGR_ERROR [i|"appmgr #{cmd}" exited with #{code}|]
 
-data ErrorCode = 
+data ErrorCode =
       DATABASE_ERROR
     | APPMGR_ERROR
 
@@ -51,8 +51,8 @@ instance ToContent S9Error where
 
 toStatus :: S9Error -> Status
 toStatus = \case
-    PersistentE _          -> status500
-    AppMgrE     _ _        -> status500
+    PersistentE _ -> status500
+    AppMgrE _ _   -> status500
 
 
 handleS9ErrT :: MonadHandler m => S9ErrT m a -> m a

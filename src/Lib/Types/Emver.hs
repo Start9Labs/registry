@@ -48,8 +48,8 @@ import           Control.Applicative            ( liftA2
                                                 )
 import           Data.String                    ( IsString(..) )
 import qualified Data.Text                     as T
-import Data.Aeson
-import Startlude (Hashable)
+import           Data.Aeson
+import           Startlude                      ( Hashable )
 
 -- | AppVersion is the core representation of the SemverQuad type.
 newtype Version = Version { unVersion :: (Word, Word, Word, Word) } deriving (Eq, Ord, ToJSONKey, Hashable)

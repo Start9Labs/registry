@@ -2,7 +2,7 @@
 
 module Util.Shared where
 
-import           Startlude hiding (Handler)
+import           Startlude               hiding ( Handler )
 
 import qualified Data.Text                     as T
 import           Network.HTTP.Types
@@ -12,8 +12,8 @@ import           Foundation
 import           Lib.Registry
 import           Lib.Types.Emver
 import           Data.Semigroup
-import Lib.External.AppMgr
-import Lib.Error
+import           Lib.External.AppMgr
+import           Lib.Error
 
 getVersionFromQuery :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe Version)
 getVersionFromQuery rootDir ext = do
@@ -23,7 +23,11 @@ getVersionFromQuery rootDir ext = do
         Just t  -> pure t
     getBestVersion rootDir ext spec
 
-getBestVersion :: (MonadIO m, KnownSymbol a, MonadLogger m) => FilePath -> Extension a -> VersionRange -> m (Maybe Version)
+getBestVersion :: (MonadIO m, KnownSymbol a, MonadLogger m)
+               => FilePath
+               -> Extension a
+               -> VersionRange
+               -> m (Maybe Version)
 getBestVersion rootDir ext spec = do
     -- @TODO change to db query?
     appVersions <- liftIO $ getAvailableAppVersions rootDir ext

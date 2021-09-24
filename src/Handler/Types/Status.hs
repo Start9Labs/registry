@@ -3,7 +3,7 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 module Handler.Types.Status where
 
-import           Startlude hiding (toLower)
+import           Startlude               hiding ( toLower )
 
 import           Data.Aeson
 import           Yesod.Core.Content
@@ -51,7 +51,7 @@ data OSVersionRes = OSVersionRes
     , osVersionVersion :: Version
     } deriving (Eq, Show)
 instance ToJSON OSVersionRes where
-    toJSON OSVersionRes { .. } =  object ["status" .= osVersionStatus, "version" .= osVersionVersion]
+    toJSON OSVersionRes {..} = object ["status" .= osVersionStatus, "version" .= osVersionVersion]
 instance ToContent OSVersionRes where
     toContent = toContent . toJSON
 instance ToTypedContent OSVersionRes where
