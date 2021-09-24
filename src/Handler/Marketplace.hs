@@ -318,6 +318,66 @@ getPackageListR = do
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             where
                 getPackageDetails :: MonadIO m
                                   => (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
@@ -473,7 +533,8 @@ fetchLatestAppAtVersion appId version' = selectOne $ do
     where_ $ (service ^. SAppAppId ==. val appId) &&. (version ^. SVersionNumber ==. val version')
     pure (service, version)
 
-fetchPackageMetadata :: MonadUnliftIO m => ReaderT SqlBackend m (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
+fetchPackageMetadata :: (MonadLogger m, MonadUnliftIO m)
+                     => ReaderT SqlBackend m (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
 fetchPackageMetadata = do
     let categoriesQuery = select $ do
             (service :& category) <-
@@ -501,7 +562,8 @@ fetchPackageMetadata = do
         c = foreach categories
             $ \(appId, categories') -> (unValue appId, catMaybes $ fromMaybe [] (unValue categories'))
     let v = foreach versions $ \(appId, versions') -> (unValue appId, fromMaybe [] (unValue versions'))
-    pure $ HM.intersectionWith (\vers cts -> (vers, cts)) (HM.fromList v) (HM.fromList c)
+    let vv = HM.fromListWithKey (\_ vers vers' -> (++) vers vers') v
+    pure $ HM.intersectionWith (\vers cts -> (cts, vers)) (HM.fromList c) vv
 
 fetchAppCategories :: MonadIO m => Key SApp -> ReaderT SqlBackend m [P.Entity ServiceCategory]
 fetchAppCategories appId = select $ do
