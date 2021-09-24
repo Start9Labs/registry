@@ -236,15 +236,6 @@ getVersionLatestR = do
                           )
                     $ HM.fromList packageList
 
-time :: MonadIO m => Text -> m a -> m a
-time label m = do
-    start <- liftIO getCurrentTime
-    res   <- m
-    end   <- liftIO getCurrentTime
-    putStrLn $ label <> ": " <> show (diffUTCTime end start)
-    pure res
-
-
 getPackageListR :: Handler ServiceAvailableRes
 getPackageListR = do
     getParameters <- reqGetParams <$> getRequest
@@ -278,19 +269,14 @@ getPackageListR = do
                 Just c  -> case readMaybe $ toS c of
                     Nothing -> sendResponseStatus status400 ("could not read per-page" :: Text)
                     Just l  -> pure l
-            query <- time "filter" $ T.filter (not . isSpace) . fromMaybe (serviceListQuery defaults) <$> lookupGetParam
-                "query"
-            filteredServices <- time "search services" $ runDB $ searchServices category
-                                                                                limit'
-                                                                                ((page - 1) * limit')
-                                                                                query
+            query <- T.filter (not . isSpace) . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
+            filteredServices <- runDB $ searchServices category limit' ((page - 1) * limit') query
             let filteredServices' = sAppAppId . entityVal <$> filteredServices
             settings        <- getsYesod appSettings
-            packageMetadata <- time "metadata" $ runDB $ fetchPackageMetadata
+            packageMetadata <- runDB $ fetchPackageMetadata
             $logInfo $ show packageMetadata
-            serviceDetailResult <- time "service details" $ liftIO $ mapConcurrently
-                (getServiceDetails settings packageMetadata Nothing)
-                filteredServices'
+            serviceDetailResult <- liftIO
+                $ mapConcurrently (getServiceDetails settings packageMetadata Nothing) filteredServices'
             let (_, services) = partitionEithers serviceDetailResult
             pure $ ServiceAvailableRes services
             -- if null errors
@@ -303,12 +289,11 @@ getPackageListR = do
                 -- for each item in list get best available from version range
                 settings                <- getsYesod appSettings
                 -- @TODO fix _ error
-                packageMetadata         <- time "metadata2" $ runDB $ fetchPackageMetadata
+                packageMetadata         <- runDB $ fetchPackageMetadata
                 availableServicesResult <- traverse (getPackageDetails packageMetadata) packages
                 let (_, availableServices) = partitionEithers availableServicesResult
-                serviceDetailResult <- time "service details 2" $ liftIO $ mapConcurrently
-                    (uncurry $ getServiceDetails settings packageMetadata)
-                    availableServices
+                serviceDetailResult <- liftIO
+                    $ mapConcurrently (uncurry $ getServiceDetails settings packageMetadata) availableServices
                 -- @TODO fix _ error
                 let (_, services) = partitionEithers serviceDetailResult
                 pure $ ServiceAvailableRes services
@@ -424,12 +409,12 @@ getServiceDetails settings metadata maybeVersion appId = do
         Just v -> pure v
     let appDir = (<> "/") . (</> show version) . (</> show appId) $ appsDir
     let appExt = Extension (show appId) :: Extension "s9pk"
-    manifest' <- time "appmgr sucks" $ handleS9ErrNuclear $ getManifest appMgrDir appDir appExt
+    manifest' <- handleS9ErrNuclear $ getManifest appMgrDir appDir appExt
     case eitherDecode $ manifest' of
         Left  e -> pure $ Left $ "Could not parse service manifest for " <> show appId <> ": " <> show e
         Right m -> do
-            d <- liftIO
-                $ mapConcurrently (mapDependencyMetadata domain metadata) (HM.toList $ serviceManifestDependencies m)
+            d <- liftIO $ mapConcurrently (mapDependencyMetadata domain metadata)
+                                          (HM.toList $ serviceManifestDependencies m)
             pure $ Right $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{appId}|]
                                       , serviceResManifest       = decode $ manifest' -- pass through raw JSON Value
                                       , serviceResCategories     = snd packageMetadata
