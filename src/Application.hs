@@ -24,7 +24,7 @@ module Application
     , getAppSettings
     -- * for GHCI
     , handler
-    ) where
+    ,db) where
 
 import           Startlude hiding (Handler)
 
@@ -67,6 +67,8 @@ import           Network.HTTP.Types.Header ( hOrigin )
 import           Data.List (lookup)
 import Network.Wai.Middleware.RequestLogger.JSON
 import System.Directory (createDirectoryIfMissing)
+import Database.Persist.Sql (SqlBackend)
+import Yesod
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
@@ -342,3 +344,7 @@ develMain = do
 -- | Run a handler
 handler :: Handler a -> IO a
 handler h = getAppSettings >>= makeFoundation >>= flip unsafeHandler h
+
+-- | Run DB queries
+db :: ReaderT SqlBackend (HandlerFor RegistryCtx) a -> IO a
+db = handler . runDB
