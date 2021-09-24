@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Lib.Types.Category where
 
@@ -16,7 +17,7 @@ data CategoryTitle = FEATURED
         | MESSAGING
         | SOCIAL
         | ALTCOIN
-    deriving (Eq, Enum, Show, Read)
+    deriving (Eq, Enum, Show, Read, Generic)
 instance PersistField CategoryTitle where
     fromPersistValue = fromPersistValueJSON
     toPersistValue   = toPersistValueJSON
@@ -46,3 +47,4 @@ instance ToContent CategoryTitle where
     toContent = toContent . toJSON
 instance ToTypedContent CategoryTitle where
     toTypedContent = toTypedContent . toJSON
+instance Hashable CategoryTitle
