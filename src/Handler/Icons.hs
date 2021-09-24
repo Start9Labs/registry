@@ -39,7 +39,7 @@ getIconsR appId = do
     spec                 <- getVersionFromQuery appsDir ext >>= \case
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
-    let appDir = (<> "/") . (</> show spec) . (</> toS appId) $ appsDir
+    let appDir = (<> "/") . (</> show spec) . (</> show appId) $ appsDir
     manifest' <- handleS9ErrT $ getManifest appMgrDir appDir ext
     manifest  <- case eitherDecode manifest' of
         Left e -> do
@@ -65,7 +65,7 @@ getIconsR appId = do
     -- (_, Just hout, _, _) <- liftIO (createProcess $ iconBs { std_out = CreatePipe })
     -- respondSource typePlain (runConduit $ yieldMany () [iconBs])
     -- respondSource typePlain $ sourceHandle hout .| awaitForever sendChunkBS
-    where ext = Extension (toS appId) :: Extension "s9pk"
+    where ext = Extension (show appId) :: Extension "s9pk"
 
 getLicenseR :: AppIdentifier -> Handler TypedContent
 getLicenseR appId = do

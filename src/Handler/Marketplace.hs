@@ -41,7 +41,6 @@ import           Startlude               hiding ( Handler
                                                 )
 import           System.FilePath.Posix
 import           UnliftIO.Async
-import           Util.Shared
 import           Yesod.Core
 import           Yesod.Persist.Core
 
@@ -287,7 +286,7 @@ getPackageListR = do
                                                                                 query
             let filteredServices' = sAppAppId . entityVal <$> filteredServices
             settings        <- getsYesod appSettings
-            packageMetadata <- time "metadata" $ runDB $ fetchPackageMetadata $ Just filteredServices'
+            packageMetadata <- time "metadata" $ runDB $ fetchPackageMetadata
             $logInfo $ show packageMetadata
             serviceDetailResult <- time "service details" $ liftIO $ mapConcurrently
                 (getServiceDetails settings packageMetadata Nothing)
@@ -304,7 +303,7 @@ getPackageListR = do
                 -- for each item in list get best available from version range
                 settings                <- getsYesod appSettings
                 -- @TODO fix _ error
-                packageMetadata     <- time "metadata2" $ runDB $ fetchPackageMetadata Nothing
+                packageMetadata         <- time "metadata2" $ runDB $ fetchPackageMetadata
                 availableServicesResult <- traverse (getPackageDetails packageMetadata) packages
                 let (_, availableServices) = partitionEithers availableServicesResult
                 serviceDetailResult <- time "service details 2" $ liftIO $ mapConcurrently
@@ -325,19 +324,43 @@ getPackageListR = do
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             where
-                getPackageDetails :: MonadIO m => (HM.HashMap AppIdentifier ([Version], [CategoryTitle])) -> PackageVersion -> m (Either Text ((Maybe Version), AppIdentifier))
+                getPackageDetails :: MonadIO m
+                                  => (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
+                                  -> PackageVersion
+                                  -> m (Either Text ((Maybe Version), AppIdentifier))
                 getPackageDetails metadata pv = do
                     let appId = packageVersionId pv
-                    let spec = packageVersionVersion pv
+                    let spec  = packageVersionVersion pv
                     pacakgeMetadata <- case HM.lookup appId metadata of
-                        Nothing-> throwIO $ NotFoundE [i|dependency metadata for #{appId} not found.|]
-                        Just m -> pure m
+                        Nothing -> throwIO $ NotFoundE [i|dependency metadata for #{appId} not found.|]
+                        Just m  -> pure m
                     -- get best version from VersionRange of dependency
                     let satisfactory = filter (<|| spec) (fst pacakgeMetadata)
-                    let best = getMax <$> foldMap (Just . Max) satisfactory
+                    let best         = getMax <$> foldMap (Just . Max) satisfactory
                     case best of
-                        Nothing -> pure $ Left $ "best version could not be found for " <> show appId <> " with spec " <> show spec
+                        Nothing ->
+                            pure
+                                $  Left
+                                $  "best version could not be found for "
+                                <> show appId
+                                <> " with spec "
+                                <> show spec
                         Just v -> do
                             pure $ Right (Just v, appId)
 
@@ -471,10 +494,8 @@ fetchLatestAppAtVersion appId version' = selectOne $ do
     where_ $ (service ^. SAppAppId ==. val appId) &&. (version ^. SVersionNumber ==. val version')
     pure (service, version)
 
-fetchPackageMetadata :: MonadUnliftIO m
-                     => Maybe [AppIdentifier]
-                     -> ReaderT SqlBackend m (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
-fetchPackageMetadata ids = do
+fetchPackageMetadata :: MonadUnliftIO m => ReaderT SqlBackend m (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
+fetchPackageMetadata = do
     let categoriesQuery = select $ do
             (service :& category) <-
                 from
@@ -485,8 +506,6 @@ fetchPackageMetadata ids = do
                                    ==. category
                                    ?.  ServiceCategoryServiceId
                            )
-            -- where_ $ 
-            --     service ^. SAppAppId `in_` valList ids
             Database.Esqueleto.Experimental.groupBy $ service ^. SAppAppId
             pure (service ^. SAppAppId, arrayAggDistinct (category ?. ServiceCategoryCategoryName))
     let versionsQuery = select $ do
@@ -495,8 +514,6 @@ fetchPackageMetadata ids = do
                 $           table @SApp
                 `innerJoin` table @SVersion
                 `on`        (\(service :& version) -> (service ^. SAppId) ==. version ^. SVersionAppId)
-            -- where_ $ 
-            --     service ^. SAppAppId `in_` valList ids
             orderBy [desc (version ^. SVersionNumber)]
             Database.Esqueleto.Experimental.groupBy $ (service ^. SAppAppId, version ^. SVersionNumber)
             pure (service ^. SAppAppId, arrayAggDistinct (version ^. SVersionNumber))
