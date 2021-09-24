@@ -23,7 +23,6 @@ searchServices Nothing pageItems offset' query = select $ do
         (   (service ^. SAppDescShort `ilike` (%) ++. val query ++. (%))
         ||. (service ^. SAppDescLong `ilike` (%) ++. val query ++. (%))
         ||. (service ^. SAppTitle `ilike` (%) ++. val query ++. (%))
-        ||. (service ^. SAppAppId `ilike` (%) ++. val query ++. (%))
         )
     orderBy [desc (service ^. SAppUpdatedAt)]
     limit pageItems
