@@ -36,7 +36,7 @@ ixt = toS $ toUpper <$> drop 1 ".png"
 getIconsR :: AppIdentifier -> Handler TypedContent
 getIconsR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    spec <- getVersionFromQuery appsDir ext >>= \case
+    spec                 <- getVersionFromQuery appsDir ext >>= \case
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
     let appDir = (<> "/") . (</> show spec) . (</> toS appId) $ appsDir
@@ -57,10 +57,10 @@ getIconsR appId = do
                     $logInfo $ "unknown icon extension type: " <> show x <> ". Sending back typePlain."
                     pure typePlain
                 Just iconType -> case iconType of
-                        PNG  -> pure typePng
-                        SVG  -> pure typeSvg
-                        JPG  -> pure typeJpeg
-                        JPEG -> pure typeJpeg
+                    PNG  -> pure typePng
+                    SVG  -> pure typeSvg
+                    JPG  -> pure typeJpeg
+                    JPEG -> pure typeJpeg
     respondSource mimeType (sendChunkBS =<< handleS9ErrT (getIcon appMgrDir (appDir </> show ext) ext))
     -- (_, Just hout, _, _) <- liftIO (createProcess $ iconBs { std_out = CreatePipe })
     -- respondSource typePlain (runConduit $ yieldMany () [iconBs])
@@ -70,7 +70,7 @@ getIconsR appId = do
 getLicenseR :: AppIdentifier -> Handler TypedContent
 getLicenseR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    spec <- getVersionFromQuery appsDir ext >>= \case
+    spec                 <- getVersionFromQuery appsDir ext >>= \case
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
     servicePath <- liftIO $ getVersionedFileFromDir appsDir ext spec
@@ -83,7 +83,7 @@ getLicenseR appId = do
 getInstructionsR :: AppIdentifier -> Handler TypedContent
 getInstructionsR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    spec <- getVersionFromQuery appsDir ext >>= \case
+    spec                 <- getVersionFromQuery appsDir ext >>= \case
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
     servicePath <- liftIO $ getVersionedFileFromDir appsDir ext spec

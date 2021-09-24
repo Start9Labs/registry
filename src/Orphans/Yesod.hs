@@ -10,4 +10,4 @@ instance ToJSON a => ToContent [a] where
     toContent = toContent . toJSON . fmap toJSON
 instance ToJSON a => ToTypedContent [a] where
     toTypedContent = toTypedContent . toJSON . fmap toJSON
-    
+

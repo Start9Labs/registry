@@ -13,11 +13,11 @@ preimage f target = filter ((== target) . f)
 
 mapFind :: ([a] -> Maybe a) -> (b -> a) -> [b] -> Maybe b
 mapFind _ _ [] = Nothing
-mapFind finder mapping (b:bs) = let
-        mB = mapFind finder mapping bs
+mapFind finder mapping (b : bs) =
+    let mB = mapFind finder mapping bs
         mA = finder [mapping b]
-    in case (mB, mA) of
-        (Just b',_)       -> Just b'
-        (Nothing, Just _) -> Just b
-        _                 -> Nothing
+    in  case (mB, mA) of
+            (Just b', _     ) -> Just b'
+            (Nothing, Just _) -> Just b
+            _                 -> Nothing
 
