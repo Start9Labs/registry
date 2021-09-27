@@ -5,15 +5,15 @@ module Lib.Error where
 
 import           Startlude
 
+import           Data.String.Interpolate.IsString
 import           Network.HTTP.Types
 import           Yesod.Core
-import           Data.String.Interpolate.IsString
 
 type S9ErrT m = ExceptT S9Error m
 
 data S9Error =
       PersistentE Text
-    | AppMgrE Text Int
+    | AppMgrE Text ExitCode
     | NotFoundE Text
     deriving (Show, Eq)
 

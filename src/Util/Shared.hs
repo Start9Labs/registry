@@ -8,13 +8,11 @@ import qualified Data.Text                     as T
 import           Network.HTTP.Types
 import           Yesod.Core
 
+import           Data.Semigroup
 import           Foundation
+import           Lib.External.AppMgr
 import           Lib.Registry
 import           Lib.Types.Emver
-import           Data.Semigroup
-import           Lib.External.AppMgr
-import           Lib.Error
-import qualified Data.ByteString.Lazy          as BS
 
 getVersionFromQuery :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe Version)
 getVersionFromQuery rootDir ext = do
@@ -36,7 +34,7 @@ getBestVersion rootDir ext spec = do
     let best         = getMax <$> foldMap (Just . Max . fst . unRegisteredAppVersion) satisfactory
     pure best
 
-addPackageHeader :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m ()
+addPackageHeader :: (MonadUnliftIO m, MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m ()
 addPackageHeader appMgrDir appDir appExt = do
-    packageHash <- handleS9ErrT $ getPackageHash appMgrDir appDir appExt
-    addHeader "X-S9PK-HASH" $ decodeUtf8 $ BS.toStrict packageHash
+    packageHash <- getPackageHash appMgrDir appDir appExt
+    addHeader "X-S9PK-HASH" $ decodeUtf8 packageHash
