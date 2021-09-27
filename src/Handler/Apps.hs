@@ -70,7 +70,7 @@ getSysR e = do
     -- @TODO update with new response type here
     getApp sysResourceDir e
 
-getAppManifestR :: AppIdentifier -> Handler TypedContent
+getAppManifestR :: PkgId -> Handler TypedContent
 getAppManifestR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     av                   <- getVersionFromQuery appsDir appExt >>= \case
@@ -84,7 +84,7 @@ getAppManifestR appId = do
                    (\bsSource -> respondSource "application/json" (bsSource .| awaitForever sendChunkBS))
     where appExt = Extension (show appId) :: Extension "s9pk"
 
-getAppConfigR :: AppIdentifier -> Handler TypedContent
+getAppConfigR :: PkgId -> Handler TypedContent
 getAppConfigR appId = do
     appSettings <- appSettings <$> getYesod
     let appsDir   = (</> "apps") . resourcesDir $ appSettings
@@ -146,7 +146,7 @@ chunkIt fp = do
 recordMetrics :: String -> Version -> HandlerFor RegistryCtx ()
 recordMetrics appId appVersion = do
     let appId' = T.pack appId
-    sa <- runDB $ fetchApp $ AppIdentifier appId'
+    sa <- runDB $ fetchApp $ PkgId appId'
     case sa of
         Nothing -> do
             $logError $ appId' <> " not found in database"

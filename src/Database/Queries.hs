@@ -4,20 +4,20 @@
 
 module Database.Queries where
 
-import           Startlude
 import           Database.Persist.Sql
 import           Lib.Types.AppIndex
 import           Lib.Types.Emver
 import           Model
 import           Orphans.Emver                  ( )
+import           Startlude
 
-fetchApp :: MonadIO m => AppIdentifier -> ReaderT SqlBackend m (Maybe (Entity SApp))
+fetchApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (Entity SApp))
 fetchApp appId = selectFirst [SAppAppId ==. appId] []
 
 fetchAppVersion :: MonadIO m => Version -> Key SApp -> ReaderT SqlBackend m (Maybe (Entity SVersion))
 fetchAppVersion appVersion appId = selectFirst [SVersionNumber ==. appVersion, SVersionAppId ==. appId] []
 
-createApp :: MonadIO m => AppIdentifier -> StoreApp -> ReaderT SqlBackend m (Maybe (Key SApp))
+createApp :: MonadIO m => PkgId -> StoreApp -> ReaderT SqlBackend m (Maybe (Key SApp))
 createApp appId StoreApp {..} = do
     time <- liftIO getCurrentTime
     insertUnique $ SApp time Nothing storeAppTitle appId storeAppDescShort storeAppDescLong storeAppIconType
