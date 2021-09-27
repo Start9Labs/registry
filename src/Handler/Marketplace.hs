@@ -414,7 +414,7 @@ getServiceDetails settings metadata maybeVersion appId = do
         Just v -> pure v
     let appDir = (<> "/") . (</> show version) . (</> show appId) $ appsDir
     let appExt = Extension (show appId) :: Extension "s9pk"
-    manifest' <- getManifest appMgrDir appDir appExt (\bs -> sinkMem (bs .| mapC BS.fromStrict))
+    manifest' <- sourceManifest appMgrDir appDir appExt (\bs -> sinkMem (bs .| mapC BS.fromStrict))
     case eitherDecode $ manifest' of
         Left  e -> pure $ Left $ "Could not parse service manifest for " <> show appId <> ": " <> show e
         Right m -> do
@@ -467,7 +467,7 @@ decodeInstructions :: (MonadUnliftIO m, MonadHandler m, KnownSymbol a, MonadThro
                    -> Extension a
                    -> m Text
 decodeInstructions appmgrPath depPath package = do
-    getInstructions appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
+    sourceInstructions appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
 
 decodeLicense :: (MonadUnliftIO m, MonadThrow m, MonadHandler m, KnownSymbol a)
               => FilePath
@@ -475,7 +475,7 @@ decodeLicense :: (MonadUnliftIO m, MonadThrow m, MonadHandler m, KnownSymbol a)
               -> Extension a
               -> m Text
 decodeLicense appmgrPath depPath package =
-    getLicense appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
+    sourceLicense appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
 
 fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do
