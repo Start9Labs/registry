@@ -57,19 +57,6 @@ readProcessInheritStderr a b c sink = do
                 $ System.Process.Typed.proc a b
     withProcessTerm_ pc $ \p -> sink (getStdout p)
 
-sourceConfig :: (MonadUnliftIO m, MonadThrow m)
-             => FilePath
-             -> FilePath
-             -> S9PK
-             -> (ConduitT () ByteString m () -> m r)
-             -> m r
-sourceConfig appmgrPath appPath e@(Extension appId) sink = do
-    let
-        appmgr = readProcessInheritStderr (appmgrPath <> "embassy-sdk")
-                                          ["inspect", "config", appPath </> show e, "--json"]
-                                          ""
-    appmgr sink `catch` \ece -> throwIO (AppMgrE [i|inspect config #{appId} \--json|] (eceExitCode ece))
-
 sourceManifest :: (MonadUnliftIO m) => FilePath -> FilePath -> S9PK -> (ConduitT () ByteString m () -> m r) -> m r
 sourceManifest appmgrPath appPath e@(Extension appId) sink = do
     let appmgr = readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "manifest", appPath </> show e] ""
