@@ -37,7 +37,7 @@ instance FromJSON IconType
 ixt :: Text
 ixt = toS $ toUpper <$> drop 1 ".png"
 
-getIconsR :: AppIdentifier -> Handler TypedContent
+getIconsR :: PkgId -> Handler TypedContent
 getIconsR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     spec                 <- getVersionFromQuery appsDir ext >>= \case
@@ -71,7 +71,7 @@ getIconsR appId = do
                (\bsSource -> respondSource mimeType (bsSource .| awaitForever sendChunkBS))
     where ext = Extension (show appId) :: Extension "s9pk"
 
-getLicenseR :: AppIdentifier -> Handler TypedContent
+getLicenseR :: PkgId -> Handler TypedContent
 getLicenseR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     spec                 <- getVersionFromQuery appsDir ext >>= \case
@@ -84,7 +84,7 @@ getLicenseR appId = do
             sourceLicense appMgrDir p ext (\bsSource -> respondSource typePlain (bsSource .| awaitForever sendChunkBS))
     where ext = Extension (show appId) :: Extension "s9pk"
 
-getInstructionsR :: AppIdentifier -> Handler TypedContent
+getInstructionsR :: PkgId -> Handler TypedContent
 getInstructionsR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
     spec                 <- getVersionFromQuery appsDir ext >>= \case

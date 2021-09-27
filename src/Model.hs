@@ -10,19 +10,19 @@
 
 module Model where
 
-import           Startlude
 import           Database.Persist.TH
-import           Lib.Types.Emver
+import           Lib.Types.AppIndex
 import           Lib.Types.Category
+import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
-import Lib.Types.AppIndex
+import           Startlude
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 SApp
     createdAt UTCTime
     updatedAt UTCTime Maybe
     title Text
-    appId AppIdentifier
+    appId PkgId
     descShort Text
     descLong Text
     iconType Text
