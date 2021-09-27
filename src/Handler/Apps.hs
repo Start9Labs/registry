@@ -31,16 +31,16 @@ import           System.Posix.Files             ( fileSize
 import           Yesod.Core
 import           Yesod.Persist.Core
 
+import           Database.Queries
 import           Foundation
+import           Lib.Error
+import           Lib.External.AppMgr
 import           Lib.Registry
 import           Lib.Types.AppIndex
 import           Lib.Types.Emver
 import           Lib.Types.FileSystem
-import           Lib.Error
-import           Lib.External.AppMgr
-import           Settings
-import           Database.Queries
 import           Network.Wai                    ( Request(requestHeaderUserAgent) )
+import           Settings
 import           Util.Shared
 
 pureLog :: Show a => a -> Handler a
@@ -78,9 +78,11 @@ getAppManifestR appId = do
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> show appId) $ appsDir
-    manifest <- handleS9ErrT $ getManifest appMgrDir appDir appExt
     addPackageHeader appMgrDir appDir appExt
-    pure $ TypedContent "application/json" (toContent manifest)
+    getManifest appMgrDir
+                appDir
+                appExt
+                (\bsSource -> respondSource "application/json" (bsSource .| awaitForever sendChunkBS))
     where appExt = Extension (show appId) :: Extension "s9pk"
 
 getAppConfigR :: AppIdentifier -> Handler TypedContent
@@ -92,8 +94,8 @@ getAppConfigR appId = do
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> show appId) $ appsDir
-    config <- handleS9ErrT $ getConfig appMgrDir appDir appExt
     addPackageHeader appMgrDir appDir appExt
+    config <- getConfig appMgrDir appDir appExt (\bsSource -> _)
     pure $ TypedContent "application/json" (toContent config)
     where appExt = Extension (show appId) :: Extension "s9pk"
 

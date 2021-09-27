@@ -13,6 +13,11 @@ import           Yesod.Core
 
 import           Data.Aeson
 import qualified Data.ByteString.Lazy          as BS
+import           Data.Conduit                   ( (.|)
+                                                , awaitForever
+                                                , runConduit
+                                                )
+import qualified Data.Conduit.List             as CL
 import           Foundation
 import           Lib.Error
 import           Lib.External.AppMgr
@@ -40,7 +45,7 @@ getIconsR appId = do
         Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
     let appDir = (<> "/") . (</> show spec) . (</> show appId) $ appsDir
-    manifest' <- handleS9ErrT $ getManifest appMgrDir appDir ext
+    manifest' <- getManifest appMgrDir appDir ext (\bsSource -> runConduit $ bsSource .| CL.foldMap BS.fromStrict)
     manifest  <- case eitherDecode manifest' of
         Left e -> do
             $logError "could not parse service manifest!"
@@ -61,10 +66,10 @@ getIconsR appId = do
                     SVG  -> pure typeSvg
                     JPG  -> pure typeJpeg
                     JPEG -> pure typeJpeg
-    respondSource mimeType (sendChunkBS =<< BS.toStrict <$> handleS9ErrT (getIcon appMgrDir (appDir </> show ext) ext))
-    -- (_, Just hout, _, _) <- liftIO (createProcess $ iconBs { std_out = CreatePipe })
-    -- respondSource typePlain (runConduit $ yieldMany () [iconBs])
-    -- respondSource typePlain $ sourceHandle hout .| awaitForever sendChunkBS
+    getIcon appMgrDir
+            (appDir </> show ext)
+            ext
+            (\bsSource -> respondSource mimeType (bsSource .| awaitForever sendChunkBS))
     where ext = Extension (show appId) :: Extension "s9pk"
 
 getLicenseR :: AppIdentifier -> Handler TypedContent
@@ -76,8 +81,8 @@ getLicenseR appId = do
     servicePath <- liftIO $ getVersionedFileFromDir appsDir ext spec
     case servicePath of
         Nothing -> notFound
-        Just p  -> do
-            respondSource typePlain (sendChunkBS =<< BS.toStrict <$> handleS9ErrT (getLicense appMgrDir p ext))
+        Just p ->
+            getLicense appMgrDir p ext (\bsSource -> respondSource typePlain (bsSource .| awaitForever sendChunkBS))
     where ext = Extension (show appId) :: Extension "s9pk"
 
 getInstructionsR :: AppIdentifier -> Handler TypedContent
@@ -89,6 +94,8 @@ getInstructionsR appId = do
     servicePath <- liftIO $ getVersionedFileFromDir appsDir ext spec
     case servicePath of
         Nothing -> notFound
-        Just p  -> do
-            respondSource typePlain (sendChunkBS =<< BS.toStrict <$> handleS9ErrT (getInstructions appMgrDir p ext))
+        Just p  -> getInstructions appMgrDir
+                                   p
+                                   ext
+                                   (\bsSource -> respondSource typePlain (bsSource .| awaitForever sendChunkBS))
     where ext = Extension (show appId) :: Extension "s9pk"
