@@ -57,36 +57,36 @@ readProcessInheritStderr a b c sink = do
                 $ System.Process.Typed.proc a b
     withProcessTerm_ pc $ \p -> sink (getStdout p)
 
-getConfig :: (MonadUnliftIO m, MonadThrow m, KnownSymbol a)
-          => FilePath
-          -> FilePath
-          -> Extension a
-          -> (ConduitT () ByteString m () -> m r)
-          -> m r
-getConfig appmgrPath appPath e@(Extension appId) sink = do
+sourceConfig :: (MonadUnliftIO m, MonadThrow m, KnownSymbol a)
+             => FilePath
+             -> FilePath
+             -> Extension a
+             -> (ConduitT () ByteString m () -> m r)
+             -> m r
+sourceConfig appmgrPath appPath e@(Extension appId) sink = do
     let
         appmgr = readProcessInheritStderr (appmgrPath <> "embassy-sdk")
                                           ["inspect", "config", appPath </> show e, "--json"]
                                           ""
     appmgr sink `catch` \ece -> throwIO (AppMgrE [i|inspect config #{appId} \--json|] (eceExitCode ece))
 
-getManifest :: (MonadUnliftIO m, KnownSymbol a)
-            => FilePath
-            -> FilePath
-            -> Extension a
-            -> (ConduitT () ByteString m () -> m r)
-            -> m r
-getManifest appmgrPath appPath e@(Extension appId) sink = do
+sourceManifest :: (MonadUnliftIO m, KnownSymbol a)
+               => FilePath
+               -> FilePath
+               -> Extension a
+               -> (ConduitT () ByteString m () -> m r)
+               -> m r
+sourceManifest appmgrPath appPath e@(Extension appId) sink = do
     let appmgr = readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "manifest", appPath </> show e] ""
     appmgr sink `catch` \ece -> throwIO (AppMgrE [i|embassy-sdk inspect manifest #{appId}|] (eceExitCode ece))
 
-getIcon :: (MonadUnliftIO m, KnownSymbol a)
-        => FilePath
-        -> FilePath
-        -> Extension a
-        -> (ConduitT () ByteString m () -> m r)
-        -> m r
-getIcon appmgrPath appPath (Extension icon) sink = do
+sourceIcon :: (MonadUnliftIO m, KnownSymbol a)
+           => FilePath
+           -> FilePath
+           -> Extension a
+           -> (ConduitT () ByteString m () -> m r)
+           -> m r
+sourceIcon appmgrPath appPath (Extension icon) sink = do
     let appmgr = readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "icon", appPath] ""
     appmgr sink `catch` \ece -> throwIO $ AppMgrE [i|embassy-sdk inspect icon #{icon}|] (eceExitCode ece)
 
@@ -96,23 +96,23 @@ getPackageHash appmgrPath appPath e@(Extension appId) = do
     appmgr (\bsSource -> runConduit $ bsSource .| CL.foldMap id)
         `catch` \ece -> throwIO $ AppMgrE [i|embassy-sdk inspect hash #{appId}|] (eceExitCode ece)
 
-getInstructions :: (MonadUnliftIO m, KnownSymbol a)
-                => FilePath
-                -> FilePath
-                -> Extension a
-                -> (ConduitT () ByteString m () -> m r)
-                -> m r
-getInstructions appmgrPath appPath (Extension appId) sink = do
+sourceInstructions :: (MonadUnliftIO m, KnownSymbol a)
+                   => FilePath
+                   -> FilePath
+                   -> Extension a
+                   -> (ConduitT () ByteString m () -> m r)
+                   -> m r
+sourceInstructions appmgrPath appPath (Extension appId) sink = do
     let appmgr = readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "instructions", appPath] ""
     appmgr sink `catch` \ece -> throwIO $ AppMgrE [i|embassy-sdk inspect instructions #{appId}|] (eceExitCode ece)
 
-getLicense :: (MonadUnliftIO m, KnownSymbol a)
-           => FilePath
-           -> FilePath
-           -> Extension a
-           -> (ConduitT () ByteString m () -> m r)
-           -> m r
-getLicense appmgrPath appPath (Extension appId) sink = do
+sourceLicense :: (MonadUnliftIO m, KnownSymbol a)
+              => FilePath
+              -> FilePath
+              -> Extension a
+              -> (ConduitT () ByteString m () -> m r)
+              -> m r
+sourceLicense appmgrPath appPath (Extension appId) sink = do
     let appmgr = readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "license", appPath] ""
     appmgr sink `catch` \ece -> throwIO $ AppMgrE [i|embassy-sdk inspect license #{appId}|] (eceExitCode ece)
 
