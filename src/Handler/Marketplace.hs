@@ -451,15 +451,6 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
                          }
         )
 
--- decodeIcon :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m URL
--- decodeIcon appmgrPath depPath e@(Extension icon) = do
---     icon' <- handleS9ErrT $ getIcon appmgrPath depPath e
---     case eitherDecode icon' of
---         Left e' -> do
---             $logInfo $ T.pack e'
---             sendResponseStatus status400 e'
---         Right (i' :: URL) -> pure $ i' <> T.pack icon
-
 decodeInstructions :: (MonadUnliftIO m, MonadHandler m, MonadThrow m) => FilePath -> FilePath -> S9PK -> m Text
 decodeInstructions appmgrPath depPath package = do
     sourceInstructions appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
