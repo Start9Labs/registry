@@ -66,7 +66,7 @@ data ServiceRes = ServiceRes
     , serviceResInstructions   :: URL
     , serviceResLicense        :: URL
     , serviceResVersions       :: [Version]
-    , serviceResDependencyInfo :: HM.HashMap AppIdentifier DependencyInfo
+    , serviceResDependencyInfo :: HM.HashMap PkgId DependencyInfo
     }
     deriving Generic
 
@@ -93,7 +93,7 @@ instance ToContent ServiceRes where
 instance ToTypedContent ServiceRes where
     toTypedContent = toTypedContent . toJSON
 data DependencyInfo = DependencyInfo
-    { dependencyInfoTitle :: AppIdentifier
+    { dependencyInfoTitle :: PkgId
     , dependencyInfoIcon  :: URL
     }
     deriving (Eq, Show)
@@ -114,7 +114,7 @@ instance ToTypedContent ServiceListRes where
     toTypedContent = toTypedContent . toJSON
 
 data ServiceAvailable = ServiceAvailable
-    { serviceAvailableId        :: AppIdentifier
+    { serviceAvailableId        :: PkgId
     , serviceAvailableTitle     :: Text
     , serviceAvailableVersion   :: Version
     , serviceAvailableIcon      :: URL
@@ -142,7 +142,7 @@ instance ToContent ServiceAvailableRes where
 instance ToTypedContent ServiceAvailableRes where
     toTypedContent = toTypedContent . toJSON
 
-newtype VersionLatestRes = VersionLatestRes (HM.HashMap AppIdentifier (Maybe Version))
+newtype VersionLatestRes = VersionLatestRes (HM.HashMap PkgId (Maybe Version))
     deriving (Show, Generic)
 instance ToJSON VersionLatestRes
 instance ToContent VersionLatestRes where
@@ -174,7 +174,7 @@ instance ToTypedContent EosRes where
     toTypedContent = toTypedContent . toJSON
 
 data PackageVersion = PackageVersion
-    { packageVersionId      :: AppIdentifier
+    { packageVersionId      :: PkgId
     , packageVersionVersion :: VersionRange
     }
     deriving Show
@@ -217,8 +217,7 @@ getReleaseNotesR = do
     case lookup "id" getParameters of
         Nothing      -> sendResponseStatus status400 ("expected query param \"id\" to exist" :: Text)
         Just package -> do
-            (service, _) <- runDB $ fetchLatestApp (AppIdentifier package) >>= errOnNothing status404
-                                                                                            "package not found"
+            (service, _) <- runDB $ fetchLatestApp (PkgId package) >>= errOnNothing status404 "package not found"
             (_, mappedVersions) <- fetchAllAppVersions (entityKey service)
             pure mappedVersions
 
@@ -229,8 +228,8 @@ getVersionLatestR = do
         Nothing       -> sendResponseStatus status400 ("expected query param \"ids\" to exist" :: Text)
         Just packages -> case eitherDecode $ BS.fromStrict $ encodeUtf8 packages of
             Left e -> sendResponseStatus status400 ("could not parse query param \"ids\"" <> show e :: Text)
-            Right (p :: [AppIdentifier]) -> do
-                let packageList :: [(AppIdentifier, Maybe Version)] = (, Nothing) <$> p
+            Right (p :: [PkgId]) -> do
+                let packageList :: [(PkgId, Maybe Version)] = (, Nothing) <$> p
                 found <- runDB $ traverse fetchLatestApp $ fst <$> packageList
                 pure
                     $ VersionLatestRes
@@ -370,9 +369,9 @@ getPackageListR = do
 
             where
                 getPackageDetails :: MonadIO m
-                                  => (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
+                                  => (HM.HashMap PkgId ([Version], [CategoryTitle]))
                                   -> PackageVersion
-                                  -> m (Either Text ((Maybe Version), AppIdentifier))
+                                  -> m (Either Text ((Maybe Version), PkgId))
                 getPackageDetails metadata pv = do
                     let appId = packageVersionId pv
                     let spec  = packageVersionVersion pv
@@ -395,9 +394,9 @@ getPackageListR = do
 
 getServiceDetails :: (MonadUnliftIO m, Monad m, MonadError IOException m)
                   => AppSettings
-                  -> (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
+                  -> (HM.HashMap PkgId ([Version], [CategoryTitle]))
                   -> Maybe Version
-                  -> AppIdentifier
+                  -> PkgId
                   -> m (Either Text ServiceRes)
 getServiceDetails settings metadata maybeVersion appId = do
     packageMetadata <- case HM.lookup appId metadata of
@@ -432,9 +431,9 @@ getServiceDetails settings metadata maybeVersion appId = do
 
 mapDependencyMetadata :: (MonadIO m)
                       => Text
-                      -> HM.HashMap AppIdentifier ([Version], [CategoryTitle])
-                      -> (AppIdentifier, ServiceDependencyInfo)
-                      -> m (Either Text (AppIdentifier, DependencyInfo))
+                      -> HM.HashMap PkgId ([Version], [CategoryTitle])
+                      -> (PkgId, ServiceDependencyInfo)
+                      -> m (Either Text (PkgId, DependencyInfo))
 mapDependencyMetadata domain metadata (appId, depInfo) = do
     depMetadata <- case HM.lookup appId metadata of
         Nothing -> throwIO $ NotFoundE [i|dependency metadata for #{appId} not found.|]
@@ -497,7 +496,7 @@ fetchMostRecentAppVersions appId = select $ do
     limit 1
     pure version
 
-fetchLatestApp :: MonadIO m => AppIdentifier -> ReaderT SqlBackend m (Maybe (P.Entity SApp, P.Entity SVersion))
+fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity SApp, P.Entity SVersion))
 fetchLatestApp appId = selectOne $ do
     (service :& version) <-
         from
@@ -509,7 +508,7 @@ fetchLatestApp appId = selectOne $ do
     pure (service, version)
 
 fetchLatestAppAtVersion :: MonadIO m
-                        => AppIdentifier
+                        => PkgId
                         -> Version
                         -> ReaderT SqlBackend m (Maybe (P.Entity SApp, P.Entity SVersion))
 fetchLatestAppAtVersion appId version' = selectOne $ do
@@ -522,7 +521,7 @@ fetchLatestAppAtVersion appId version' = selectOne $ do
     pure (service, version)
 
 fetchPackageMetadata :: (MonadLogger m, MonadUnliftIO m)
-                     => ReaderT SqlBackend m (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
+                     => ReaderT SqlBackend m (HM.HashMap PkgId ([Version], [CategoryTitle]))
 fetchPackageMetadata = do
     let categoriesQuery = select $ do
             (service :& category) <-

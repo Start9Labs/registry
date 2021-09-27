@@ -34,7 +34,7 @@ getBestVersion rootDir ext spec = do
     let best         = getMax <$> foldMap (Just . Max . fst . unRegisteredAppVersion) satisfactory
     pure best
 
-addPackageHeader :: (MonadUnliftIO m, MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m ()
+addPackageHeader :: (MonadUnliftIO m, MonadHandler m) => FilePath -> FilePath -> S9PK -> m ()
 addPackageHeader appMgrDir appDir appExt = do
     packageHash <- getPackageHash appMgrDir appDir appExt
     addHeader "X-S9PK-HASH" $ decodeUtf8 packageHash

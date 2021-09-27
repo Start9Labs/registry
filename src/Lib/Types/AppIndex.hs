@@ -28,42 +28,42 @@ import           Orphans.Emver                  ( )
 import           System.Directory
 import           Yesod
 
-newtype AppIdentifier = AppIdentifier { unAppIdentifier :: Text }
-  deriving (Eq)
-instance IsString AppIdentifier where
-    fromString = AppIdentifier . fromString
-instance Show AppIdentifier where
-    show = toS . unAppIdentifier
-instance Read AppIdentifier where
-    readsPrec _ s = [(AppIdentifier $ toS s, "")]
-instance Hashable AppIdentifier where
-    hashWithSalt n = hashWithSalt n . unAppIdentifier
-instance FromJSON AppIdentifier where
-    parseJSON = fmap AppIdentifier . parseJSON
-instance ToJSON AppIdentifier where
-    toJSON = toJSON . unAppIdentifier
-instance FromJSONKey AppIdentifier where
-    fromJSONKey = fmap AppIdentifier fromJSONKey
-instance ToJSONKey AppIdentifier where
-    toJSONKey = contramap unAppIdentifier toJSONKey
-instance PersistField AppIdentifier where
+newtype PkgId = PkgId { unPkgId :: Text }
+    deriving (Eq)
+instance IsString PkgId where
+    fromString = PkgId . fromString
+instance Show PkgId where
+    show = toS . unPkgId
+instance Read PkgId where
+    readsPrec _ s = [(PkgId $ toS s, "")]
+instance Hashable PkgId where
+    hashWithSalt n = hashWithSalt n . unPkgId
+instance FromJSON PkgId where
+    parseJSON = fmap PkgId . parseJSON
+instance ToJSON PkgId where
+    toJSON = toJSON . unPkgId
+instance FromJSONKey PkgId where
+    fromJSONKey = fmap PkgId fromJSONKey
+instance ToJSONKey PkgId where
+    toJSONKey = contramap unPkgId toJSONKey
+instance PersistField PkgId where
     toPersistValue = PersistText . show
-    fromPersistValue (PersistText t) = Right . AppIdentifier $ toS t
+    fromPersistValue (PersistText t) = Right . PkgId $ toS t
     fromPersistValue other           = Left $ "Invalid AppId: " <> show other
-instance PersistFieldSql AppIdentifier where
+instance PersistFieldSql PkgId where
     sqlType _ = SqlString
-instance PathPiece AppIdentifier where
-    fromPathPiece = fmap AppIdentifier . fromPathPiece
-    toPathPiece   = unAppIdentifier
-instance ToContent AppIdentifier where
+instance PathPiece PkgId where
+    fromPathPiece = fmap PkgId . fromPathPiece
+    toPathPiece   = unPkgId
+instance ToContent PkgId where
     toContent = toContent . toJSON
-instance ToTypedContent AppIdentifier where
+instance ToTypedContent PkgId where
     toTypedContent = toTypedContent . toJSON
 
 data VersionInfo = VersionInfo
     { versionInfoVersion       :: Version
     , versionInfoReleaseNotes  :: Text
-    , versionInfoDependencies  :: HM.HashMap AppIdentifier VersionRange
+    , versionInfoDependencies  :: HM.HashMap PkgId VersionRange
     , versionInfoOsRequired    :: VersionRange
     , versionInfoOsRecommended :: VersionRange
     , versionInfoInstallAlert  :: Maybe Text
@@ -111,7 +111,7 @@ instance ToJSON StoreApp where
         , "version-info" .= storeAppVersionInfo
         , "timestamp" .= storeAppTimestamp
         ]
-newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap AppIdentifier StoreApp}
+newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap PkgId StoreApp}
     deriving (Show)
 
 instance FromJSON AppManifest where
@@ -186,7 +186,7 @@ instance FromJSON ServiceAlert where
         "stop"      -> pure STOP
         _           -> fail "unknown service alert type"
 data ServiceManifest = ServiceManifest
-    { serviceManifestId               :: !AppIdentifier
+    { serviceManifestId               :: !PkgId
     , serviceManifestTitle            :: !Text
     , serviceManifestVersion          :: !Version
     , serviceManifestDescriptionLong  :: !Text
@@ -194,7 +194,7 @@ data ServiceManifest = ServiceManifest
     , serviceManifestReleaseNotes     :: !Text
     , serviceManifestIcon             :: !(Maybe Text)
     , serviceManifestAlerts           :: !(HM.HashMap ServiceAlert (Maybe Text))
-    , serviceManifestDependencies     :: !(HM.HashMap AppIdentifier ServiceDependencyInfo)
+    , serviceManifestDependencies     :: !(HM.HashMap PkgId ServiceDependencyInfo)
     }
     deriving Show
 instance FromJSON ServiceManifest where
