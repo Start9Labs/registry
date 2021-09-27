@@ -283,9 +283,6 @@ getPackageListR = do
                 $ mapConcurrently (getServiceDetails settings packageMetadata Nothing) filteredServices'
             let (_, services) = partitionEithers serviceDetailResult
             pure $ ServiceAvailableRes services
-            -- if null errors
-            --     then pure $ ServiceAvailableRes services
-            --     else sendResponseStatus status500 ("Errors acquiring service details: " <> show <$> errors)
 
         Just packageVersionList -> case eitherDecode $ BS.fromStrict $ encodeUtf8 packageVersionList of
             Left e -> sendResponseStatus status400 ("could not parse query param \"ids\"" <> show e :: Text)
@@ -301,72 +298,6 @@ getPackageListR = do
                 -- @TODO fix _ error
                 let (_, services) = partitionEithers serviceDetailResult
                 pure $ ServiceAvailableRes services
-                            -- if null errors
-                            --     then pure $ ServiceAvailableRes services
-                            --     else sendResponseStatus status500 ("Errors acquiring service details: " <> show <$> errors)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
             where
                 getPackageDetails :: MonadIO m
                                   => (HM.HashMap PkgId ([Version], [CategoryTitle]))
