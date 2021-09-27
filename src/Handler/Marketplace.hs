@@ -461,19 +461,11 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
 --             sendResponseStatus status400 e'
 --         Right (i' :: URL) -> pure $ i' <> T.pack icon
 
-decodeInstructions :: (MonadUnliftIO m, MonadHandler m, KnownSymbol a, MonadThrow m)
-                   => FilePath
-                   -> FilePath
-                   -> Extension a
-                   -> m Text
+decodeInstructions :: (MonadUnliftIO m, MonadHandler m, MonadThrow m) => FilePath -> FilePath -> S9PK -> m Text
 decodeInstructions appmgrPath depPath package = do
     sourceInstructions appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
 
-decodeLicense :: (MonadUnliftIO m, MonadThrow m, MonadHandler m, KnownSymbol a)
-              => FilePath
-              -> FilePath
-              -> Extension a
-              -> m Text
+decodeLicense :: (MonadUnliftIO m, MonadThrow m, MonadHandler m) => FilePath -> FilePath -> S9PK -> m Text
 decodeLicense appmgrPath depPath package =
     sourceLicense appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
 
