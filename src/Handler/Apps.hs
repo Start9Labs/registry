@@ -33,7 +33,6 @@ import           Yesod.Persist.Core
 
 import           Database.Queries
 import           Foundation
-import           Lib.Error
 import           Lib.External.AppMgr
 import           Lib.Registry
 import           Lib.Types.AppIndex
@@ -79,10 +78,10 @@ getAppManifestR appId = do
         Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> show appId) $ appsDir
     addPackageHeader appMgrDir appDir appExt
-    getManifest appMgrDir
-                appDir
-                appExt
-                (\bsSource -> respondSource "application/json" (bsSource .| awaitForever sendChunkBS))
+    sourceManifest appMgrDir
+                   appDir
+                   appExt
+                   (\bsSource -> respondSource "application/json" (bsSource .| awaitForever sendChunkBS))
     where appExt = Extension (show appId) :: Extension "s9pk"
 
 getAppConfigR :: AppIdentifier -> Handler TypedContent
@@ -95,7 +94,10 @@ getAppConfigR appId = do
         Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> show appId) $ appsDir
     addPackageHeader appMgrDir appDir appExt
-    config <- getConfig appMgrDir appDir appExt (\bsSource -> _)
+    config <- sourceConfig appMgrDir
+                           appDir
+                           appExt
+                           (\bsSource -> respondSource "application/json" (bsSource .| awaitForever sendChunkBS))
     pure $ TypedContent "application/json" (toContent config)
     where appExt = Extension (show appId) :: Extension "s9pk"
 
