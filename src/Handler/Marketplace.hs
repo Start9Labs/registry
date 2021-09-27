@@ -11,8 +11,13 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
 module Handler.Marketplace where
+import           Conduit                        ( (.|)
+                                                , MonadThrow
+                                                , mapC
+                                                )
 import           Data.Aeson
 import qualified Data.ByteString.Lazy          as BS
+import qualified Data.Conduit.Text             as CT
 import qualified Data.HashMap.Strict           as HM
 import           Data.List
 import qualified Data.List.NonEmpty            as NE
@@ -388,7 +393,7 @@ getPackageListR = do
                         Just v -> do
                             pure $ Right (Just v, appId)
 
-getServiceDetails :: (MonadIO m, Monad m, MonadError IOException m)
+getServiceDetails :: (MonadUnliftIO m, Monad m, MonadError IOException m)
                   => AppSettings
                   -> (HM.HashMap AppIdentifier ([Version], [CategoryTitle]))
                   -> Maybe Version
@@ -409,7 +414,7 @@ getServiceDetails settings metadata maybeVersion appId = do
         Just v -> pure v
     let appDir = (<> "/") . (</> show version) . (</> show appId) $ appsDir
     let appExt = Extension (show appId) :: Extension "s9pk"
-    manifest' <- handleS9ErrNuclear $ getManifest appMgrDir appDir appExt
+    manifest' <- getManifest appMgrDir appDir appExt (\bs -> sinkMem (bs .| mapC BS.fromStrict))
     case eitherDecode $ manifest' of
         Left  e -> pure $ Left $ "Could not parse service manifest for " <> show appId <> ": " <> show e
         Right m -> do
@@ -447,24 +452,30 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
                          }
         )
 
-decodeIcon :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m URL
-decodeIcon appmgrPath depPath e@(Extension icon) = do
-    icon' <- handleS9ErrT $ getIcon appmgrPath depPath e
-    case eitherDecode icon' of
-        Left e' -> do
-            $logInfo $ T.pack e'
-            sendResponseStatus status400 e'
-        Right (i' :: URL) -> pure $ i' <> T.pack icon
+-- decodeIcon :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m URL
+-- decodeIcon appmgrPath depPath e@(Extension icon) = do
+--     icon' <- handleS9ErrT $ getIcon appmgrPath depPath e
+--     case eitherDecode icon' of
+--         Left e' -> do
+--             $logInfo $ T.pack e'
+--             sendResponseStatus status400 e'
+--         Right (i' :: URL) -> pure $ i' <> T.pack icon
 
-decodeInstructions :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m Text
+decodeInstructions :: (MonadUnliftIO m, MonadHandler m, KnownSymbol a, MonadThrow m)
+                   => FilePath
+                   -> FilePath
+                   -> Extension a
+                   -> m Text
 decodeInstructions appmgrPath depPath package = do
-    instructions <- handleS9ErrT $ getInstructions appmgrPath depPath package
-    pure $ decodeUtf8 $ BS.toStrict instructions
+    getInstructions appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
 
-decodeLicense :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m Text
-decodeLicense appmgrPath depPath package = do
-    license <- handleS9ErrT $ getLicense appmgrPath depPath package
-    pure $ decodeUtf8 $ BS.toStrict license
+decodeLicense :: (MonadUnliftIO m, MonadThrow m, MonadHandler m, KnownSymbol a)
+              => FilePath
+              -> FilePath
+              -> Extension a
+              -> m Text
+decodeLicense appmgrPath depPath package =
+    getLicense appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
 
 fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do
