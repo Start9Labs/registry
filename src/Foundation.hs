@@ -9,10 +9,13 @@ module Foundation where
 import           Startlude               hiding ( Handler )
 
 import           Control.Monad.Logger           ( LogSource )
-import           Database.Persist.Sql
+import           Database.Persist.Sql    hiding ( update )
 import           Lib.Registry
 import           Yesod.Core
-import           Yesod.Core.Types               ( Logger )
+import           Yesod.Core.Types               ( HandlerData(handlerEnv)
+                                                , Logger
+                                                , RunHandlerEnv(rheChild, rheSite)
+                                                )
 import qualified Yesod.Core.Unsafe             as Unsafe
 
 import           Control.Monad.Reader.Has       ( Has(extract, update) )
@@ -43,6 +46,13 @@ instance Has PkgRepo RegistryCtx where
         let repo     = f $ extract ctx
             settings = (appSettings ctx) { resourcesDir = pkgRepoFileRoot repo, staticBinDir = pkgRepoAppMgrBin repo }
         in  ctx { appSettings = settings }
+instance Has PkgRepo (HandlerData RegistryCtx RegistryCtx) where
+    extract = extract . rheSite . handlerEnv
+    update f r =
+        let ctx = update f (rheSite $ handlerEnv r)
+            rhe = (handlerEnv r) { rheSite = ctx, rheChild = ctx }
+        in  r { handlerEnv = rhe }
+
 
 
 

@@ -12,12 +12,11 @@
 
 module Handler.Marketplace where
 import           Conduit                        ( (.|)
-                                                , MonadThrow
-                                                , mapC
+                                                , runConduit
                                                 )
 import           Data.Aeson
 import qualified Data.ByteString.Lazy          as BS
-import qualified Data.Conduit.Text             as CT
+import qualified Data.Conduit.List             as CL
 import qualified Data.HashMap.Strict           as HM
 import           Data.List
 import qualified Data.List.NonEmpty            as NE
@@ -30,21 +29,20 @@ import           Database.Marketplace
 import qualified Database.Persist              as P
 import           Foundation
 import           Lib.Error
-import           Lib.External.AppMgr
-import           Lib.Registry
+import           Lib.PkgRepository              ( getManifest )
 import           Lib.Types.AppIndex
 import           Lib.Types.AppIndex             ( )
 import           Lib.Types.Category
 import           Lib.Types.Emver
 import           Model
 import           Network.HTTP.Types
+import           Protolude.Unsafe               ( unsafeFromJust )
 import           Settings
 import           Startlude               hiding ( Handler
                                                 , from
                                                 , on
                                                 , sortOn
                                                 )
-import           System.FilePath.Posix
 import           UnliftIO.Async
 import           Yesod.Core
 import           Yesod.Persist.Core
@@ -242,122 +240,136 @@ getVersionLatestR = do
 
 getPackageListR :: Handler ServiceAvailableRes
 getPackageListR = do
-    getParameters <- reqGetParams <$> getRequest
-    let defaults = ServiceListDefaults { serviceListOrder      = DESC
+    pkgIds <- getPkgIdsQuery
+    case pkgIds of
+        Nothing -> do
+            -- query for all
+            category         <- getCategoryQuery
+            page             <- getPageQuery
+            limit'           <- getLimitQuery
+            query            <- T.strip . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
+            filteredServices <- runDB $ searchServices category limit' ((page - 1) * limit') query
+            let filteredServices' = sAppAppId . entityVal <$> filteredServices
+            settings            <- getsYesod appSettings
+            packageMetadata     <- runDB $ fetchPackageMetadata
+            serviceDetailResult <- mapConcurrently (getServiceDetails settings packageMetadata Nothing)
+                                                   filteredServices'
+            let (_, services) = partitionEithers serviceDetailResult
+            pure $ ServiceAvailableRes services
+
+        Just packages -> do
+                -- for each item in list get best available from version range
+            settings                <- getsYesod appSettings
+            -- @TODO fix _ error
+            packageMetadata         <- runDB $ fetchPackageMetadata
+            availableServicesResult <- traverse (getPackageDetails packageMetadata) packages
+            let (_, availableServices) = partitionEithers availableServicesResult
+            serviceDetailResult <- mapConcurrently (uncurry $ getServiceDetails settings packageMetadata)
+                                                   availableServices
+            -- @TODO fix _ error
+            let (_, services) = partitionEithers serviceDetailResult
+            pure $ ServiceAvailableRes services
+    where
+        defaults = ServiceListDefaults { serviceListOrder      = DESC
                                        , serviceListPageLimit  = 20
                                        , serviceListPageNumber = 1
                                        , serviceListCategory   = Nothing
                                        , serviceListQuery      = ""
                                        }
-    case lookup "ids" getParameters of
-        Nothing -> do
-            -- query for all
-            category <- case lookup "category" getParameters of
-                Nothing -> pure $ serviceListCategory defaults
-                Just c  -> case readMaybe $ T.toUpper c of
-                    Nothing -> do
-                        $logInfo c
-                        sendResponseStatus status400 ("could not read category" :: Text)
-                    Just t -> pure $ Just t
-            page <- case lookup "page" getParameters of
-                Nothing -> pure $ serviceListPageNumber defaults
-                Just p  -> case readMaybe p of
-                    Nothing -> do
-                        $logInfo p
-                        sendResponseStatus status400 ("could not read page" :: Text)
-                    Just t -> pure $ case t of
-                        0 -> 1 -- disallow page 0 so offset is not negative
-                        _ -> t
-            limit' <- case lookup "per-page" getParameters of
-                Nothing -> pure $ serviceListPageLimit defaults
-                Just c  -> case readMaybe $ toS c of
-                    Nothing -> sendResponseStatus status400 ("could not read per-page" :: Text)
-                    Just l  -> pure l
-            query <- T.filter (not . isSpace) . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
-            filteredServices <- runDB $ searchServices category limit' ((page - 1) * limit') query
-            let filteredServices' = sAppAppId . entityVal <$> filteredServices
-            settings            <- getsYesod appSettings
-            packageMetadata     <- runDB $ fetchPackageMetadata
-            serviceDetailResult <- liftIO
-                $ mapConcurrently (getServiceDetails settings packageMetadata Nothing) filteredServices'
-            let (_, services) = partitionEithers serviceDetailResult
-            pure $ ServiceAvailableRes services
+        getPkgIdsQuery :: Handler (Maybe [PackageVersion])
+        getPkgIdsQuery = lookupGetParam "ids" >>= \case
+            Nothing  -> pure Nothing
+            Just ids -> case eitherDecodeStrict (encodeUtf8 ids) of
+                Left _ -> do
+                    let e = InvalidParamsE "get:ids" ids
+                    $logWarn (show e)
+                    sendResponseStatus status400 e
+                Right a -> pure a
+        getCategoryQuery :: Handler (Maybe CategoryTitle)
+        getCategoryQuery = lookupGetParam "category" >>= \case
+            Nothing -> pure Nothing
+            Just c  -> case readMaybe . T.toUpper $ c of
+                Nothing -> do
+                    let e = InvalidParamsE "get:category" c
+                    $logWarn (show e)
+                    sendResponseStatus status400 e
+                Just t -> pure $ Just t
+        getPageQuery :: Handler Int64
+        getPageQuery = lookupGetParam "page" >>= \case
+            Nothing -> pure $ serviceListPageNumber defaults
+            Just p  -> case readMaybe p of
+                Nothing -> do
+                    let e = InvalidParamsE "get:page" p
+                    $logWarn (show e)
+                    sendResponseStatus status400 e
+                Just t -> pure $ case t of
+                    0 -> 1 -- disallow page 0 so offset is not negative
+                    _ -> t
+        getLimitQuery :: Handler Int64
+        getLimitQuery = lookupGetParam "per-page" >>= \case
+            Nothing -> pure $ serviceListPageLimit defaults
+            Just pp -> case readMaybe pp of
+                Nothing -> do
+                    let e = InvalidParamsE "get:per-page" pp
+                    $logWarn (show e)
+                    sendResponseStatus status400 e
+                Just l -> pure l
+        getPackageDetails :: MonadIO m
+                          => (HM.HashMap PkgId ([Version], [CategoryTitle]))
+                          -> PackageVersion
+                          -> m (Either Text ((Maybe Version), PkgId))
+        getPackageDetails metadata pv = do
+            let appId = packageVersionId pv
+            let spec  = packageVersionVersion pv
+            pacakgeMetadata <- case HM.lookup appId metadata of
+                Nothing -> throwIO $ NotFoundE [i|dependency metadata for #{appId} not found.|]
+                Just m  -> pure m
+            -- get best version from VersionRange of dependency
+            let satisfactory = filter (<|| spec) (fst pacakgeMetadata)
+            let best         = getMax <$> foldMap (Just . Max) satisfactory
+            case best of
+                Nothing ->
+                    pure $ Left $ "best version could not be found for " <> show appId <> " with spec " <> show spec
+                Just v -> do
+                    pure $ Right (Just v, appId)
 
-        Just packageVersionList -> case eitherDecode $ BS.fromStrict $ encodeUtf8 packageVersionList of
-            Left e -> sendResponseStatus status400 ("could not parse query param \"ids\"" <> show e :: Text)
-            Right (packages :: [PackageVersion]) -> do
-                -- for each item in list get best available from version range
-                settings                <- getsYesod appSettings
-                -- @TODO fix _ error
-                packageMetadata         <- runDB $ fetchPackageMetadata
-                availableServicesResult <- traverse (getPackageDetails packageMetadata) packages
-                let (_, availableServices) = partitionEithers availableServicesResult
-                serviceDetailResult <- liftIO
-                    $ mapConcurrently (uncurry $ getServiceDetails settings packageMetadata) availableServices
-                -- @TODO fix _ error
-                let (_, services) = partitionEithers serviceDetailResult
-                pure $ ServiceAvailableRes services
-            where
-                getPackageDetails :: MonadIO m
-                                  => (HM.HashMap PkgId ([Version], [CategoryTitle]))
-                                  -> PackageVersion
-                                  -> m (Either Text ((Maybe Version), PkgId))
-                getPackageDetails metadata pv = do
-                    let appId = packageVersionId pv
-                    let spec  = packageVersionVersion pv
-                    pacakgeMetadata <- case HM.lookup appId metadata of
-                        Nothing -> throwIO $ NotFoundE [i|dependency metadata for #{appId} not found.|]
-                        Just m  -> pure m
-                    -- get best version from VersionRange of dependency
-                    let satisfactory = filter (<|| spec) (fst pacakgeMetadata)
-                    let best         = getMax <$> foldMap (Just . Max) satisfactory
-                    case best of
-                        Nothing ->
-                            pure
-                                $  Left
-                                $  "best version could not be found for "
-                                <> show appId
-                                <> " with spec "
-                                <> show spec
-                        Just v -> do
-                            pure $ Right (Just v, appId)
-
-getServiceDetails :: (MonadUnliftIO m, Monad m, MonadError IOException m)
+getServiceDetails :: (MonadUnliftIO m, Monad m, MonadResource m)
                   => AppSettings
                   -> (HM.HashMap PkgId ([Version], [CategoryTitle]))
                   -> Maybe Version
                   -> PkgId
                   -> m (Either Text ServiceRes)
-getServiceDetails settings metadata maybeVersion appId = do
-    -- packageMetadata <- case HM.lookup appId metadata of
-    --     Nothing -> throwIO $ NotFoundE [i|#{appId} not found.|]
-    --     Just m  -> pure m
+getServiceDetails settings metadata maybeVersion pkg = do
+    packageMetadata <- case HM.lookup pkg metadata of
+        Nothing -> throwIO $ NotFoundE [i|#{pkg} not found.|]
+        Just m  -> pure m
     -- let (appsDir, appMgrDir) = ((</> "apps") . resourcesDir &&& staticBinDir) settings
-    -- let domain               = registryHostname settings
-    -- version <- case maybeVersion of
-    --     Nothing -> do
-    --         -- grab first value, which will be the latest version
-    --         case fst packageMetadata of
-    --             []    -> throwIO $ NotFoundE $ "no latest version found for " <> show appId
-    --             x : _ -> pure x
-    --     Just v -> pure v
+    let domain = registryHostname settings
+    version <- case maybeVersion of
+        Nothing -> do
+            -- grab first value, which will be the latest version
+            case fst packageMetadata of
+                []    -> throwIO $ NotFoundE $ "no latest version found for " <> show pkg
+                x : _ -> pure x
+        Just v -> pure v
     -- let appDir = (<> "/") . (</> show version) . (</> show appId) $ appsDir
     -- let appExt = Extension (show appId) :: Extension "s9pk"
-    -- manifest' <- sourceManifest appMgrDir appDir appExt (\bs -> sinkMem (bs .| mapC BS.fromStrict))
-    -- case eitherDecode $ manifest' of
-    --     Left  e -> pure $ Left $ "Could not parse service manifest for " <> show appId <> ": " <> show e
-    --     Right m -> do
-    --         d <- liftIO $ mapConcurrently (mapDependencyMetadata domain metadata)
-    --                                       (HM.toList $ serviceManifestDependencies m)
-    --         pure $ Right $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{appId}|]
-    --                                   , serviceResManifest       = decode $ manifest' -- pass through raw JSON Value
-    --                                   , serviceResCategories     = snd packageMetadata
-    --                                   , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{appId}|]
-    --                                   , serviceResLicense        = [i|https://#{domain}/package/license/#{appId}|]
-    --                                   , serviceResVersions       = fst packageMetadata
-    --                                   , serviceResDependencyInfo = HM.fromList $ snd $ partitionEithers d
-    --                                   }
-    _
+    manifest <- flip runReaderT settings $ (snd <$> getManifest pkg version) >>= \bs ->
+        runConduit $ bs .| CL.foldMap BS.fromStrict
+    case eitherDecode manifest of
+        Left  e -> pure $ Left $ "Could not parse service manifest for " <> show pkg <> ": " <> show e
+        Right m -> do
+            d <- liftIO $ mapConcurrently (mapDependencyMetadata domain metadata)
+                                          (HM.toList $ serviceManifestDependencies m)
+            pure $ Right $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{pkg}|]
+                                        -- pass through raw JSON Value, we have checked its correct parsing above
+                                      , serviceResManifest       = unsafeFromJust . decode $ manifest
+                                      , serviceResCategories     = snd packageMetadata
+                                      , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{pkg}|]
+                                      , serviceResLicense        = [i|https://#{domain}/package/license/#{pkg}|]
+                                      , serviceResVersions       = fst packageMetadata
+                                      , serviceResDependencyInfo = HM.fromList $ snd $ partitionEithers d
+                                      }
 
 mapDependencyMetadata :: (MonadIO m)
                       => Text
