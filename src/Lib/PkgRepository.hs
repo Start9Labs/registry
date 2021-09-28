@@ -173,6 +173,7 @@ extractPkg fp = (`onException` cleanup) $ do
 
 watchPkgRepoRoot :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => m (IO Bool)
 watchPkgRepoRoot = do
+    $logInfo "Starting FSNotify Watch Manager"
     root    <- asks pkgRepoFileRoot
     runInIO <- askRunInIO
     box     <- newEmptyMVar @_ @()

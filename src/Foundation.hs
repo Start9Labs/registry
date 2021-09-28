@@ -2,27 +2,47 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE ViewPatterns          #-}
+{-# LANGUAGE TypeApplications #-}
 module Foundation where
 
 import           Startlude               hiding ( Handler )
 
-import           Control.Monad.Logger           ( LogSource )
+import           Control.Monad.Logger           ( Loc
+                                                , LogSource
+                                                , LogStr
+                                                , ToLogStr(toLogStr)
+                                                , fromLogStr
+                                                )
 import           Database.Persist.Sql    hiding ( update )
 import           Lib.Registry
 import           Yesod.Core
 import           Yesod.Core.Types               ( HandlerData(handlerEnv)
-                                                , Logger
+                                                , Logger(loggerDate)
                                                 , RunHandlerEnv(rheChild, rheSite)
+                                                , loggerPutStr
                                                 )
 import qualified Yesod.Core.Unsafe             as Unsafe
 
+import qualified Control.Monad.Logger.Extras   as Extra
+import           Control.Monad.Logger.Extras    ( wrapSGRCode )
 import           Control.Monad.Reader.Has       ( Has(extract, update) )
+import           Data.String.Interpolate.IsString
+                                                ( i )
+import qualified Data.Text                     as T
+import           Language.Haskell.TH            ( Loc(..) )
 import           Lib.PkgRepository
 import           Lib.Types.AppIndex
 import           Settings
+import           System.Console.ANSI.Codes      ( Color(..)
+                                                , ColorIntensity(..)
+                                                , ConsoleLayer(Foreground)
+                                                , SGR(SetColor)
+                                                )
 import           System.FilePath                ( (</>) )
+import           Yesod                          ( defaultMessageLoggerSource )
 import           Yesod.Persist.Core
 
 -- | The foundation datatype for your application. This can be a good place to
@@ -100,6 +120,42 @@ instance Yesod RegistryCtx where
 
     makeLogger :: RegistryCtx -> IO Logger
     makeLogger = return . appLogger
+
+    messageLoggerSource :: RegistryCtx -> Logger -> Loc -> LogSource -> LogLevel -> LogStr -> IO ()
+    messageLoggerSource ctx logger = \loc src lvl str -> do
+        shouldLog <- shouldLogIO ctx src lvl
+        when shouldLog $ do
+            date <- loggerDate logger
+            let
+                formatted =
+                    toLogStr date
+                        <> ( toLogStr
+                           . wrapSGRCode [SetColor Foreground Vivid (colorFor lvl)]
+                           $ fromLogStr
+                                 (  " ["
+                                 <> renderLvl lvl
+                                 <> (if T.null src then mempty else "#" <> toLogStr src)
+                                 <> "] "
+                                 <> str
+                                 )
+                           )
+                        <> (toLogStr
+                               (wrapSGRCode [SetColor Foreground Dull White]
+                                            [i| @ #{loc_filename loc}:#{fst $ loc_start loc}\n|]
+                               )
+                           )
+            loggerPutStr logger formatted
+        where
+            renderLvl lvl = case lvl of
+                LevelOther t -> toLogStr t
+                _            -> toLogStr @String $ drop 5 $ show lvl
+            colorFor = \case
+                LevelDebug   -> Green
+                LevelInfo    -> Blue
+                LevelWarn    -> Yellow
+                LevelError   -> Red
+                LevelOther _ -> White
+
 
 -- How to run database actions.
 instance YesodPersist RegistryCtx where
