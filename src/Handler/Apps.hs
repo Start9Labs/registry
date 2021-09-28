@@ -72,17 +72,18 @@ getSysR e = do
 
 getAppManifestR :: PkgId -> Handler TypedContent
 getAppManifestR appId = do
-    (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    av                   <- getVersionFromQuery appsDir appExt >>= \case
-        Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
-        Just v  -> pure v
-    let appDir = (<> "/") . (</> show av) . (</> show appId) $ appsDir
-    addPackageHeader appMgrDir appDir appExt
-    sourceManifest appMgrDir
-                   appDir
-                   appExt
-                   (\bsSource -> respondSource "application/json" (bsSource .| awaitForever sendChunkBS))
-    where appExt = Extension (show appId) :: Extension "s9pk"
+    -- (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
+    -- av                   <- getVersionFromQuery appsDir appExt >>= \case
+    --     Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
+    --     Just v  -> pure v
+    -- let appDir = (<> "/") . (</> show av) . (</> show appId) $ appsDir
+    -- addPackageHeader appMgrDir appDir appExt
+    -- sourceManifest appMgrDir
+    --                appDir
+    --                appExt
+    --                (\bsSource -> respondSource "application/json" (bsSource .| awaitForever sendChunkBS))
+    -- where appExt = Extension (show appId) :: Extension "s9pk"
+    _
 
 getAppR :: Extension "s9pk" -> Handler TypedContent
 getAppR e = do

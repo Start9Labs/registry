@@ -108,17 +108,14 @@ extractPkg :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m)
 extractPkg pkg v = (`onException` cleanup) $ do
     $logInfo [i|Extracting package: #{pkg}@#{v}|]
     PkgRepo { pkgRepoFileRoot = root, pkgRepoAppMgrBin = appmgr } <- ask
-    let s9pk    = Extension @"s9pk" $ show pkg
     let pkgRoot = root </> show pkg </> show v
-    $logInfo [i|#{s9pk}|]
-    $logInfo [i|#{pkgRoot}|]
-    manifestTask <- async $ liftIO . runResourceT $ AppMgr.sourceManifest appmgr pkgRoot s9pk $ sinkIt
+    let s9pk    = pkgRoot </> show pkg <.> "s9pk"
+    manifestTask <- async $ liftIO . runResourceT $ AppMgr.sourceManifest appmgr s9pk $ sinkIt
         (pkgRoot </> "manifest.json")
-    instructionsTask <- async $ liftIO . runResourceT $ AppMgr.sourceInstructions appmgr pkgRoot s9pk $ sinkIt
+    instructionsTask <- async $ liftIO . runResourceT $ AppMgr.sourceInstructions appmgr s9pk $ sinkIt
         (pkgRoot </> "instructions.md")
-    licenseTask <- async $ liftIO . runResourceT $ AppMgr.sourceLicense appmgr pkgRoot s9pk $ sinkIt
-        (pkgRoot </> "license.md")
-    iconTask <- async $ liftIO . runResourceT $ AppMgr.sourceIcon appmgr pkgRoot s9pk $ sinkIt (pkgRoot </> "icon.tmp")
+    licenseTask <- async $ liftIO . runResourceT $ AppMgr.sourceLicense appmgr s9pk $ sinkIt (pkgRoot </> "license.md")
+    iconTask    <- async $ liftIO . runResourceT $ AppMgr.sourceIcon appmgr s9pk $ sinkIt (pkgRoot </> "icon.tmp")
     wait manifestTask
     eManifest <- liftIO (eitherDecodeFileStrict' (pkgRoot </> "manifest.json"))
     case eManifest of
