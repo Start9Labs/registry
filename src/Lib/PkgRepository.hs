@@ -9,9 +9,12 @@
 module Lib.PkgRepository where
 
 import           Conduit                        ( (.|)
+                                                , ConduitT
+                                                , MonadResource
                                                 , runConduit
                                                 , runResourceT
                                                 , sinkFileCautious
+                                                , sourceFile
                                                 )
 import           Control.Monad.Logger           ( MonadLogger
                                                 , MonadLoggerIO
@@ -28,9 +31,9 @@ import qualified Data.Attoparsec.Text          as Atto
 import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
+import           Lib.Error                      ( S9Error(NotFoundE) )
 import qualified Lib.External.AppMgr           as AppMgr
-import           Lib.Registry                   ( Extension(Extension) )
-import           Lib.Types.AppIndex             ( PkgId(PkgId)
+import           Lib.Types.AppIndex             ( PkgId(..)
                                                 , ServiceManifest(serviceManifestIcon)
                                                 )
 import           Lib.Types.Emver                ( Version
@@ -40,17 +43,20 @@ import           Startlude                      ( ($)
                                                 , (&&)
                                                 , (.)
                                                 , (<$>)
+                                                , (<>)
                                                 , Bool(..)
+                                                , ByteString
                                                 , Either(Left, Right)
                                                 , Eq((==))
                                                 , Exception
                                                 , FilePath
                                                 , IO
+                                                , Maybe(Just, Nothing)
                                                 , MonadIO(liftIO)
                                                 , MonadReader
                                                 , Show
-                                                , String
                                                 , filter
+                                                , find
                                                 , for_
                                                 , fromMaybe
                                                 , not
@@ -69,7 +75,6 @@ import           System.FilePath                ( (<.>)
                                                 , takeBaseName
                                                 , takeDirectory
                                                 , takeExtension
-                                                , takeFileName
                                                 )
 import           UnliftIO                       ( MonadUnliftIO
                                                 , askRunInIO
@@ -86,6 +91,13 @@ import           UnliftIO.Directory             ( listDirectory
                                                 , removeFile
                                                 , renameFile
                                                 )
+import           Yesod.Core.Content             ( typeGif
+                                                , typeJpeg
+                                                , typePlain
+                                                , typePng
+                                                , typeSvg
+                                                )
+import           Yesod.Core.Types               ( ContentType )
 
 data ManifestParseException = ManifestParseException FilePath
     deriving Show
@@ -145,6 +157,7 @@ watchPkgRepoRoot = do
     _       <- forkIO $ liftIO $ withManager $ \watchManager -> do
         stop <- watchTree watchManager root onlyAdded $ \evt -> do
             let pkg = eventPath evt
+            -- TODO: validate that package path is an actual s9pk and is in a correctly conforming path.
             runInIO (extractPkg pkg)
         takeMVar box
         stop
@@ -153,3 +166,41 @@ watchPkgRepoRoot = do
         onlyAdded = \case
             Added path _ isDir -> not isDir && takeExtension path == ".s9pk"
             _                  -> False
+
+getManifest :: (MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> ConduitT () ByteString m ()
+getManifest pkg version = do
+    root <- asks pkgRepoFileRoot
+    let manifestPath = root </> show pkg </> show version </> "manifest.json"
+    sourceFile manifestPath
+
+getInstructions :: (MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> ConduitT () ByteString m ()
+getInstructions pkg version = do
+    root <- asks pkgRepoFileRoot
+    let instructionsPath = root </> show pkg </> show version </> "instructions.md"
+    sourceFile instructionsPath
+
+getLicense :: (MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> ConduitT () ByteString m ()
+getLicense pkg version = do
+    root <- asks pkgRepoFileRoot
+    let licensePath = root </> show pkg </> show version </> "license.md"
+    sourceFile licensePath
+
+getIcon :: (MonadResource m, MonadReader r m, Has PkgRepo r)
+        => PkgId
+        -> Version
+        -> m (ContentType, ConduitT () ByteString m ())
+getIcon pkg version = do
+    root <- asks pkgRepoFileRoot
+    let pkgRoot = root </> show pkg </> show version
+    mIconFile <- find ((== "icon") . takeBaseName) <$> listDirectory pkgRoot
+    case mIconFile of
+        Nothing -> throwIO $ NotFoundE $ show pkg <> ": Icon"
+        Just x  -> do
+            let ct = case takeExtension x of
+                    ".png"  -> typePng
+                    ".jpg"  -> typeJpeg
+                    ".jpeg" -> typeJpeg
+                    ".svg"  -> typeSvg
+                    ".gif"  -> typeGif
+                    _       -> typePlain
+            pure $ (ct, sourceFile (pkgRoot </> x))
