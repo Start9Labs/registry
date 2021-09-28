@@ -291,9 +291,9 @@ startWeb foundation = do
     where
         startWeb' app = (`onException` (appStopFsNotify foundation)) $ do
             let AppSettings {..} = appSettings foundation
-            putStrLn @Text $ "Launching Tor Web Server on port " <> show torPort
+            runLog $ $logInfo $ "Launching Tor Web Server on port " <> show torPort
             torAction <- async $ runSettings (warpSettings torPort foundation) app
-            putStrLn @Text $ "Launching Web Server on port " <> show appPort
+            runLog $ $logInfo $ "Launching Web Server on port " <> show appPort
             action <- if sslAuto
                 then async $ runTLS (tlsSettings sslCertLocation sslKeyLocation) (warpSettings appPort foundation) app
                 else async $ runSettings (warpSettings appPort foundation) app
@@ -316,6 +316,7 @@ startWeb foundation = do
                 putMVar (appShouldRestartWeb foundation) False
                 putStrLn @Text "Restarting Web Server"
                 startWeb' app
+        runLog a = runLoggingT a (messageLoggerSource foundation (appLogger foundation))
 
 restartWeb :: RegistryCtx -> IO ()
 restartWeb foundation = do
