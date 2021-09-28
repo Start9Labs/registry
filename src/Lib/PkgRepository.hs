@@ -28,6 +28,9 @@ import           Control.Monad.Reader.Has       ( Has
                                                 )
 import           Data.Aeson                     ( eitherDecodeFileStrict' )
 import qualified Data.Attoparsec.Text          as Atto
+import           Data.ByteString                ( readFile
+                                                , writeFile
+                                                )
 import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
@@ -37,7 +40,9 @@ import           Lib.Types.AppIndex             ( PkgId(..)
                                                 , ServiceManifest(serviceManifestIcon)
                                                 )
 import           Lib.Types.Emver                ( Version
+                                                , VersionRange
                                                 , parseVersion
+                                                , satisfies
                                                 )
 import           Startlude                      ( ($)
                                                 , (&&)
@@ -46,11 +51,13 @@ import           Startlude                      ( ($)
                                                 , (<>)
                                                 , Bool(..)
                                                 , ByteString
+                                                , Down(Down)
                                                 , Either(Left, Right)
                                                 , Eq((==))
                                                 , Exception
                                                 , FilePath
                                                 , IO
+                                                , Integer
                                                 , Maybe(Just, Nothing)
                                                 , MonadIO(liftIO)
                                                 , MonadReader
@@ -59,10 +66,12 @@ import           Startlude                      ( ($)
                                                 , find
                                                 , for_
                                                 , fromMaybe
+                                                , headMay
                                                 , not
                                                 , partitionEithers
                                                 , pure
                                                 , show
+                                                , sortOn
                                                 , throwIO
                                                 )
 import           System.FSNotify                ( Event(Added)
@@ -87,7 +96,8 @@ import           UnliftIO                       ( MonadUnliftIO
                                                 )
 import           UnliftIO                       ( tryPutMVar )
 import           UnliftIO.Concurrent            ( forkIO )
-import           UnliftIO.Directory             ( listDirectory
+import           UnliftIO.Directory             ( getFileSize
+                                                , listDirectory
                                                 , removeFile
                                                 , renameFile
                                                 )
@@ -116,6 +126,15 @@ getVersionsFor pkg = do
     for_ failures $ \f -> $logWarn [i|Emver Parse Failure for #{pkg}: #{f}|]
     pure successes
 
+getViableVersions :: (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m) => PkgId -> VersionRange -> m [Version]
+getViableVersions pkg spec = filter (`satisfies` spec) <$> getVersionsFor pkg
+
+getBestVersion :: (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m)
+               => PkgId
+               -> VersionRange
+               -> m (Maybe Version)
+getBestVersion pkg spec = headMay . sortOn Down <$> getViableVersions pkg spec
+
 -- extract all package assets into their own respective files
 extractPkg :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => FilePath -> m ()
 extractPkg fp = (`onException` cleanup) $ do
@@ -125,6 +144,7 @@ extractPkg fp = (`onException` cleanup) $ do
     -- let s9pk    = pkgRoot </> show pkg <.> "s9pk"
     manifestTask <- async $ liftIO . runResourceT $ AppMgr.sourceManifest appmgr fp $ sinkIt
         (pkgRoot </> "manifest.json")
+    pkgHashTask      <- async $ AppMgr.getPackageHash appmgr fp
     instructionsTask <- async $ liftIO . runResourceT $ AppMgr.sourceInstructions appmgr fp $ sinkIt
         (pkgRoot </> "instructions.md")
     licenseTask <- async $ liftIO . runResourceT $ AppMgr.sourceLicense appmgr fp $ sinkIt (pkgRoot </> "license.md")
@@ -139,6 +159,8 @@ extractPkg fp = (`onException` cleanup) $ do
             wait iconTask
             let iconDest = "icon" <.> T.unpack (fromMaybe "png" (serviceManifestIcon manifest))
             liftIO $ renameFile (pkgRoot </> "icon.tmp") (pkgRoot </> iconDest)
+    hash <- wait pkgHashTask
+    liftIO $ writeFile (pkgRoot </> "hash.bin") hash
     wait instructionsTask
     wait licenseTask
     where
@@ -167,28 +189,40 @@ watchPkgRepoRoot = do
             Added path _ isDir -> not isDir && takeExtension path == ".s9pk"
             _                  -> False
 
-getManifest :: (MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> ConduitT () ByteString m ()
+getManifest :: (MonadResource m, MonadReader r m, Has PkgRepo r)
+            => PkgId
+            -> Version
+            -> m (Integer, ConduitT () ByteString m ())
 getManifest pkg version = do
     root <- asks pkgRepoFileRoot
     let manifestPath = root </> show pkg </> show version </> "manifest.json"
-    sourceFile manifestPath
+    n <- getFileSize manifestPath
+    pure $ (n, sourceFile manifestPath)
 
-getInstructions :: (MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> ConduitT () ByteString m ()
+getInstructions :: (MonadResource m, MonadReader r m, Has PkgRepo r)
+                => PkgId
+                -> Version
+                -> m (Integer, ConduitT () ByteString m ())
 getInstructions pkg version = do
     root <- asks pkgRepoFileRoot
     let instructionsPath = root </> show pkg </> show version </> "instructions.md"
-    sourceFile instructionsPath
+    n <- getFileSize instructionsPath
+    pure $ (n, sourceFile instructionsPath)
 
-getLicense :: (MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> ConduitT () ByteString m ()
+getLicense :: (MonadResource m, MonadReader r m, Has PkgRepo r)
+           => PkgId
+           -> Version
+           -> m (Integer, ConduitT () ByteString m ())
 getLicense pkg version = do
     root <- asks pkgRepoFileRoot
     let licensePath = root </> show pkg </> show version </> "license.md"
-    sourceFile licensePath
+    n <- getFileSize licensePath
+    pure $ (n, sourceFile licensePath)
 
 getIcon :: (MonadResource m, MonadReader r m, Has PkgRepo r)
         => PkgId
         -> Version
-        -> m (ContentType, ConduitT () ByteString m ())
+        -> m (ContentType, Integer, ConduitT () ByteString m ())
 getIcon pkg version = do
     root <- asks pkgRepoFileRoot
     let pkgRoot = root </> show pkg </> show version
@@ -203,4 +237,21 @@ getIcon pkg version = do
                     ".svg"  -> typeSvg
                     ".gif"  -> typeGif
                     _       -> typePlain
-            pure $ (ct, sourceFile (pkgRoot </> x))
+            n <- getFileSize (pkgRoot </> x)
+            pure $ (ct, n, sourceFile (pkgRoot </> x))
+
+getHash :: (MonadIO m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m ByteString
+getHash pkg version = do
+    root <- asks pkgRepoFileRoot
+    let hashPath = root </> show pkg </> show version </> "hash.bin"
+    liftIO $ readFile hashPath
+
+getPackage :: (MonadResource m, MonadReader r m, Has PkgRepo r)
+           => PkgId
+           -> Version
+           -> m (Integer, ConduitT () ByteString m ())
+getPackage pkg version = do
+    root <- asks pkgRepoFileRoot
+    let pkgPath = root </> show pkg </> show version </> show pkg <.> "s9pk"
+    n <- getFileSize pkgPath
+    pure (n, sourceFile pkgPath)

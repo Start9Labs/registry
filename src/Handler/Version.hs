@@ -2,52 +2,51 @@
 {-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE QuasiQuotes     #-}
 {-# LANGUAGE RecordWildCards  #-}
 
 module Handler.Version where
 
 import           Startlude               hiding ( Handler )
 
-import           Control.Monad.Trans.Maybe
 import           Yesod.Core
 
+import qualified Data.Attoparsec.Text          as Atto
+import           Data.String.Interpolate.IsString
+                                                ( i )
+import qualified Data.Text                     as T
 import           Foundation
 import           Handler.Types.Status
-import           Lib.Registry
-import           Lib.Types.Emver
+import           Lib.Error                      ( S9Error(NotFoundE) )
+import           Lib.PkgRepository              ( getBestVersion )
+import           Lib.Types.AppIndex             ( PkgId )
+import           Lib.Types.Emver                ( parseVersion
+                                                , satisfies
+                                                )
+import           Network.HTTP.Types.Status      ( status404 )
 import           Settings
 import           System.FilePath                ( (</>) )
-import           Util.Shared
-import           System.Directory               ( doesFileExist )
+import           UnliftIO.Directory             ( listDirectory )
+import           Util.Shared                    ( getVersionSpecFromQuery
+                                                , orThrow
+                                                )
 
 getVersionR :: Handler AppVersionRes
-getVersionR = do
-    rv <- AppVersionRes . registryVersion . appSettings <$> getYesod
-    pure $ rv Nothing Nothing
+getVersionR = AppVersionRes . registryVersion . appSettings <$> getYesod
 
-getVersionAppR :: Text -> Handler (Maybe AppVersionRes)
-getVersionAppR appId = do
-    (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    res                  <- getVersionWSpec appsDir appExt
-    case res of
-        Nothing -> pure res
-        Just r  -> do
-            let appDir = (<> "/") . (</> (show $ appVersionVersion r)) . (</> toS appId) $ appsDir
-            addPackageHeader appMgrDir appDir appExt
-            pure res
-    where appExt = Extension (toS appId) :: Extension "s9pk"
+getPkgVersionR :: PkgId -> Handler AppVersionRes
+getPkgVersionR pkg = do
+    spec <- getVersionSpecFromQuery
+    AppVersionRes <$> getBestVersion pkg spec `orThrow` sendResponseStatus
+        status404
+        (NotFoundE [i|Version for #{pkg} satisfying #{spec}|])
 
--- @TODO - deprecate
-getVersionSysR :: Text -> Handler (Maybe AppVersionRes)
-getVersionSysR sysAppId = runMaybeT $ do
-    sysDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
-    avr    <- MaybeT $ getVersionWSpec sysDir sysExt
-    let notesPath = sysDir </> "agent" </> show (appVersionVersion avr) </> "release-notes.md"
-    notes <- liftIO $ ifM (doesFileExist notesPath) (Just <$> readFile notesPath) (pure Nothing)
-    pure $ avr { appVersionMinCompanion = Just $ Version (1, 1, 0, 0), appVersionReleaseNotes = notes }
-    where sysExt = Extension (toS sysAppId) :: Extension ""
-
-getVersionWSpec :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe AppVersionRes)
-getVersionWSpec rootDir ext = do
-    av <- getVersionFromQuery rootDir ext
-    pure $ liftA3 AppVersionRes av (pure Nothing) (pure Nothing)
+getEosVersionR :: Handler AppVersionRes
+getEosVersionR = do
+    spec    <- getVersionSpecFromQuery
+    root    <- getsYesod $ (</> "eos") . resourcesDir . appSettings
+    subdirs <- listDirectory root
+    let (failures, successes) = partitionEithers $ (Atto.parseOnly parseVersion . T.pack) <$> subdirs
+    for_ failures $ \f -> $logWarn [i|Emver Parse Failure for EOS: #{f}|]
+    let res = headMay . sortOn Down . filter (`satisfies` spec) $ successes
+    maybe (sendResponseStatus status404 (NotFoundE [i|EOS version satisfying #{spec}|])) (pure . AppVersionRes) res

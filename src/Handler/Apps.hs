@@ -11,42 +11,75 @@ module Handler.Apps where
 
 import           Startlude               hiding ( Handler )
 
-import           Control.Monad.Logger
-import           Data.Aeson
+import           Control.Monad.Logger           ( logError
+                                                , logInfo
+                                                )
+import           Data.Aeson                     ( ToJSON
+                                                , encode
+                                                )
 import qualified Data.Attoparsec.Text          as Atto
 import qualified Data.ByteString.Lazy          as BS
-import           Data.Conduit
 import qualified Data.Conduit.Binary           as CB
 import qualified Data.Text                     as T
-import           Database.Persist
+import           Database.Persist               ( Entity(entityKey) )
 import qualified GHC.Show                       ( Show(..) )
-import           Network.HTTP.Types
-import           System.Directory
+import           Network.HTTP.Types             ( status404 )
 import           System.FilePath                ( (<.>)
-                                                , (</>)
+                                                , takeBaseName
                                                 )
 import           System.Posix.Files             ( fileSize
                                                 , getFileStatus
                                                 )
-import           Yesod.Core
-import           Yesod.Persist.Core
+import           Yesod.Core                     ( MonadHandler(HandlerSite)
+                                                , TypedContent
+                                                , addHeader
+                                                , getYesod
+                                                , notFound
+                                                , respondSource
+                                                , sendChunkBS
+                                                , sendResponseStatus
+                                                , typeJson
+                                                , typeOctet
+                                                , waiRequest
+                                                )
+import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
-import           Database.Queries
-import           Foundation
-import           Lib.External.AppMgr
-import           Lib.Registry
-import           Lib.Types.AppIndex
-import           Lib.Types.Emver
-import           Lib.Types.FileSystem
+import           Conduit                        ( (.|)
+                                                , awaitForever
+                                                )
+import           Data.String.Interpolate.IsString
+                                                ( i )
+import           Database.Queries               ( createMetric
+                                                , fetchApp
+                                                , fetchAppVersion
+                                                )
+import           Foundation                     ( Handler )
+import           Lib.Error                      ( S9Error(NotFoundE) )
+import           Lib.PkgRepository              ( getBestVersion
+                                                , getManifest
+                                                , getPackage
+                                                )
+import           Lib.Registry                   ( S9PK )
+import           Lib.Types.AppIndex             ( PkgId(PkgId) )
+import           Lib.Types.Emver                ( Version
+                                                , parseVersion
+                                                )
 import           Network.Wai                    ( Request(requestHeaderUserAgent) )
-import           Settings
-import           Util.Shared
+import           Util.Shared                    ( addPackageHeader
+                                                , getVersionSpecFromQuery
+                                                , orThrow
+                                                )
 
 pureLog :: Show a => a -> Handler a
 pureLog = liftA2 (*>) ($logInfo . show) pure
 
 logRet :: ToJSON a => Handler a -> Handler a
 logRet = (>>= liftA2 (*>) ($logInfo . decodeUtf8 . BS.toStrict . encode) pure)
+
+inject :: MonadHandler m => ReaderT (HandlerSite m) m a -> m a
+inject action = do
+    env <- getYesod
+    runReaderT action env
 
 data FileExtension = FileExtension FilePath (Maybe String)
 instance Show FileExtension where
@@ -64,76 +97,40 @@ getEmbassyOsVersion = userAgentOsVersion
         userAgentOsVersion =
             (hush . Atto.parseOnly userAgentOsVersionParser . decodeUtf8 <=< requestHeaderUserAgent) <$> waiRequest
 
-getSysR :: Extension "" -> Handler TypedContent
-getSysR e = do
-    sysResourceDir <- (</> "sys") . resourcesDir . appSettings <$> getYesod
-    -- @TODO update with new response type here
-    getApp sysResourceDir e
-
 getAppManifestR :: PkgId -> Handler TypedContent
-getAppManifestR appId = do
-    -- (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    -- av                   <- getVersionFromQuery appsDir appExt >>= \case
-    --     Nothing -> sendResponseStatus status404 ("Specified App Version Not Found" :: Text)
-    --     Just v  -> pure v
-    -- let appDir = (<> "/") . (</> show av) . (</> show appId) $ appsDir
-    -- addPackageHeader appMgrDir appDir appExt
-    -- sourceManifest appMgrDir
-    --                appDir
-    --                appExt
-    --                (\bsSource -> respondSource "application/json" (bsSource .| awaitForever sendChunkBS))
-    -- where appExt = Extension (show appId) :: Extension "s9pk"
-    _
+getAppManifestR pkg = do
+    versionSpec <- getVersionSpecFromQuery
+    version     <- getBestVersion pkg versionSpec
+        `orThrow` sendResponseStatus status404 (NotFoundE [i|#{pkg} satisfying #{versionSpec}|])
+    addPackageHeader pkg version
+    (len, src) <- getManifest pkg version
+    addHeader "Content-Length" (show len)
+    respondSource typeJson $ src .| awaitForever sendChunkBS
 
-getAppR :: Extension "s9pk" -> Handler TypedContent
-getAppR e = do
-    appResourceDir <- (</> "apps") . resourcesDir . appSettings <$> getYesod
-    getApp appResourceDir e
+getAppR :: S9PK -> Handler TypedContent
+getAppR file = do
+    let pkg = PkgId . T.pack $ takeBaseName (show file)
+    versionSpec <- getVersionSpecFromQuery
+    version     <- getBestVersion pkg versionSpec
+        `orThrow` sendResponseStatus status404 (NotFoundE [i|#{pkg} satisfying #{versionSpec}|])
+    addPackageHeader pkg version
+    void $ recordMetrics pkg version
+    (len, src) <- getPackage pkg version
+    addHeader "Content-Length" (show len)
+    respondSource typeOctet $ src .| awaitForever sendChunkBS
 
-getApp :: KnownSymbol a => FilePath -> Extension a -> Handler TypedContent
-getApp rootDir ext@(Extension appId) = do
-    specString <- T.filter (not . isSpace) . fromMaybe "*" <$> lookupGetParam "spec"
-    spec       <- case readMaybe specString of
-        Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
-        Just t  -> pure t
-    appVersions <- liftIO $ getAvailableAppVersions rootDir ext
-    putStrLn $ "valid appversion for " <> (show ext :: String) <> ": " <> show appVersions
-    let satisfactory = filter ((<|| spec) . fst . unRegisteredAppVersion) appVersions
-    let best = fst . getMaxVersion <$> foldMap (Just . MaxVersion . (, fst . unRegisteredAppVersion)) satisfactory
-    (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    case best of
-        Nothing -> notFound
-        Just (RegisteredAppVersion (appVersion, filePath)) -> do
-            exists' <- liftIO $ doesFileExist filePath >>= \case
-                True  -> pure Existent
-                False -> pure NonExistent
-            let appDir = (<> "/") . (</> show appVersion) . (</> toS appId) $ appsDir
-            let appExt = Extension (toS appId) :: Extension "s9pk"
-            addPackageHeader appMgrDir appDir appExt
-            determineEvent exists' (extension ext) filePath appVersion
-    where
-        determineEvent :: FileExistence -> String -> FilePath -> Version -> HandlerFor RegistryCtx TypedContent
-        -- for app files
-        determineEvent Existent "s9pk" fp av = do
-            _ <- recordMetrics appId av
-            chunkIt fp
-        -- for png, system, etc
-        determineEvent Existent    _ fp _ = chunkIt fp
-        determineEvent NonExistent _ _  _ = notFound
-
-chunkIt :: FilePath -> HandlerFor RegistryCtx TypedContent
+chunkIt :: FilePath -> Handler TypedContent
 chunkIt fp = do
     sz <- liftIO $ fileSize <$> getFileStatus fp
     addHeader "Content-Length" (show sz)
     respondSource typeOctet $ CB.sourceFile fp .| awaitForever sendChunkBS
 
-recordMetrics :: String -> Version -> HandlerFor RegistryCtx ()
-recordMetrics appId appVersion = do
-    let appId' = T.pack appId
-    sa <- runDB $ fetchApp $ PkgId appId'
+recordMetrics :: PkgId -> Version -> Handler ()
+recordMetrics pkg appVersion = do
+    sa <- runDB $ fetchApp $ pkg
     case sa of
         Nothing -> do
-            $logError $ appId' <> " not found in database"
+            $logError $ show pkg <> " not found in database"
             notFound
         Just a -> do
             let appKey' = entityKey a

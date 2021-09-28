@@ -21,3 +21,6 @@ mapFind finder mapping (b : bs) =
             (Nothing, Just _) -> Just b
             _                 -> Nothing
 
+(<<&>>) :: (Functor f, Functor g) => f (g a) -> (a -> b) -> f (g b)
+f <<&>> fab = fmap (fmap fab) f
+

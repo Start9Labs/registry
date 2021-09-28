@@ -34,21 +34,20 @@ module Lib.Types.Emver
     , exactly
     , parseVersion
     , parseRange
-    )
-where
+    ) where
 
-import           Prelude
+import           Control.Applicative            ( Alternative((<|>))
+                                                , liftA2
+                                                )
+import           Data.Aeson
 import qualified Data.Attoparsec.Text          as Atto
 import           Data.Function
-import           Data.Functor                   ( (<&>)
-                                                , ($>)
-                                                )
-import           Control.Applicative            ( liftA2
-                                                , Alternative((<|>))
+import           Data.Functor                   ( ($>)
+                                                , (<&>)
                                                 )
 import           Data.String                    ( IsString(..) )
 import qualified Data.Text                     as T
-import           Data.Aeson
+import           Prelude
 import           Startlude                      ( Hashable )
 
 -- | AppVersion is the core representation of the SemverQuad type.
