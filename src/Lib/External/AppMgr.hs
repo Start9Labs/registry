@@ -23,7 +23,6 @@ import           Conduit                        ( (.|)
 import qualified Data.Conduit.List             as CL
 import           Data.Conduit.Process.Typed
 import           Lib.Error
-import           Lib.Registry
 import           System.FilePath                ( (</>) )
 import           UnliftIO                       ( MonadUnliftIO
                                                 , catch
