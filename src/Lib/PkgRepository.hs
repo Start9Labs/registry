@@ -5,6 +5,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DataKinds #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 module Lib.PkgRepository where
 
 import           Conduit                        ( (.|)
@@ -86,7 +87,7 @@ import           UnliftIO.Directory             ( listDirectory
                                                 , renameFile
                                                 )
 
-data ManifestParseException = ManifestParseException PkgId Version String
+data ManifestParseException = ManifestParseException FilePath
     deriving Show
 instance Exception ManifestParseException
 
@@ -104,24 +105,24 @@ getVersionsFor pkg = do
     pure successes
 
 -- extract all package assets into their own respective files
-extractPkg :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => PkgId -> Version -> m ()
-extractPkg pkg v = (`onException` cleanup) $ do
-    $logInfo [i|Extracting package: #{pkg}@#{v}|]
-    PkgRepo { pkgRepoFileRoot = root, pkgRepoAppMgrBin = appmgr } <- ask
-    let pkgRoot = root </> show pkg </> show v
-    let s9pk    = pkgRoot </> show pkg <.> "s9pk"
-    manifestTask <- async $ liftIO . runResourceT $ AppMgr.sourceManifest appmgr s9pk $ sinkIt
+extractPkg :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => FilePath -> m ()
+extractPkg fp = (`onException` cleanup) $ do
+    $logInfo [i|Extracting package: #{fp}|]
+    PkgRepo { pkgRepoAppMgrBin = appmgr } <- ask
+    let pkgRoot = takeDirectory fp
+    -- let s9pk    = pkgRoot </> show pkg <.> "s9pk"
+    manifestTask <- async $ liftIO . runResourceT $ AppMgr.sourceManifest appmgr fp $ sinkIt
         (pkgRoot </> "manifest.json")
-    instructionsTask <- async $ liftIO . runResourceT $ AppMgr.sourceInstructions appmgr s9pk $ sinkIt
+    instructionsTask <- async $ liftIO . runResourceT $ AppMgr.sourceInstructions appmgr fp $ sinkIt
         (pkgRoot </> "instructions.md")
-    licenseTask <- async $ liftIO . runResourceT $ AppMgr.sourceLicense appmgr s9pk $ sinkIt (pkgRoot </> "license.md")
-    iconTask    <- async $ liftIO . runResourceT $ AppMgr.sourceIcon appmgr s9pk $ sinkIt (pkgRoot </> "icon.tmp")
+    licenseTask <- async $ liftIO . runResourceT $ AppMgr.sourceLicense appmgr fp $ sinkIt (pkgRoot </> "license.md")
+    iconTask    <- async $ liftIO . runResourceT $ AppMgr.sourceIcon appmgr fp $ sinkIt (pkgRoot </> "icon.tmp")
     wait manifestTask
     eManifest <- liftIO (eitherDecodeFileStrict' (pkgRoot </> "manifest.json"))
     case eManifest of
-        Left e -> do
-            $logError [i|Invalid Package Manifest: #{pkg}@#{v}|]
-            liftIO . throwIO $ ManifestParseException pkg v e
+        Left _ -> do
+            $logError [i|Invalid Package Manifest: #{fp}|]
+            liftIO . throwIO $ ManifestParseException (pkgRoot </> "manifest.json")
         Right manifest -> do
             wait iconTask
             let iconDest = "icon" <.> T.unpack (fromMaybe "png" (serviceManifestIcon manifest))
@@ -131,8 +132,7 @@ extractPkg pkg v = (`onException` cleanup) $ do
     where
         sinkIt fp source = runConduit $ source .| sinkFileCautious fp
         cleanup = do
-            root <- asks pkgRepoFileRoot
-            let pkgRoot = root </> show pkg </> show v
+            let pkgRoot = takeDirectory fp
             fs <- listDirectory pkgRoot
             let toRemove = filter (not . (== ".s9pk") . takeExtension) fs
             mapConcurrently (removeFile . (pkgRoot </>)) toRemove
@@ -143,13 +143,9 @@ watchPkgRepoRoot = do
     runInIO <- askRunInIO
     box     <- newEmptyMVar @_ @()
     _       <- forkIO $ liftIO $ withManager $ \watchManager -> do
-        stop <- watchTree watchManager root onlyAdded $ \evt ->
-            let pkg     = PkgId . T.pack $ takeBaseName (eventPath evt)
-                version = Atto.parseOnly parseVersion . T.pack . takeFileName . takeDirectory $ (eventPath evt)
-            in  case version of
-                    Left _ -> runInIO $ do
-                        $logError [i|Invalid Version in package path: #{eventPath evt}|]
-                    Right v -> runInIO (extractPkg pkg v)
+        stop <- watchTree watchManager root onlyAdded $ \evt -> do
+            let pkg = eventPath evt
+            runInIO (extractPkg pkg)
         takeMVar box
         stop
     pure $ tryPutMVar box ()
