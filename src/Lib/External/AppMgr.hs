@@ -18,7 +18,6 @@ import           System.Process.Typed    hiding ( createPipe )
 
 import           Conduit                        ( (.|)
                                                 , ConduitT
-                                                , MonadThrow
                                                 , runConduit
                                                 )
 import qualified Data.Conduit.List             as CL

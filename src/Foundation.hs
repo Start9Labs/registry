@@ -15,8 +15,11 @@ import           Yesod.Core
 import           Yesod.Core.Types               ( Logger )
 import qualified Yesod.Core.Unsafe             as Unsafe
 
+import           Control.Monad.Reader.Has       ( Has(extract, update) )
+import           Lib.PkgRepository
 import           Lib.Types.AppIndex
 import           Settings
+import           System.FilePath                ( (</>) )
 import           Yesod.Persist.Core
 
 -- | The foundation datatype for your application. This can be a good place to
@@ -31,7 +34,17 @@ data RegistryCtx = RegistryCtx
     , appWebServerThreadId :: MVar (ThreadId, ThreadId)
     , appShouldRestartWeb  :: MVar Bool
     , appConnPool          :: ConnectionPool
+    , appStopFsNotify      :: IO Bool
     }
+instance Has PkgRepo RegistryCtx where
+    extract = do
+        liftA2 PkgRepo ((</> "apps") . resourcesDir . appSettings) (staticBinDir . appSettings)
+    update f ctx =
+        let repo     = f $ extract ctx
+            settings = (appSettings ctx) { resourcesDir = pkgRepoFileRoot repo, staticBinDir = pkgRepoAppMgrBin repo }
+        in  ctx { appSettings = settings }
+
+
 
 setWebProcessThreadId :: (ThreadId, ThreadId) -> RegistryCtx -> IO ()
 setWebProcessThreadId tid a = putMVar (appWebServerThreadId a) $ tid
