@@ -276,9 +276,8 @@ getPackageListR = do
             query <- T.filter (not . isSpace) . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
             filteredServices <- runDB $ searchServices category limit' ((page - 1) * limit') query
             let filteredServices' = sAppAppId . entityVal <$> filteredServices
-            settings        <- getsYesod appSettings
-            packageMetadata <- runDB $ fetchPackageMetadata
-            $logInfo $ show packageMetadata
+            settings            <- getsYesod appSettings
+            packageMetadata     <- runDB $ fetchPackageMetadata
             serviceDetailResult <- liftIO
                 $ mapConcurrently (getServiceDetails settings packageMetadata Nothing) filteredServices'
             let (_, services) = partitionEithers serviceDetailResult
@@ -348,17 +347,16 @@ getServiceDetails settings metadata maybeVersion appId = do
     case eitherDecode $ manifest' of
         Left  e -> pure $ Left $ "Could not parse service manifest for " <> show appId <> ": " <> show e
         Right m -> do
-            d <- liftIO $ mapConcurrently (mapDependencyMetadata domain metadata)
-                                          (HM.toList $ serviceManifestDependencies m)
+            d <- liftIO
+                $ mapConcurrently (mapDependencyMetadata domain metadata) (HM.toList $ serviceManifestDependencies m)
             pure $ Right $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{appId}|]
                                       , serviceResManifest       = decode $ manifest' -- pass through raw JSON Value
                                       , serviceResCategories     = snd packageMetadata
                                       , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{appId}|]
                                       , serviceResLicense        = [i|https://#{domain}/package/license/#{appId}|]
-                                      , serviceResVersions       = fst packageMetadata
+                                      , serviceResVersions       = sortOn Down $ fst packageMetadata
                                       , serviceResDependencyInfo = HM.fromList $ snd $ partitionEithers d
                                       }
-
 
 mapDependencyMetadata :: (MonadIO m)
                       => Text
