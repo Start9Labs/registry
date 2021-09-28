@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 -- | Settings are centralized, as much as possible, into this file. This
 -- includes database connection settings, static file locations, etc.
 -- In addition, you can configure a number of different aspects of Yesod
@@ -23,6 +24,8 @@ import           Network.Wai.Handler.Warp       ( HostPreference )
 import           System.FilePath                ( (</>) )
 import           Yesod.Default.Config2          ( configSettingsYml )
 
+import           Control.Monad.Reader.Has       ( Has(extract, update) )
+import           Lib.PkgRepository              ( PkgRepo(PkgRepo, pkgRepoAppMgrBin, pkgRepoFileRoot) )
 import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 -- | Runtime settings to configure this application. These settings can be
@@ -54,6 +57,11 @@ data AppSettings = AppSettings
     , staticBinDir              :: FilePath
     , errorLogRoot              :: FilePath
     }
+instance Has PkgRepo AppSettings where
+    extract = liftA2 PkgRepo ((</> "apps") . resourcesDir) staticBinDir
+    update f r =
+        let repo = f $ extract r in r { resourcesDir = pkgRepoFileRoot repo, staticBinDir = pkgRepoAppMgrBin repo }
+
 
 instance FromJSON AppSettings where
     parseJSON = withObject "AppSettings" $ \o -> do

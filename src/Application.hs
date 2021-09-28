@@ -24,51 +24,79 @@ module Application
     , getAppSettings
     -- * for GHCI
     , handler
-    ,db) where
+    , db
+    ) where
 
-import           Startlude hiding (Handler)
+import           Startlude               hiding ( Handler )
 
-import           Control.Monad.Logger                  (liftLoc, runLoggingT)
+import           Control.Monad.Logger           ( liftLoc
+                                                , runLoggingT
+                                                )
 import           Data.Default
-import           Database.Persist.Postgresql           (createPostgresqlPool, pgConnStr, pgPoolSize, runSqlPool, runMigration)
-import           Language.Haskell.TH.Syntax            (qLocation)
+import           Database.Persist.Postgresql    ( createPostgresqlPool
+                                                , pgConnStr
+                                                , pgPoolSize
+                                                , runMigration
+                                                , runSqlPool
+                                                )
+import           Language.Haskell.TH.Syntax     ( qLocation )
 import           Network.Wai
-import           Network.Wai.Handler.Warp              (Settings, defaultSettings, defaultShouldDisplayException,
-                                                        getPort, setHost, setOnException, setPort, runSettings, setHTTP2Disabled)
+import           Network.Wai.Handler.Warp       ( Settings
+                                                , defaultSettings
+                                                , defaultShouldDisplayException
+                                                , getPort
+                                                , runSettings
+                                                , setHTTP2Disabled
+                                                , setHost
+                                                , setOnException
+                                                , setPort
+                                                )
 import           Network.Wai.Handler.WarpTLS
 import           Network.Wai.Middleware.AcceptOverride
 import           Network.Wai.Middleware.Autohead
-import           Network.Wai.Middleware.Cors           (CorsResourcePolicy (..), cors, simpleCorsResourcePolicy)
+import           Network.Wai.Middleware.Cors    ( CorsResourcePolicy(..)
+                                                , cors
+                                                , simpleCorsResourcePolicy
+                                                )
 import           Network.Wai.Middleware.MethodOverride
-import           Network.Wai.Middleware.RequestLogger  (Destination (Logger), OutputFormat (..),
-                                                        destination, mkRequestLogger, outputFormat)
-import           System.IO                             (hSetBuffering, BufferMode (..))
-import           System.Log.FastLogger                 (defaultBufSize, newStdoutLoggerSet, toLogStr)
+import           Network.Wai.Middleware.RequestLogger
+                                                ( Destination(Logger)
+                                                , OutputFormat(..)
+                                                , destination
+                                                , mkRequestLogger
+                                                , outputFormat
+                                                )
+import           System.IO                      ( BufferMode(..)
+                                                , hSetBuffering
+                                                )
+import           System.Log.FastLogger          ( defaultBufSize
+                                                , newStdoutLoggerSet
+                                                , toLogStr
+                                                )
 import           Yesod.Core
-import           Yesod.Core.Types                      hiding (Logger)
+import           Yesod.Core.Types        hiding ( Logger )
 import           Yesod.Default.Config2
 
--- Import all relevant handler modules here.
--- Don't forget to add new modules to your cabal file!
+import           Control.Arrow                  ( (***) )
+import           Control.Lens
+import           Data.List                      ( lookup )
+import           Database.Persist.Sql           ( SqlBackend )
 import           Foundation
 import           Handler.Apps
 import           Handler.ErrorLogs
 import           Handler.Icons
-import           Handler.Version
 import           Handler.Marketplace
+import           Handler.Version
+import           Lib.PkgRepository              ( watchPkgRepoRoot )
 import           Lib.Ssl
+import           Model
+import           Network.HTTP.Types.Header      ( hOrigin )
+import           Network.Wai.Middleware.RequestLogger.JSON
 import           Settings
+import           System.Directory               ( createDirectoryIfMissing )
 import           System.Posix.Process
 import           System.Time.Extra
-import           Model
-import           Control.Lens
-import           Control.Arrow ((***))
-import           Network.HTTP.Types.Header ( hOrigin )
-import           Data.List (lookup)
-import Network.Wai.Middleware.RequestLogger.JSON
-import System.Directory (createDirectoryIfMissing)
-import Database.Persist.Sql (SqlBackend)
-import Yesod
+import           Yesod
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
@@ -83,35 +111,36 @@ makeFoundation :: AppSettings -> IO RegistryCtx
 makeFoundation appSettings = do
     -- Some basic initializations: HTTP connection manager, logger, and static
     -- subsite.
-    appLogger <- newStdoutLoggerSet defaultBufSize >>= makeYesodLogger
+    appLogger            <- newStdoutLoggerSet defaultBufSize >>= makeYesodLogger
 
     appWebServerThreadId <- newEmptyMVar
-    appShouldRestartWeb <- newMVar False
+    appShouldRestartWeb  <- newMVar False
 
     -- We need a log function to create a connection pool. We need a connection
     -- pool to create our foundation. And we need our foundation to get a
     -- logging function. To get out of this loop, we initially create a
     -- temporary foundation without a real connection pool, get a log function
     -- from there, and then create the real foundation.
-    let mkFoundation appConnPool = RegistryCtx {..}
-        -- The RegistryCtx {..} syntax is an example of record wild cards. For more
-        -- information, see:
-        -- https://ocharles.org.uk/blog/posts/2014-12-04-record-wildcards.html
-        tempFoundation = mkFoundation $ panic "connPool forced in tempFoundation"
+    let mkFoundation appConnPool appStopFsNotify = RegistryCtx { .. }
+-- The RegistryCtx {..} syntax is an example of record wild cards. For more
+-- information, see:
+-- https://ocharles.org.uk/blog/posts/2014-12-04-record-wildcards.html
+        tempFoundation =
+            mkFoundation (panic "connPool forced in tempFoundation") (panic "stopFsNotify forced in tempFoundation")
         logFunc = messageLoggerSource tempFoundation appLogger
 
+    stop <- runLoggingT (runReaderT watchPkgRepoRoot appSettings) logFunc
     createDirectoryIfMissing True (errorLogRoot appSettings)
 
     -- Create the database connection pool
-    pool <- flip runLoggingT logFunc $ createPostgresqlPool
-        (pgConnStr $ appDatabaseConf appSettings)
-        (pgPoolSize . appDatabaseConf $ appSettings)
+    pool <- flip runLoggingT logFunc
+        $ createPostgresqlPool (pgConnStr $ appDatabaseConf appSettings) (pgPoolSize . appDatabaseConf $ appSettings)
 
     -- Preform database migration using application logging settings
     runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
 
     -- Return the foundation
-    return $ mkFoundation pool
+    return $ mkFoundation pool stop
 
 -- | Convert our foundation to a WAI Application by calling @toWaiAppPlain@ and
 -- applying some additional middlewares.
@@ -189,14 +218,12 @@ dynamicCorsResourcePolicy req = Just . policy . lookup hOrigin $ requestHeaders 
             }
 
 makeLogWare :: RegistryCtx -> IO Middleware
-makeLogWare foundation =
-    mkRequestLogger def
-        { outputFormat =
-            if appDetailedRequestLogging $ appSettings foundation
-                then Detailed True
-                else CustomOutputFormatWithDetailsAndHeaders formatAsJSONWithHeaders
-        , destination = Logger $ loggerSet $ appLogger foundation
-        }
+makeLogWare foundation = mkRequestLogger def
+    { outputFormat = if appDetailedRequestLogging $ appSettings foundation
+                         then Detailed True
+                         else CustomOutputFormatWithDetailsAndHeaders formatAsJSONWithHeaders
+    , destination  = Logger $ loggerSet $ appLogger foundation
+    }
 
 makeAuthWare :: RegistryCtx -> Middleware
 makeAuthWare _ app req res = next
@@ -229,10 +256,10 @@ appMain = do
     -- Get the settings from all relevant sources
     settings <- loadYamlSettingsArgs
         -- fall back to compile-time values, set to [] to require values at runtime
-        [configSettingsYmlValue]
+                                     [configSettingsYmlValue]
 
         -- allow environment variables to override
-        useEnv
+                                     useEnv
 
     -- Generate the foundation from the settings
     makeFoundation settings >>= startApp
@@ -262,15 +289,14 @@ startWeb foundation = do
     app <- makeApplication foundation
     startWeb' app
     where
-        startWeb' app = do
-            let AppSettings{..} = appSettings foundation
+        startWeb' app = (`onException` (appStopFsNotify foundation)) $ do
+            let AppSettings {..} = appSettings foundation
             putStrLn @Text $ "Launching Tor Web Server on port " <> show torPort
             torAction <- async $ runSettings (warpSettings torPort foundation) app
             putStrLn @Text $ "Launching Web Server on port " <> show appPort
             action <- if sslAuto
-                        then async $ runTLS (tlsSettings sslCertLocation sslKeyLocation)
-                            (warpSettings appPort foundation) app
-                        else async $ runSettings (warpSettings appPort foundation) app
+                then async $ runTLS (tlsSettings sslCertLocation sslKeyLocation) (warpSettings appPort foundation) app
+                else async $ runSettings (warpSettings appPort foundation) app
             let actions = (action, torAction)
 
             setWebProcessThreadId (join (***) asyncThreadId actions) foundation
@@ -303,21 +329,21 @@ shutdownAll threadIds = do
 
 -- Careful, you should always spawn this within forkIO so as to avoid accidentally killing the running process
 shutdownWeb :: RegistryCtx -> IO ()
-shutdownWeb RegistryCtx{..} = do
-    threadIds <-  takeMVar appWebServerThreadId
+shutdownWeb RegistryCtx {..} = do
+    threadIds <- takeMVar appWebServerThreadId
     void $ both killThread threadIds
 
 --------------------------------------------------------------
 -- Functions for DevelMain.hs (a way to run the RegistryCtx from GHCi)
 --------------------------------------------------------------
 
-getApplicationRepl ::  IO (Int, RegistryCtx, Application)
+getApplicationRepl :: IO (Int, RegistryCtx, Application)
 getApplicationRepl = do
-    settings <- getAppSettings
+    settings   <- getAppSettings
     foundation <- getAppSettings >>= makeFoundation
-    wsettings <- getDevSettings $ warpSettings (appPort settings) foundation
-    app1 <- makeApplication foundation
-    return (getPort wsettings, foundation,  app1)
+    wsettings  <- getDevSettings $ warpSettings (appPort settings) foundation
+    app1       <- makeApplication foundation
+    return (getPort wsettings, foundation, app1)
 
 shutdownApp :: RegistryCtx -> IO ()
 shutdownApp _ = return ()
@@ -325,10 +351,10 @@ shutdownApp _ = return ()
 -- | For yesod devel, return the Warp settings and WAI Application.
 getApplicationDev :: AppPort -> IO (Settings, Application)
 getApplicationDev port = do
-    settings <- getAppSettings
+    settings   <- getAppSettings
     foundation <- makeFoundation settings
-    app <- makeApplication foundation
-    wsettings <- getDevSettings $ warpSettings port foundation
+    app        <- makeApplication foundation
+    wsettings  <- getDevSettings $ warpSettings port foundation
     return (wsettings, app)
 
 -- | main function for use by yesod devel
