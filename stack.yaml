@@ -29,7 +29,7 @@ resolver: lts-18.11
 #   - auto-update
 #   - wai
 packages:
-- .
+  - .
 # Dependency packages to be pulled from upstream that are not in the resolver.
 # These entries can reference officially published versions as well as
 # forks / in-progress versions pinned to a git hash. For example:
@@ -42,8 +42,8 @@ packages:
 extra-deps:
   - protolude-0.3.0
   - esqueleto-3.5.1.0
+  - monad-logger-extras-0.1.1.1
   - wai-request-spec-0.10.2.4
-
 # Override default flag values for local packages and extra-deps
 # flags: {}
 
@@ -68,4 +68,4 @@ extra-deps:
 # Allow a newer minor version of GHC than the snapshot specifies
 # compiler-check: newer-minor
 # docker:
-  # enable: true
+# enable: true
