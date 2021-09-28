@@ -329,34 +329,35 @@ getServiceDetails :: (MonadUnliftIO m, Monad m, MonadError IOException m)
                   -> PkgId
                   -> m (Either Text ServiceRes)
 getServiceDetails settings metadata maybeVersion appId = do
-    packageMetadata <- case HM.lookup appId metadata of
-        Nothing -> throwIO $ NotFoundE [i|#{appId} not found.|]
-        Just m  -> pure m
-    let (appsDir, appMgrDir) = ((</> "apps") . resourcesDir &&& staticBinDir) settings
-    let domain               = registryHostname settings
-    version <- case maybeVersion of
-        Nothing -> do
-            -- grab first value, which will be the latest version
-            case fst packageMetadata of
-                []    -> throwIO $ NotFoundE $ "no latest version found for " <> show appId
-                x : _ -> pure x
-        Just v -> pure v
-    let appDir = (<> "/") . (</> show version) . (</> show appId) $ appsDir
-    let appExt = Extension (show appId) :: Extension "s9pk"
-    manifest' <- sourceManifest appMgrDir appDir appExt (\bs -> sinkMem (bs .| mapC BS.fromStrict))
-    case eitherDecode $ manifest' of
-        Left  e -> pure $ Left $ "Could not parse service manifest for " <> show appId <> ": " <> show e
-        Right m -> do
-            d <- liftIO
-                $ mapConcurrently (mapDependencyMetadata domain metadata) (HM.toList $ serviceManifestDependencies m)
-            pure $ Right $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{appId}|]
-                                      , serviceResManifest       = decode $ manifest' -- pass through raw JSON Value
-                                      , serviceResCategories     = snd packageMetadata
-                                      , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{appId}|]
-                                      , serviceResLicense        = [i|https://#{domain}/package/license/#{appId}|]
-                                      , serviceResVersions       = sortOn Down $ fst packageMetadata
-                                      , serviceResDependencyInfo = HM.fromList $ snd $ partitionEithers d
-                                      }
+    -- packageMetadata <- case HM.lookup appId metadata of
+    --     Nothing -> throwIO $ NotFoundE [i|#{appId} not found.|]
+    --     Just m  -> pure m
+    -- let (appsDir, appMgrDir) = ((</> "apps") . resourcesDir &&& staticBinDir) settings
+    -- let domain               = registryHostname settings
+    -- version <- case maybeVersion of
+    --     Nothing -> do
+    --         -- grab first value, which will be the latest version
+    --         case fst packageMetadata of
+    --             []    -> throwIO $ NotFoundE $ "no latest version found for " <> show appId
+    --             x : _ -> pure x
+    --     Just v -> pure v
+    -- let appDir = (<> "/") . (</> show version) . (</> show appId) $ appsDir
+    -- let appExt = Extension (show appId) :: Extension "s9pk"
+    -- manifest' <- sourceManifest appMgrDir appDir appExt (\bs -> sinkMem (bs .| mapC BS.fromStrict))
+    -- case eitherDecode $ manifest' of
+    --     Left  e -> pure $ Left $ "Could not parse service manifest for " <> show appId <> ": " <> show e
+    --     Right m -> do
+    --         d <- liftIO $ mapConcurrently (mapDependencyMetadata domain metadata)
+    --                                       (HM.toList $ serviceManifestDependencies m)
+    --         pure $ Right $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{appId}|]
+    --                                   , serviceResManifest       = decode $ manifest' -- pass through raw JSON Value
+    --                                   , serviceResCategories     = snd packageMetadata
+    --                                   , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{appId}|]
+    --                                   , serviceResLicense        = [i|https://#{domain}/package/license/#{appId}|]
+    --                                   , serviceResVersions       = fst packageMetadata
+    --                                   , serviceResDependencyInfo = HM.fromList $ snd $ partitionEithers d
+    --                                   }
+    _
 
 mapDependencyMetadata :: (MonadIO m)
                       => Text
@@ -380,13 +381,13 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
                          }
         )
 
-decodeInstructions :: (MonadUnliftIO m, MonadHandler m, MonadThrow m) => FilePath -> FilePath -> S9PK -> m Text
-decodeInstructions appmgrPath depPath package = do
-    sourceInstructions appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
+-- decodeInstructions :: (MonadUnliftIO m, MonadHandler m, MonadThrow m) => FilePath -> FilePath -> S9PK -> m Text
+-- decodeInstructions appmgrPath depPath package = do
+--     sourceInstructions appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
 
-decodeLicense :: (MonadUnliftIO m, MonadThrow m, MonadHandler m) => FilePath -> FilePath -> S9PK -> m Text
-decodeLicense appmgrPath depPath package =
-    sourceLicense appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
+-- decodeLicense :: (MonadUnliftIO m, MonadThrow m, MonadHandler m) => FilePath -> FilePath -> S9PK -> m Text
+-- decodeLicense appmgrPath depPath package =
+--     sourceLicense appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
 
 fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do
