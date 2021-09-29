@@ -491,15 +491,13 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
                          }
         )
 
-
-
 fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do
-    entityAppVersions <- runDB $ P.selectList [SVersionAppId P.==. appId] [] -- orderby version
+    entityAppVersions <- runDB $ P.selectList [SVersionAppId P.==. appId] []
     let vers           = entityVal <$> entityAppVersions
     let vv             = mapSVersionToVersionInfo vers
     let mappedVersions = ReleaseNotes $ HM.fromList $ (\v -> (versionInfoVersion v, versionInfoReleaseNotes v)) <$> vv
-    pure (vv, mappedVersions)
+    pure (sortOn (Down . versionInfoVersion) vv, mappedVersions)
     where
         mapSVersionToVersionInfo :: [SVersion] -> [VersionInfo]
         mapSVersionToVersionInfo sv = do
@@ -514,23 +512,23 @@ fetchAllAppVersions appId = do
                 <$> sv
 
 fetchMostRecentAppVersions :: MonadIO m => Key SApp -> ReaderT SqlBackend m [Entity SVersion]
-fetchMostRecentAppVersions appId = select $ do
+fetchMostRecentAppVersions appId = sortResults $ select $ do
     version <- from $ table @SVersion
     where_ (version ^. SVersionAppId ==. val appId)
-    orderBy [desc (version ^. SVersionNumber)]
     limit 1
     pure version
+    where sortResults = fmap $ sortOn (Down . sVersionNumber . entityVal)
 
 fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity SApp, P.Entity SVersion))
-fetchLatestApp appId = selectOne $ do
+fetchLatestApp appId = fmap headMay . sortResults . select $ do
     (service :& version) <-
         from
         $           table @SApp
         `innerJoin` table @SVersion
         `on`        (\(service :& version) -> service ^. SAppId ==. version ^. SVersionAppId)
     where_ (service ^. SAppAppId ==. val appId)
-    orderBy [desc (version ^. SVersionNumber)]
     pure (service, version)
+    where sortResults = fmap $ sortOn (Down . sVersionNumber . entityVal . snd)
 
 fetchLatestAppAtVersion :: MonadIO m
                         => PkgId
@@ -566,7 +564,6 @@ fetchPackageMetadata = do
                 $           table @SApp
                 `innerJoin` table @SVersion
                 `on`        (\(service :& version) -> (service ^. SAppId) ==. version ^. SVersionAppId)
-            orderBy [desc (version ^. SVersionNumber)]
             Database.Esqueleto.Experimental.groupBy $ (service ^. SAppAppId, version ^. SVersionNumber)
             pure (service ^. SAppAppId, arrayAggDistinct (version ^. SVersionNumber))
     (categories, versions) <- UnliftIO.Async.concurrently categoriesQuery versionsQuery
@@ -575,7 +572,8 @@ fetchPackageMetadata = do
             $ \(appId, categories') -> (unValue appId, catMaybes $ fromMaybe [] (unValue categories'))
     let v = foreach versions $ \(appId, versions') -> (unValue appId, fromMaybe [] (unValue versions'))
     let vv = HM.fromListWithKey (\_ vers vers' -> (++) vers vers') v
-    pure $ HM.intersectionWith (\vers cts -> (cts, vers)) (HM.fromList c) vv
+    pure $ HM.intersectionWith (\cts vers -> (vers, cts)) (HM.fromList c) (sortVersions vv)
+    where sortVersions = fmap $ sortOn Down
 
 fetchAppCategories :: MonadIO m => Key SApp -> ReaderT SqlBackend m [P.Entity ServiceCategory]
 fetchAppCategories appId = select $ do
