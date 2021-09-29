@@ -29,7 +29,8 @@ module Application
 
 import           Startlude               hiding ( Handler )
 
-import           Control.Monad.Logger           ( liftLoc
+import           Control.Monad.Logger           ( LoggingT
+                                                , liftLoc
                                                 , runLoggingT
                                                 )
 import           Data.Default
@@ -80,6 +81,8 @@ import           Yesod.Default.Config2
 import           Control.Arrow                  ( (***) )
 import           Control.Lens
 import           Data.List                      ( lookup )
+import           Data.String.Interpolate.IsString
+                                                ( i )
 import           Database.Persist.Sql           ( SqlBackend )
 import           Foundation
 import           Handler.Apps
@@ -268,21 +271,24 @@ startApp :: RegistryCtx -> IO ()
 startApp foundation = do
     when (sslAuto . appSettings $ foundation) $ do
         -- set up ssl certificates
-        putStrLn @Text "Setting up SSL"
+        runLog $ $logInfo "Setting up SSL"
         _ <- setupSsl $ appSettings foundation
-        putStrLn @Text "SSL Setup Complete"
+        runLog $ $logInfo "SSL Setup Complete"
 
         -- certbot renew loop
         void . forkIO $ forever $ flip runReaderT foundation $ do
             shouldRenew <- doesSslNeedRenew
-            putStrLn @Text $ "Checking if SSL Certs should be renewed: " <> show shouldRenew
+            runLog $ $logInfo $ [i|Checking if SSL Certs should be renewed: #{shouldRenew}|]
             when shouldRenew $ do
-                putStrLn @Text "Renewing SSL Certs."
+                runLog $ $logInfo "Renewing SSL Certs."
                 renewSslCerts
                 liftIO $ restartWeb foundation
             liftIO $ sleep 86_400
 
     startWeb foundation
+    where
+        runLog :: MonadIO m => LoggingT m a -> m a
+        runLog a = runLoggingT a (messageLoggerSource foundation (appLogger foundation))
 
 startWeb :: RegistryCtx -> IO ()
 startWeb foundation = do
@@ -291,9 +297,9 @@ startWeb foundation = do
     where
         startWeb' app = (`onException` (appStopFsNotify foundation)) $ do
             let AppSettings {..} = appSettings foundation
-            runLog $ $logInfo $ "Launching Tor Web Server on port " <> show torPort
+            runLog $ $logInfo $ [i|Launching Tor Web Server on port #{torPort}|]
             torAction <- async $ runSettings (warpSettings torPort foundation) app
-            runLog $ $logInfo $ "Launching Web Server on port " <> show appPort
+            runLog $ $logInfo $ [i|Launching Web Server on port #{appPort}|]
             action <- if sslAuto
                 then async $ runTLS (tlsSettings sslCertLocation sslKeyLocation) (warpSettings appPort foundation) app
                 else async $ runSettings (warpSettings appPort foundation) app
@@ -314,7 +320,7 @@ startWeb foundation = do
             shouldRestart <- takeMVar (appShouldRestartWeb foundation)
             when shouldRestart $ do
                 putMVar (appShouldRestartWeb foundation) False
-                putStrLn @Text "Restarting Web Server"
+                runLog $ $logInfo "Restarting Web Server"
                 startWeb' app
         runLog a = runLoggingT a (messageLoggerSource foundation (appLogger foundation))
 

@@ -48,7 +48,6 @@ import           Startlude                      ( ($)
                                                 , (&&)
                                                 , (.)
                                                 , (<$>)
-                                                , (<>)
                                                 , Bool(..)
                                                 , ByteString
                                                 , Down(..)
@@ -234,7 +233,7 @@ getIcon pkg version = do
     let pkgRoot = root </> show pkg </> show version
     mIconFile <- find ((== "icon") . takeBaseName) <$> listDirectory pkgRoot
     case mIconFile of
-        Nothing -> throwIO $ NotFoundE $ show pkg <> ": Icon"
+        Nothing -> throwIO $ NotFoundE $ [i|#{pkg}: Icon|]
         Just x  -> do
             let ct = case takeExtension x of
                     ".png"  -> typePng
