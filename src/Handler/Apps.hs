@@ -114,14 +114,14 @@ recordMetrics pkg appVersion = do
     sa <- runDB $ fetchApp $ pkg
     case sa of
         Nothing -> do
-            $logError $ show pkg <> " not found in database"
+            $logError $ [i|#{pkg} not found in database|]
             notFound
         Just a -> do
             let appKey' = entityKey a
             existingVersion <- runDB $ fetchAppVersion appVersion appKey'
             case existingVersion of
                 Nothing -> do
-                    $logError $ "Version: " <> show appVersion <> " not found in database"
+                    $logError $ [i|#{pkg}@#{appVersion} not found in database|]
                     notFound
                 Just v -> runDB $ createMetric (entityKey a) (entityKey v)
 
