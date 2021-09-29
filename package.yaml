@@ -40,7 +40,6 @@ dependencies:
   - persistent
   - persistent-postgresql
   - persistent-template
-  - postgresql-simple
   - process
   - protolude
   - shakespeare
