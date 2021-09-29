@@ -11,40 +11,117 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
 module Handler.Marketplace where
-import           Conduit                        ( (.|)
-                                                , runConduit
-                                                )
-import           Data.Aeson
-import qualified Data.ByteString.Lazy          as BS
-import qualified Data.Conduit.List             as CL
-import qualified Data.HashMap.Strict           as HM
-import           Data.List
-import           Data.Semigroup
-import           Data.String.Interpolate.IsString
-import qualified Data.Text                     as T
-import           Database.Esqueleto.Experimental
-import           Database.Esqueleto.PostgreSQL  ( arrayAggDistinct )
-import           Database.Marketplace
-import qualified Database.Persist              as P
-import           Foundation
-import           Lib.Error
-import           Lib.PkgRepository              ( getManifest )
-import           Lib.Types.AppIndex
-import           Lib.Types.AppIndex             ( )
-import           Lib.Types.Category
-import           Lib.Types.Emver
-import           Model
-import           Network.HTTP.Types
-import           Protolude.Unsafe               ( unsafeFromJust )
-import           Settings
+
 import           Startlude               hiding ( Handler
                                                 , from
                                                 , on
                                                 , sortOn
                                                 )
-import           UnliftIO.Async
-import           Yesod.Core
-import           Yesod.Persist.Core
+
+import           Conduit                        ( (.|)
+                                                , runConduit
+                                                )
+import           Control.Monad.Except.CoHas     ( liftEither )
+import           Control.Parallel.Strategies    ( parMap
+                                                , rpar
+                                                )
+import           Data.Aeson                     ( (.:)
+                                                , FromJSON(parseJSON)
+                                                , KeyValue((.=))
+                                                , ToJSON(toJSON)
+                                                , Value(String)
+                                                , decode
+                                                , eitherDecode
+                                                , eitherDecodeStrict
+                                                , object
+                                                , withObject
+                                                )
+import qualified Data.ByteString.Lazy          as BS
+import qualified Data.Conduit.List             as CL
+import qualified Data.HashMap.Strict           as HM
+import           Data.List                      ( head
+                                                , lookup
+                                                , sortOn
+                                                )
+import           Data.Semigroup                 ( Max(Max, getMax) )
+import           Data.String.Interpolate.IsString
+                                                ( i )
+import qualified Data.Text                     as T
+import           Database.Esqueleto.Experimental
+                                                ( (&&.)
+                                                , (:&)((:&))
+                                                , (==.)
+                                                , (?.)
+                                                , Entity(entityKey, entityVal)
+                                                , PersistEntity(Key)
+                                                , SqlBackend
+                                                , Value(unValue)
+                                                , (^.)
+                                                , desc
+                                                , from
+                                                , groupBy
+                                                , innerJoin
+                                                , just
+                                                , leftJoin
+                                                , limit
+                                                , on
+                                                , orderBy
+                                                , select
+                                                , selectOne
+                                                , table
+                                                , val
+                                                , where_
+                                                )
+import           Database.Esqueleto.PostgreSQL  ( arrayAggDistinct )
+import           Database.Marketplace           ( searchServices )
+import qualified Database.Persist              as P
+import           Foundation                     ( Handler
+                                                , RegistryCtx(appSettings)
+                                                )
+import           Lib.Error                      ( S9Error(AssetParseE, InvalidParamsE, NotFoundE)
+                                                , errOnNothing
+                                                )
+import           Lib.PkgRepository              ( getManifest )
+import           Lib.Types.AppIndex             ( PkgId(PkgId)
+                                                , ServiceDependencyInfo(serviceDependencyInfoVersion)
+                                                , ServiceManifest(serviceManifestDependencies)
+                                                , VersionInfo(..)
+                                                )
+import           Lib.Types.AppIndex             ( )
+import           Lib.Types.Category             ( CategoryTitle(FEATURED) )
+import           Lib.Types.Emver                ( (<||)
+                                                , Version
+                                                , VersionRange
+                                                )
+import           Model                          ( Category(..)
+                                                , EntityField(..)
+                                                , OsVersion(..)
+                                                , SApp(..)
+                                                , SVersion(..)
+                                                , ServiceCategory
+                                                )
+import           Network.HTTP.Types             ( status400
+                                                , status404
+                                                )
+import           Protolude.Unsafe               ( unsafeFromJust )
+import           Settings                       ( AppSettings(registryHostname) )
+import           UnliftIO.Async                 ( concurrently
+                                                , mapConcurrently
+                                                )
+import           Yesod.Core                     ( HandlerFor
+                                                , MonadLogger
+                                                , MonadResource
+                                                , MonadUnliftIO
+                                                , ToContent(..)
+                                                , ToTypedContent(..)
+                                                , YesodRequest(..)
+                                                , getRequest
+                                                , getsYesod
+                                                , logWarn
+                                                , lookupGetParam
+                                                , sendResponseStatus
+                                                )
+import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
 type URL = Text
 newtype CategoryRes = CategoryRes {
@@ -332,57 +409,55 @@ getPackageListR = do
                 Just v -> do
                     pure $ Right (Just v, appId)
 
-getServiceDetails :: (MonadUnliftIO m, Monad m, MonadResource m)
+getServiceDetails :: (MonadIO m, MonadResource m)
                   => AppSettings
                   -> (HM.HashMap PkgId ([Version], [CategoryTitle]))
                   -> Maybe Version
                   -> PkgId
-                  -> m (Either Text ServiceRes)
-getServiceDetails settings metadata maybeVersion pkg = do
+                  -> m (Either S9Error ServiceRes)
+getServiceDetails settings metadata maybeVersion pkg = runExceptT $ do
     packageMetadata <- case HM.lookup pkg metadata of
-        Nothing -> throwIO $ NotFoundE [i|#{pkg} not found.|]
+        Nothing -> liftEither . Left $ NotFoundE [i|#{pkg} not found.|]
         Just m  -> pure m
     let domain = registryHostname settings
     version <- case maybeVersion of
         Nothing -> do
             -- grab first value, which will be the latest version
             case fst packageMetadata of
-                []    -> throwIO $ NotFoundE $ "no latest version found for " <> show pkg
+                []    -> liftEither . Left $ NotFoundE $ "no latest version found for " <> show pkg
                 x : _ -> pure x
         Just v -> pure v
     manifest <- flip runReaderT settings $ (snd <$> getManifest pkg version) >>= \bs ->
         runConduit $ bs .| CL.foldMap BS.fromStrict
     case eitherDecode manifest of
-        Left  e -> pure $ Left $ "Could not parse service manifest for " <> show pkg <> ": " <> show e
+        Left  _ -> liftEither . Left $ AssetParseE [i|#{pkg}:manifest|] (decodeUtf8 $ BS.toStrict manifest)
         Right m -> do
-            d <- liftIO $ mapConcurrently (mapDependencyMetadata domain metadata)
-                                          (HM.toList $ serviceManifestDependencies m)
-            pure $ Right $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{pkg}|]
+            let d = parMap rpar (mapDependencyMetadata domain metadata) (HM.toList $ serviceManifestDependencies m)
+            pure $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{pkg}|]
                                         -- pass through raw JSON Value, we have checked its correct parsing above
-                                      , serviceResManifest       = unsafeFromJust . decode $ manifest
-                                      , serviceResCategories     = snd packageMetadata
-                                      , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{pkg}|]
-                                      , serviceResLicense        = [i|https://#{domain}/package/license/#{pkg}|]
-                                      , serviceResVersions       = fst packageMetadata
-                                      , serviceResDependencyInfo = HM.fromList $ snd $ partitionEithers d
-                                      }
+                              , serviceResManifest       = unsafeFromJust . decode $ manifest
+                              , serviceResCategories     = snd packageMetadata
+                              , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{pkg}|]
+                              , serviceResLicense        = [i|https://#{domain}/package/license/#{pkg}|]
+                              , serviceResVersions       = fst packageMetadata
+                              , serviceResDependencyInfo = HM.fromList $ snd $ partitionEithers d
+                              }
 
-mapDependencyMetadata :: (MonadIO m)
-                      => Text
+mapDependencyMetadata :: Text
                       -> HM.HashMap PkgId ([Version], [CategoryTitle])
                       -> (PkgId, ServiceDependencyInfo)
-                      -> m (Either Text (PkgId, DependencyInfo))
+                      -> Either S9Error (PkgId, DependencyInfo)
 mapDependencyMetadata domain metadata (appId, depInfo) = do
     depMetadata <- case HM.lookup appId metadata of
-        Nothing -> throwIO $ NotFoundE [i|dependency metadata for #{appId} not found.|]
+        Nothing -> Left $ NotFoundE [i|dependency metadata for #{appId} not found.|]
         Just m  -> pure m
     -- get best version from VersionRange of dependency
     let satisfactory = filter (<|| serviceDependencyInfoVersion depInfo) (fst depMetadata)
     let best         = getMax <$> foldMap (Just . Max) satisfactory
     version <- case best of
-        Nothing -> throwIO $ NotFoundE $ "best version not found for dependent package " <> show appId
+        Nothing -> Left $ NotFoundE $ "best version not found for dependent package " <> show appId
         Just v  -> pure v
-    pure $ Right
+    pure
         ( appId
         , DependencyInfo { dependencyInfoTitle = appId
                          , dependencyInfoIcon  = [i|https://#{domain}/package/icon/#{appId}?spec==#{version}|]
