@@ -59,7 +59,7 @@ instance ToTypedContent CategoryRes where
     toTypedContent = toTypedContent . toJSON
 data ServiceRes = ServiceRes
     { serviceResIcon           :: URL
-    , serviceResManifest       :: Maybe Data.Aeson.Value -- ServiceManifest
+    , serviceResManifest       :: Data.Aeson.Value -- ServiceManifest
     , serviceResCategories     :: [CategoryTitle]
     , serviceResInstructions   :: URL
     , serviceResLicense        :: URL
