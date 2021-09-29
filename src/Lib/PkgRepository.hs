@@ -62,6 +62,7 @@ import           Startlude                      ( ($)
                                                 , MonadIO(liftIO)
                                                 , MonadReader
                                                 , Show
+                                                , SomeException(SomeException)
                                                 , filter
                                                 , find
                                                 , for_
@@ -69,10 +70,12 @@ import           Startlude                      ( ($)
                                                 , headMay
                                                 , not
                                                 , partitionEithers
+                                                , print
                                                 , pure
                                                 , show
                                                 , sortOn
                                                 , throwIO
+                                                , void
                                                 )
 import           System.FSNotify                ( Event(Added)
                                                 , eventPath
@@ -89,6 +92,7 @@ import           UnliftIO                       ( MonadUnliftIO
                                                 , askRunInIO
                                                 , async
                                                 , mapConcurrently
+                                                , mapConcurrently_
                                                 , newEmptyMVar
                                                 , onException
                                                 , takeMVar
@@ -101,6 +105,7 @@ import           UnliftIO.Directory             ( getFileSize
                                                 , removeFile
                                                 , renameFile
                                                 )
+import           UnliftIO.Exception             ( handle )
 import           Yesod.Core.Content             ( typeGif
                                                 , typeJpeg
                                                 , typePlain
@@ -137,11 +142,10 @@ getBestVersion pkg spec = headMay . sortOn Down <$> getViableVersions pkg spec
 
 -- extract all package assets into their own respective files
 extractPkg :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => FilePath -> m ()
-extractPkg fp = (`onException` cleanup) $ do
+extractPkg fp = handle @_ @SomeException cleanup $ do
     $logInfo [i|Extracting package: #{fp}|]
     PkgRepo { pkgRepoAppMgrBin = appmgr } <- ask
     let pkgRoot = takeDirectory fp
-    -- let s9pk    = pkgRoot </> show pkg <.> "s9pk"
     manifestTask <- async $ liftIO . runResourceT $ AppMgr.sourceManifest appmgr fp $ sinkIt
         (pkgRoot </> "manifest.json")
     pkgHashTask      <- async $ AppMgr.getPackageHash appmgr fp
@@ -165,11 +169,13 @@ extractPkg fp = (`onException` cleanup) $ do
     wait licenseTask
     where
         sinkIt fp source = runConduit $ source .| sinkFileCautious fp
-        cleanup = do
+        cleanup e = do
+            $logError $ show e
             let pkgRoot = takeDirectory fp
             fs <- listDirectory pkgRoot
             let toRemove = filter (not . (== ".s9pk") . takeExtension) fs
-            mapConcurrently (removeFile . (pkgRoot </>)) toRemove
+            mapConcurrently_ (removeFile . (pkgRoot </>)) toRemove
+            throwIO e
 
 watchPkgRepoRoot :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => m (IO Bool)
 watchPkgRepoRoot = do
@@ -181,7 +187,7 @@ watchPkgRepoRoot = do
         stop <- watchTree watchManager root onlyAdded $ \evt -> do
             let pkg = eventPath evt
             -- TODO: validate that package path is an actual s9pk and is in a correctly conforming path.
-            runInIO (extractPkg pkg)
+            void . forkIO $ runInIO (extractPkg pkg)
         takeMVar box
         stop
     pure $ tryPutMVar box ()
