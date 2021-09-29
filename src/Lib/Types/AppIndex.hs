@@ -14,38 +14,61 @@ import           Data.Aeson
 import qualified Data.HashMap.Strict           as HM
 import qualified Data.List.NonEmpty            as NE
 
+import qualified Data.ByteString.Lazy          as BS
+import           Data.Functor.Contravariant     ( Contravariant(contramap) )
+import           Data.String.Interpolate.IsString
+-- import Model
+import qualified Data.Text                     as T
+import           Database.Persist.Postgresql
+import qualified GHC.Read                       ( Read(..) )
+import qualified GHC.Show                       ( Show(..) )
+import           Lib.Registry
 import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 import           System.Directory
-import           Lib.Registry
-import           Model
-import qualified Data.Text                     as T
-import           Data.String.Interpolate.IsString
-import qualified Data.ByteString.Lazy          as BS
+import           Yesod
 
-type AppIdentifier = Text
+newtype PkgId = PkgId { unPkgId :: Text }
+    deriving (Eq)
+instance IsString PkgId where
+    fromString = PkgId . fromString
+instance Show PkgId where
+    show = toS . unPkgId
+instance Read PkgId where
+    readsPrec _ s = [(PkgId $ toS s, "")]
+instance Hashable PkgId where
+    hashWithSalt n = hashWithSalt n . unPkgId
+instance FromJSON PkgId where
+    parseJSON = fmap PkgId . parseJSON
+instance ToJSON PkgId where
+    toJSON = toJSON . unPkgId
+instance FromJSONKey PkgId where
+    fromJSONKey = fmap PkgId fromJSONKey
+instance ToJSONKey PkgId where
+    toJSONKey = contramap unPkgId toJSONKey
+instance PersistField PkgId where
+    toPersistValue = PersistText . show
+    fromPersistValue (PersistText t) = Right . PkgId $ toS t
+    fromPersistValue other           = Left $ [i|Invalid AppId: #{other}|]
+instance PersistFieldSql PkgId where
+    sqlType _ = SqlString
+instance PathPiece PkgId where
+    fromPathPiece = fmap PkgId . fromPathPiece
+    toPathPiece   = unPkgId
+instance ToContent PkgId where
+    toContent = toContent . toJSON
+instance ToTypedContent PkgId where
+    toTypedContent = toTypedContent . toJSON
 
 data VersionInfo = VersionInfo
     { versionInfoVersion       :: Version
     , versionInfoReleaseNotes  :: Text
-    , versionInfoDependencies  :: HM.HashMap AppIdentifier VersionRange
+    , versionInfoDependencies  :: HM.HashMap PkgId VersionRange
     , versionInfoOsRequired    :: VersionRange
     , versionInfoOsRecommended :: VersionRange
     , versionInfoInstallAlert  :: Maybe Text
     }
     deriving (Eq, Show)
-
-mapSVersionToVersionInfo :: [SVersion] -> [VersionInfo]
-mapSVersionToVersionInfo sv = do
-    (\v -> VersionInfo { versionInfoVersion       = sVersionNumber v
-                       , versionInfoReleaseNotes  = sVersionReleaseNotes v
-                       , versionInfoDependencies  = HM.empty
-                       , versionInfoOsRequired    = sVersionOsVersionRequired v
-                       , versionInfoOsRecommended = sVersionOsVersionRecommended v
-                       , versionInfoInstallAlert  = Nothing
-                       }
-        )
-        <$> sv
 
 instance Ord VersionInfo where
     compare = compare `on` versionInfoVersion
@@ -88,7 +111,7 @@ instance ToJSON StoreApp where
         , "version-info" .= storeAppVersionInfo
         , "timestamp" .= storeAppTimestamp
         ]
-newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap AppIdentifier StoreApp}
+newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap PkgId StoreApp}
     deriving (Show)
 
 instance FromJSON AppManifest where
@@ -128,11 +151,12 @@ addFileTimestamp appDir ext service v = do
             pure $ Just service { storeAppTimestamp = Just time }
 
 data ServiceDependencyInfo = ServiceDependencyInfo
-    { serviceDependencyInfoOptional :: Maybe Text
-    , serviceDependencyInfoVersion :: VersionRange
+    { serviceDependencyInfoOptional    :: Maybe Text
+    , serviceDependencyInfoVersion     :: VersionRange
     , serviceDependencyInfoDescription :: Maybe Text
-    , serviceDependencyInfoCritical :: Bool
-    } deriving (Show)
+    , serviceDependencyInfoCritical    :: Bool
+    }
+    deriving Show
 instance FromJSON ServiceDependencyInfo where
     parseJSON = withObject "service dependency info" $ \o -> do
         serviceDependencyInfoOptional    <- o .:? "optional"
@@ -162,16 +186,17 @@ instance FromJSON ServiceAlert where
         "stop"      -> pure STOP
         _           -> fail "unknown service alert type"
 data ServiceManifest = ServiceManifest
-    { serviceManifestId :: AppIdentifier
-    , serviceManifestTitle :: Text
-    , serviceManifestVersion :: Version
-    , serviceManifestDescriptionLong :: Text
-    , serviceManifestDescriptionShort :: Text
-    , serviceManifestReleaseNotes :: Text
-    , serviceManifestIcon :: Maybe Text
-    , serviceManifestAlerts :: HM.HashMap ServiceAlert (Maybe Text)
-    , serviceManifestDependencies :: HM.HashMap AppIdentifier ServiceDependencyInfo
-    } deriving (Show)
+    { serviceManifestId               :: !PkgId
+    , serviceManifestTitle            :: !Text
+    , serviceManifestVersion          :: !Version
+    , serviceManifestDescriptionLong  :: !Text
+    , serviceManifestDescriptionShort :: !Text
+    , serviceManifestReleaseNotes     :: !Text
+    , serviceManifestIcon             :: !(Maybe Text)
+    , serviceManifestAlerts           :: !(HM.HashMap ServiceAlert (Maybe Text))
+    , serviceManifestDependencies     :: !(HM.HashMap PkgId ServiceDependencyInfo)
+    }
+    deriving Show
 instance FromJSON ServiceManifest where
     parseJSON = withObject "service manifest" $ \o -> do
         serviceManifestId               <- o .: "id"
@@ -203,7 +228,7 @@ instance ToJSON ServiceManifest where
         ]
 
 -- >>> eitherDecode testManifest :: Either String ServiceManifest
--- Right (ServiceManifest {serviceManifestId = "embassy-pages", serviceManifestTitle = "Embassy Pages", serviceManifestVersion = 0.1.3, serviceManifestDescriptionLong = "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites.", serviceManifestDescriptionShort = "Create Tor websites, hosted on your Embassy.", serviceManifestReleaseNotes = "Upgrade to EmbassyOS v0.3.0", serviceManifestIcon = Just "icon.png", serviceManifestAlerts = fromList [(INSTALL,Nothing),(UNINSTALL,Nothing),(STOP,Nothing),(RESTORE,Nothing),(START,Nothing)], serviceManifestDependencies = fromList [("filebrowser",ServiceDependencyInfo {serviceDependencyInfoOptional = Nothing, serviceDependencyInfoVersion = >=2.14.1.1 <3.0.0, serviceDependencyInfoDescription = Just "Used to upload files to serve.", serviceDependencyInfoCritical = False})]})
+-- Right (ServiceManifest {serviceManifestId = embassy-pages, serviceManifestTitle = "Embassy Pages", serviceManifestVersion = 0.1.3, serviceManifestDescriptionLong = "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites.", serviceManifestDescriptionShort = "Create Tor websites, hosted on your Embassy.", serviceManifestReleaseNotes = "Upgrade to EmbassyOS v0.3.0", serviceManifestIcon = Just "icon.png", serviceManifestAlerts = fromList [(INSTALL,Nothing),(UNINSTALL,Nothing),(STOP,Nothing),(RESTORE,Nothing),(START,Nothing)], serviceManifestDependencies = fromList [(filebrowser,ServiceDependencyInfo {serviceDependencyInfoOptional = Nothing, serviceDependencyInfoVersion = >=2.14.1.1 <3.0.0, serviceDependencyInfoDescription = Just "Used to upload files to serve.", serviceDependencyInfoCritical = False})]})
 testManifest :: BS.ByteString
 testManifest = [i|{
   "id": "embassy-pages",

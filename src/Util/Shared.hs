@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell  #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Util.Shared where
 
@@ -8,34 +9,27 @@ import qualified Data.Text                     as T
 import           Network.HTTP.Types
 import           Yesod.Core
 
+import           Control.Monad.Reader.Has       ( Has )
 import           Foundation
-import           Lib.Registry
+import           Lib.PkgRepository              ( PkgRepo
+                                                , getHash
+                                                )
+import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Emver
-import           Data.Semigroup
-import           Lib.External.AppMgr
-import           Lib.Error
 
-getVersionFromQuery :: KnownSymbol a => FilePath -> Extension a -> Handler (Maybe Version)
-getVersionFromQuery rootDir ext = do
+getVersionSpecFromQuery :: Handler VersionRange
+getVersionSpecFromQuery = do
     specString <- T.filter (not . isSpace) . fromMaybe "*" <$> lookupGetParam "spec"
-    spec       <- case readMaybe specString of
+    case readMaybe specString of
         Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
         Just t  -> pure t
-    getBestVersion rootDir ext spec
 
-getBestVersion :: (MonadIO m, KnownSymbol a, MonadLogger m)
-               => FilePath
-               -> Extension a
-               -> VersionRange
-               -> m (Maybe Version)
-getBestVersion rootDir ext spec = do
-    -- @TODO change to db query?
-    appVersions <- liftIO $ getAvailableAppVersions rootDir ext
-    let satisfactory = filter ((<|| spec) . fst . unRegisteredAppVersion) appVersions
-    let best         = getMax <$> foldMap (Just . Max . fst . unRegisteredAppVersion) satisfactory
-    pure best
-
-addPackageHeader :: (MonadHandler m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> m ()
-addPackageHeader appMgrDir appDir appExt = do
-    packageHash <- handleS9ErrT $ getPackageHash appMgrDir appDir appExt
+addPackageHeader :: (MonadUnliftIO m, MonadHandler m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m ()
+addPackageHeader pkg version = do
+    packageHash <- getHash pkg version
     addHeader "X-S9PK-HASH" $ decodeUtf8 packageHash
+
+orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
+orThrow action other = action >>= \case
+    Nothing -> other
+    Just x  -> pure x

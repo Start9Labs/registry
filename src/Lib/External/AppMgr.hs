@@ -6,17 +6,39 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies     #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Lib.External.AppMgr where
 
-import           Startlude
+import           Startlude               hiding ( bracket
+                                                , catch
+                                                , finally
+                                                , handle
+                                                )
 
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.String.Interpolate.IsString
 import           System.Process.Typed    hiding ( createPipe )
 
+import           Conduit                        ( (.|)
+                                                , ConduitT
+                                                , runConduit
+                                                )
+import           Control.Monad.Logger           ( MonadLoggerIO
+                                                , logErrorSH
+                                                )
+import qualified Data.Conduit.List             as CL
+import           Data.Conduit.Process.Typed
+import           GHC.IO.Exception               ( IOErrorType(NoSuchThing)
+                                                , IOException(ioe_description, ioe_type)
+                                                )
 import           Lib.Error
-import           Lib.Registry
+import           System.FilePath                ( (</>) )
+import           UnliftIO                       ( MonadUnliftIO
+                                                , catch
+                                                )
+import           UnliftIO                       ( bracket )
 
 readProcessWithExitCode' :: MonadIO m => String -> [String] -> ByteString -> m (ExitCode, ByteString, ByteString)
 readProcessWithExitCode' a b c = liftIO $ do
@@ -31,57 +53,75 @@ readProcessWithExitCode' a b c = liftIO $ do
                                                          (LBS.toStrict <$> getStdout process)
                                                          (LBS.toStrict <$> getStderr process)
 
-readProcessInheritStderr :: MonadIO m => String -> [String] -> ByteString -> m (ExitCode, ByteString)
-readProcessInheritStderr a b c = liftIO $ do
+readProcessInheritStderr :: forall m a
+                          . MonadUnliftIO m
+                         => String
+                         -> [String]
+                         -> ByteString
+                         -> (ConduitT () ByteString m () -> m a) -- this is because we can't clean up the process in the unCPS'ed version of this
+                         -> m a
+readProcessInheritStderr a b c sink = do
     let pc =
             setStdin (byteStringInput $ LBS.fromStrict c)
-                $ setStderr inherit
                 $ setEnvInherit
-                $ setStdout byteStringOutput
+                $ setStderr (useHandleOpen stderr)
+                $ setStdout createSource
                 $ System.Process.Typed.proc a b
-    withProcessWait pc
-        $ \process -> atomically $ liftA2 (,) (waitExitCodeSTM process) (LBS.toStrict <$> getStdout process)
+    withProcessTerm' pc $ \p -> sink (getStdout p)
+    where
+        -- We need this to deal with https://github.com/haskell/process/issues/215
+        withProcessTerm' :: (MonadUnliftIO m)
+                         => ProcessConfig stdin stdout stderr
+                         -> (Process stdin stdout stderr -> m a)
+                         -> m a
+        withProcessTerm' cfg = bracket (startProcess cfg) $ \p -> do
+            stopProcess p
+                `catch` (\e -> if ioe_type e == NoSuchThing && ioe_description e == "No child processes"
+                            then pure ()
+                            else throwIO e
+                        )
 
-getConfig :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m Text
-getConfig appmgrPath appPath e@(Extension appId) = fmap decodeUtf8 $ do
-    (ec, out) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk")
-                                          ["inspect", "config", appPath <> show e, "--json"]
-                                          ""
-    case ec of
-        ExitSuccess   -> pure out
-        ExitFailure n -> throwE $ AppMgrE [i|info config #{appId} \--json|] n
+sourceManifest :: (MonadUnliftIO m, MonadLoggerIO m)
+               => FilePath
+               -> FilePath
+               -> (ConduitT () ByteString m () -> m r)
+               -> m r
+sourceManifest appmgrPath pkgFile sink = do
+    let appmgr = readProcessInheritStderr (appmgrPath </> "embassy-sdk") ["inspect", "manifest", pkgFile] ""
+    appmgr sink `catch` \ece ->
+        $logErrorSH ece *> throwIO (AppMgrE [i|embassy-sdk inspect manifest #{pkgFile}|] (eceExitCode ece))
 
-getManifest :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m ByteString
-getManifest appmgrPath appPath e@(Extension appId) = do
-    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "manifest", appPath <> show e] ""
-    case ec of
-        ExitSuccess   -> pure bs
-        ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect manifest #{appId}|] n
+sourceIcon :: (MonadUnliftIO m, MonadLoggerIO m) => FilePath -> FilePath -> (ConduitT () ByteString m () -> m r) -> m r
+sourceIcon appmgrPath pkgFile sink = do
+    let appmgr = readProcessInheritStderr (appmgrPath </> "embassy-sdk") ["inspect", "icon", pkgFile] ""
+    appmgr sink `catch` \ece ->
+        $logErrorSH ece *> throwIO (AppMgrE [i|embassy-sdk inspect icon #{pkgFile}|] (eceExitCode ece))
 
-getIcon :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m ByteString
-getIcon appmgrPath appPath e@(Extension icon) = do
-    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "icon", appPath] ""
-    case ec of
-        ExitSuccess   -> pure bs
-        ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect icon #{icon}|] n
+getPackageHash :: (MonadUnliftIO m, MonadLoggerIO m) => FilePath -> FilePath -> m ByteString
+getPackageHash appmgrPath pkgFile = do
+    let appmgr = readProcessInheritStderr (appmgrPath </> "embassy-sdk") ["inspect", "hash", pkgFile] ""
+    appmgr (\bsSource -> runConduit $ bsSource .| CL.foldMap id) `catch` \ece ->
+        $logErrorSH ece *> throwIO (AppMgrE [i|embassy-sdk inspect hash #{pkgFile}|] (eceExitCode ece))
 
-getPackageHash :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m ByteString
-getPackageHash appmgrPath appPath e@(Extension appId) = do
-    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "hash", appPath <> show e] ""
-    case ec of
-        ExitSuccess   -> pure bs
-        ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect hash #{appId}|] n
+sourceInstructions :: (MonadUnliftIO m, MonadLoggerIO m)
+                   => FilePath
+                   -> FilePath
+                   -> (ConduitT () ByteString m () -> m r)
+                   -> m r
+sourceInstructions appmgrPath pkgFile sink = do
+    let appmgr = readProcessInheritStderr (appmgrPath </> "embassy-sdk") ["inspect", "instructions", pkgFile] ""
+    appmgr sink `catch` \ece ->
+        $logErrorSH ece *> throwIO (AppMgrE [i|embassy-sdk inspect instructions #{pkgFile}|] (eceExitCode ece))
 
-getInstructions :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m ByteString
-getInstructions appmgrPath appPath e@(Extension appId) = do
-    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "instructions", appPath] ""
-    case ec of
-        ExitSuccess   -> pure bs
-        ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect instructions #{appId}|] n
+sourceLicense :: (MonadUnliftIO m, MonadLoggerIO m)
+              => FilePath
+              -> FilePath
+              -> (ConduitT () ByteString m () -> m r)
+              -> m r
+sourceLicense appmgrPath pkgFile sink = do
+    let appmgr = readProcessInheritStderr (appmgrPath </> "embassy-sdk") ["inspect", "license", pkgFile] ""
+    appmgr sink `catch` \ece ->
+        $logErrorSH ece *> throwIO (AppMgrE [i|embassy-sdk inspect license #{pkgFile}|] (eceExitCode ece))
 
-getLicense :: (MonadIO m, KnownSymbol a) => FilePath -> FilePath -> Extension a -> S9ErrT m ByteString
-getLicense appmgrPath appPath e@(Extension appId) = do
-    (ec, bs) <- readProcessInheritStderr (appmgrPath <> "embassy-sdk") ["inspect", "license", appPath] ""
-    case ec of
-        ExitSuccess   -> pure bs
-        ExitFailure n -> throwE $ AppMgrE [i|embassy-sdk inspect license #{appId}|] n
+sinkMem :: (Monad m, Monoid a) => ConduitT () a m () -> m a
+sinkMem c = runConduit $ c .| CL.foldMap id

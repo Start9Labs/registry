@@ -10,18 +10,19 @@
 
 module Model where
 
-import           Startlude
 import           Database.Persist.TH
-import           Lib.Types.Emver
+import           Lib.Types.AppIndex
 import           Lib.Types.Category
+import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
+import           Startlude
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 SApp
     createdAt UTCTime
     updatedAt UTCTime Maybe
     title Text
-    appId Text
+    appId PkgId
     descShort Text
     descLong Text
     iconType Text
@@ -63,8 +64,8 @@ Category
     name CategoryTitle
     parent CategoryId Maybe
     description Text
-    UniqueName name
     priority Int default=0
+    UniqueName name
     deriving Eq
     deriving Show
 

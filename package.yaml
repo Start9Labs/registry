@@ -2,60 +2,65 @@ name: start9-registry
 version: 0.1.0
 
 default-extensions:
-- FlexibleInstances
-- GeneralizedNewtypeDeriving
-- LambdaCase
-- MultiWayIf
-- NamedFieldPuns
-- NoImplicitPrelude
-- NumericUnderscores
-- OverloadedStrings
-- StandaloneDeriving
+  - FlexibleInstances
+  - GeneralizedNewtypeDeriving
+  - LambdaCase
+  - MultiWayIf
+  - NamedFieldPuns
+  - NoImplicitPrelude
+  - NumericUnderscores
+  - OverloadedStrings
+  - StandaloneDeriving
 
 dependencies:
-- base >=4.12 && <5
-- aeson
-- attoparsec
-- bytestring
-- casing
-- conduit
-- conduit-extra
-- data-default
-- directory
-- errors
-- extra
-- file-embed
-- fast-logger
-- filepath
-- http-types
-- interpolate
-- lens
-- monad-logger
-- persistent
-- persistent-postgresql
-- persistent-template
-- process
-- protolude
-- shakespeare
-- template-haskell
-- text
-- time
-- transformers
-- typed-process
-- unordered-containers
-- unix
-- wai
-- wai-cors
-- wai-extra
-- warp
-- warp-tls
-- yaml
-- yesod
-- yesod-core
-- yesod-persistent
-- esqueleto
-- text-conversions
-- foreign-store
+  - base >=4.12 && <5
+  - aeson
+  - ansi-terminal
+  - attoparsec
+  - bytestring
+  - casing
+  - can-i-haz
+  - conduit
+  - conduit-extra
+  - data-default
+  - directory
+  - errors
+  - esqueleto
+  - extra
+  - file-embed
+  - fast-logger
+  - filepath
+  - foreign-store
+  - fsnotify
+  - http-types
+  - interpolate
+  - lens
+  - monad-logger
+  - monad-logger-extras
+  - parallel
+  - persistent
+  - persistent-postgresql
+  - persistent-template
+  - process
+  - protolude
+  - shakespeare
+  - template-haskell
+  - text
+  - time
+  - transformers
+  - typed-process
+  - unliftio
+  - unordered-containers
+  - unix
+  - wai
+  - wai-cors
+  - wai-extra
+  - warp
+  - warp-tls
+  - yaml
+  - yesod
+  - yesod-core
+  - yesod-persistent
 
 library:
   source-dirs: src

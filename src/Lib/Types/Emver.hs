@@ -34,28 +34,26 @@ module Lib.Types.Emver
     , exactly
     , parseVersion
     , parseRange
-    )
-where
+    ) where
 
-import           Prelude
-import qualified Data.Attoparsec.Text          as Atto
-import           Data.Function
-import           Data.Functor                   ( (<&>)
-                                                , ($>)
-                                                )
-import           Control.Applicative            ( liftA2
-                                                , Alternative((<|>))
-                                                )
-import           Data.String                    ( IsString(..) )
-import qualified Data.Text                     as T
+import           Startlude               hiding ( Any )
+
+import           Control.Monad.Fail             ( fail )
 import           Data.Aeson
-import           Startlude                      ( Hashable )
+import qualified Data.Attoparsec.Text          as Atto
+import qualified Data.Text                     as T
+import           GHC.Base                       ( error )
+import qualified GHC.Read                      as GHC
+                                                ( readsPrec )
+import qualified GHC.Show                      as GHC
+                                                ( show )
 
 -- | AppVersion is the core representation of the SemverQuad type.
 newtype Version = Version { unVersion :: (Word, Word, Word, Word) } deriving (Eq, Ord, ToJSONKey, Hashable)
 instance Show Version where
     show (Version (x, y, z, q)) =
-        let postfix = if q == 0 then "" else '.' : show q in show x <> "." <> show y <> "." <> show z <> postfix
+        let postfix = if q == 0 then "" else '.' : GHC.show q
+        in  GHC.show x <> "." <> GHC.show y <> "." <> GHC.show z <> postfix
 instance IsString Version where
     fromString s = either error id $ Atto.parseOnly parseVersion (T.pack s)
 instance Read Version where
@@ -135,17 +133,17 @@ exactly :: Version -> VersionRange
 exactly = Anchor (Right EQ)
 
 instance Show VersionRange where
-    show (Anchor (  Left  EQ) v           ) = '!' : '=' : show v
-    show (Anchor (  Right EQ) v           ) = '=' : show v
-    show (Anchor (  Left  LT) v           ) = '>' : '=' : show v
-    show (Anchor (  Right LT) v           ) = '<' : show v
-    show (Anchor (  Left  GT) v           ) = '<' : '=' : show v
-    show (Anchor (  Right GT) v           ) = '>' : show v
-    show (Conj   a@(Disj _ _) b@(Disj _ _)) = paren (show a) <> (' ' : paren (show b))
-    show (Conj   a@(Disj _ _) b           ) = paren (show a) <> (' ' : show b)
-    show (Conj   a            b@(Disj _ _)) = show a <> (' ' : paren (show b))
-    show (Conj   a            b           ) = show a <> (' ' : show b)
-    show (Disj   a            b           ) = show a <> " || " <> show b
+    show (Anchor (  Left  EQ) v           ) = '!' : '=' : GHC.show v
+    show (Anchor (  Right EQ) v           ) = '=' : GHC.show v
+    show (Anchor (  Left  LT) v           ) = '>' : '=' : GHC.show v
+    show (Anchor (  Right LT) v           ) = '<' : GHC.show v
+    show (Anchor (  Left  GT) v           ) = '<' : '=' : GHC.show v
+    show (Anchor (  Right GT) v           ) = '>' : GHC.show v
+    show (Conj   a@(Disj _ _) b@(Disj _ _)) = paren (GHC.show a) <> (' ' : paren (GHC.show b))
+    show (Conj   a@(Disj _ _) b           ) = paren (GHC.show a) <> (' ' : GHC.show b)
+    show (Conj   a            b@(Disj _ _)) = GHC.show a <> (' ' : paren (GHC.show b))
+    show (Conj   a            b           ) = GHC.show a <> (' ' : GHC.show b)
+    show (Disj   a            b           ) = GHC.show a <> " || " <> GHC.show b
     show Any                                = "*"
     show None                               = "!"
 instance Read VersionRange where
@@ -183,10 +181,6 @@ satisfies _ None           = False
 (||>) :: VersionRange -> Version -> Bool
 (||>) = flip satisfies
 {-# INLINE (||>) #-}
-
-(<<$>>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
-(<<$>>) = fmap . fmap
-{-# INLINE (<<$>>) #-}
 
 parseOperator :: Atto.Parser Operator
 parseOperator =

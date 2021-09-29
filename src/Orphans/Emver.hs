@@ -9,10 +9,10 @@ import           Startlude
 import           Data.Aeson
 import qualified Data.Attoparsec.Text          as Atto
 
-import           Lib.Types.Emver
-import           Database.Persist.Sql
-import qualified Data.Text                     as T
 import           Control.Monad.Fail             ( MonadFail(fail) )
+import qualified Data.Text                     as T
+import           Database.Persist.Sql
+import           Lib.Types.Emver
 
 instance FromJSON Version where
     parseJSON = withText "Emver Version" $ either fail pure . Atto.parseOnly parseVersion
