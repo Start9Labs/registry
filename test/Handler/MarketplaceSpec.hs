@@ -133,6 +133,4 @@ spec = do
               app  <- runDBtest $ insert $ SApp time Nothing "Bitcoin Core" "bitcoin" "short desc" "long desc" "png"
               _    <- runDBtest $ insert $ SVersion time Nothing app "0.19.0.0" "release notes 0.19.0.0" Any Any Nothing
               _    <- runDBtest $ insert $ SVersion time Nothing app "0.20.0.0" "release notes 0.19.0.0" Any Any Nothing
-              -- res <- runDBtest $ getServiceVersionsWithReleaseNotes "bitcoin"
-              -- print res
               print ()
