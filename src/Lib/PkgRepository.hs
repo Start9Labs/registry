@@ -51,18 +51,18 @@ import           Startlude                      ( ($)
                                                 , (<>)
                                                 , Bool(..)
                                                 , ByteString
-                                                , Down(Down)
-                                                , Either(Left, Right)
+                                                , Down(..)
+                                                , Either(..)
                                                 , Eq((==))
                                                 , Exception
                                                 , FilePath
                                                 , IO
                                                 , Integer
-                                                , Maybe(Just, Nothing)
+                                                , Maybe(..)
                                                 , MonadIO(liftIO)
                                                 , MonadReader
                                                 , Show
-                                                , SomeException(SomeException)
+                                                , SomeException(..)
                                                 , filter
                                                 , find
                                                 , for_
@@ -70,7 +70,6 @@ import           Startlude                      ( ($)
                                                 , headMay
                                                 , not
                                                 , partitionEithers
-                                                , print
                                                 , pure
                                                 , show
                                                 , sortOn
@@ -91,10 +90,8 @@ import           System.FilePath                ( (<.>)
 import           UnliftIO                       ( MonadUnliftIO
                                                 , askRunInIO
                                                 , async
-                                                , mapConcurrently
                                                 , mapConcurrently_
                                                 , newEmptyMVar
-                                                , onException
                                                 , takeMVar
                                                 , wait
                                                 )

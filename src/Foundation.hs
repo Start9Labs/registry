@@ -26,7 +26,6 @@ import           Yesod.Core.Types               ( HandlerData(handlerEnv)
                                                 )
 import qualified Yesod.Core.Unsafe             as Unsafe
 
-import qualified Control.Monad.Logger.Extras   as Extra
 import           Control.Monad.Logger.Extras    ( wrapSGRCode )
 import           Control.Monad.Reader.Has       ( Has(extract, update) )
 import           Data.String.Interpolate.IsString
@@ -42,7 +41,6 @@ import           System.Console.ANSI.Codes      ( Color(..)
                                                 , SGR(SetColor)
                                                 )
 import           System.FilePath                ( (</>) )
-import           Yesod                          ( defaultMessageLoggerSource )
 import           Yesod.Persist.Core
 
 -- | The foundation datatype for your application. This can be a good place to
