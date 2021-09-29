@@ -486,47 +486,6 @@ fetchAppCategories appId = select $ do
     where_ (service ^. SAppId ==. val appId)
     pure categories
 
-mapEntityToStoreApp :: MonadIO m => Entity SApp -> ReaderT SqlBackend m StoreApp
-mapEntityToStoreApp serviceEntity = do
-    let service = entityVal serviceEntity
-    entityVersion <- fetchMostRecentAppVersions $ entityKey serviceEntity
-    let vers = entityVal <$> entityVersion
-    let vv   = mapSVersionToVersionInfo vers
-    pure $ StoreApp { storeAppTitle       = sAppTitle service
-                    , storeAppDescShort   = sAppDescShort service
-                    , storeAppDescLong    = sAppDescLong service
-                    , storeAppVersionInfo = NE.fromList vv
-                    , storeAppIconType    = sAppIconType service
-                    , storeAppTimestamp   = Just (sAppCreatedAt service) -- case on if updatedAt? or always use updated time? was file timestamp
-                    }
-    where
-        mapSVersionToVersionInfo :: [SVersion] -> [VersionInfo]
-        mapSVersionToVersionInfo sv = do
-            (\v -> VersionInfo { versionInfoVersion       = sVersionNumber v
-                               , versionInfoReleaseNotes  = sVersionReleaseNotes v
-                               , versionInfoDependencies  = HM.empty
-                               , versionInfoOsRequired    = sVersionOsVersionRequired v
-                               , versionInfoOsRecommended = sVersionOsVersionRecommended v
-                               , versionInfoInstallAlert  = Nothing
-                               }
-                )
-                <$> sv
-
-mapEntityToServiceAvailable :: (MonadIO m, MonadHandler m)
-                            => Text
-                            -> Entity SApp
-                            -> ReaderT SqlBackend m ServiceAvailable
-mapEntityToServiceAvailable domain service = do
-    let appId = sAppAppId $ entityVal service
-    (_, v) <- fetchLatestApp appId >>= errOnNothing status404 "service not found"
-    let appVersion = sVersionNumber (entityVal v)
-    pure $ ServiceAvailable { serviceAvailableId        = appId
-                            , serviceAvailableTitle     = sAppTitle $ entityVal service
-                            , serviceAvailableDescShort = sAppDescShort $ entityVal service
-                            , serviceAvailableVersion   = appVersion
-                            , serviceAvailableIcon = [i|https://#{domain}/package/icon/#{appId}?spec==#{appVersion}|]
-                            }
-
 -- >>> encode hm
 -- "{\"0.2.0\":\"some notes\"}"
 hm :: Data.Aeson.Value
