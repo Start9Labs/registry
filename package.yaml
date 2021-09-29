@@ -37,6 +37,7 @@ dependencies:
   - lens
   - monad-logger
   - monad-logger-extras
+  - parallel
   - persistent
   - persistent-postgresql
   - persistent-template

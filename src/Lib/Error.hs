@@ -16,6 +16,7 @@ data S9Error =
     | AppMgrE Text ExitCode
     | NotFoundE Text
     | InvalidParamsE Text Text
+    | AssetParseE Text Text
     deriving (Show, Eq)
 
 instance Exception S9Error
@@ -23,17 +24,18 @@ instance Exception S9Error
 -- | Redact any sensitive data in this function
 toError :: S9Error -> Error
 toError = \case
-    PersistentE t      -> Error DATABASE_ERROR t
-    AppMgrE cmd code   -> Error APPMGR_ERROR [i|"appmgr #{cmd}" exited with #{code}|]
-    NotFoundE e        -> Error NOT_FOUND [i|#{e}|]
-    InvalidParamsE e m -> Error INVALID_PARAMS [i|Could not parse request parameters #{e}: #{m}|]
+    PersistentE t              -> Error DATABASE_ERROR t
+    AppMgrE cmd code           -> Error APPMGR_ERROR [i|"appmgr #{cmd}" exited with #{code}|]
+    NotFoundE e                -> Error NOT_FOUND [i|#{e}|]
+    InvalidParamsE e     m     -> Error INVALID_PARAMS [i|Could not parse request parameters #{e}: #{m}|]
+    AssetParseE    asset found -> Error PARSE_ERROR [i|Could not parse #{asset}: #{found}|]
 
 data ErrorCode =
       DATABASE_ERROR
     | APPMGR_ERROR
     | NOT_FOUND
     | INVALID_PARAMS
-
+    | PARSE_ERROR
     deriving (Eq, Show)
 instance ToJSON ErrorCode where
     toJSON = String . show
@@ -61,6 +63,7 @@ toStatus = \case
     AppMgrE _ _        -> status500
     NotFoundE _        -> status404
     InvalidParamsE _ _ -> status400
+    AssetParseE    _ _ -> status500
 
 
 handleS9ErrT :: MonadHandler m => S9ErrT m a -> m a
