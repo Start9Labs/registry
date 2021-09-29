@@ -343,7 +343,6 @@ getServiceDetails settings metadata maybeVersion pkg = do
     packageMetadata <- case HM.lookup pkg metadata of
         Nothing -> throwIO $ NotFoundE [i|#{pkg} not found.|]
         Just m  -> pure m
-    -- let (appsDir, appMgrDir) = ((</> "apps") . resourcesDir &&& staticBinDir) settings
     let domain = registryHostname settings
     version <- case maybeVersion of
         Nothing -> do
@@ -352,8 +351,6 @@ getServiceDetails settings metadata maybeVersion pkg = do
                 []    -> throwIO $ NotFoundE $ "no latest version found for " <> show pkg
                 x : _ -> pure x
         Just v -> pure v
-    -- let appDir = (<> "/") . (</> show version) . (</> show appId) $ appsDir
-    -- let appExt = Extension (show appId) :: Extension "s9pk"
     manifest <- flip runReaderT settings $ (snd <$> getManifest pkg version) >>= \bs ->
         runConduit $ bs .| CL.foldMap BS.fromStrict
     case eitherDecode manifest of
@@ -393,13 +390,7 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
                          }
         )
 
--- decodeInstructions :: (MonadUnliftIO m, MonadHandler m, MonadThrow m) => FilePath -> FilePath -> S9PK -> m Text
--- decodeInstructions appmgrPath depPath package = do
---     sourceInstructions appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
 
--- decodeLicense :: (MonadUnliftIO m, MonadThrow m, MonadHandler m) => FilePath -> FilePath -> S9PK -> m Text
--- decodeLicense appmgrPath depPath package =
---     sourceLicense appmgrPath depPath package (\bs -> sinkMem (bs .| CT.decode CT.utf8))
 
 fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do

@@ -25,7 +25,7 @@ import           System.FilePath                ( (</>) )
 import           Yesod.Default.Config2          ( configSettingsYml )
 
 import           Control.Monad.Reader.Has       ( Has(extract, update) )
-import           Lib.PkgRepository              ( PkgRepo(PkgRepo, pkgRepoAppMgrBin, pkgRepoFileRoot) )
+import           Lib.PkgRepository              ( PkgRepo(..) )
 import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 -- | Runtime settings to configure this application. These settings can be
