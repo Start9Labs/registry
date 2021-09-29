@@ -112,11 +112,6 @@ getAppR file = do
     addHeader "Content-Length" (show len)
     respondSource typeOctet $ src .| awaitForever sendChunkBS
 
-chunkIt :: FilePath -> Handler TypedContent
-chunkIt fp = do
-    sz <- liftIO $ fileSize <$> getFileStatus fp
-    addHeader "Content-Length" (show sz)
-    respondSource typeOctet $ CB.sourceFile fp .| awaitForever sendChunkBS
 
 recordMetrics :: PkgId -> Version -> Handler ()
 recordMetrics pkg appVersion = do
