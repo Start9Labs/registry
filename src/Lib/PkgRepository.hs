@@ -65,7 +65,6 @@ import           Startlude                      ( ($)
                                                 , filter
                                                 , find
                                                 , for_
-                                                , fromMaybe
                                                 , headMay
                                                 , not
                                                 , partitionEithers
@@ -157,7 +156,11 @@ extractPkg fp = handle @_ @SomeException cleanup $ do
             liftIO . throwIO $ ManifestParseException (pkgRoot </> "manifest.json")
         Right manifest -> do
             wait iconTask
-            let iconDest = "icon" <.> T.unpack (fromMaybe "png" (serviceManifestIcon manifest))
+            let iconDest = "icon" <.> case serviceManifestIcon manifest of
+                    Nothing -> "png"
+                    Just x  -> case takeExtension (T.unpack x) of
+                        ""    -> "png"
+                        other -> other
             liftIO $ renameFile (pkgRoot </> "icon.tmp") (pkgRoot </> iconDest)
     hash <- wait pkgHashTask
     liftIO $ writeFile (pkgRoot </> "hash.bin") hash
