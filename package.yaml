@@ -17,7 +17,6 @@ dependencies:
   - aeson
   - ansi-terminal
   - attoparsec
-  # - binary
   - bytestring
   - casing
   - can-i-haz
@@ -47,7 +46,6 @@ dependencies:
   - shakespeare
   - template-haskell
   - text
-  # - text-conversions
   - time
   - transformers
   - typed-process
