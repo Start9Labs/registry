@@ -65,6 +65,7 @@ readProcessInheritStderr a b c sink = do
                 $ System.Process.Typed.proc a b
     withProcessTerm' pc $ \p -> sink (getStdout p)
     where
+        -- We need this to deal with https://github.com/haskell/process/issues/215
         withProcessTerm' :: (MonadUnliftIO m)
                          => ProcessConfig stdin stdout stderr
                          -> (Process stdin stdout stderr -> m a)
