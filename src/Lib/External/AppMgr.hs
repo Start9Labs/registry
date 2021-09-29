@@ -27,15 +27,7 @@ import           Conduit                        ( (.|)
 import qualified Data.Conduit.List             as CL
 import           Data.Conduit.Process.Typed
 import           GHC.IO.Exception               ( IOErrorType(NoSuchThing)
-                                                , IOException
-                                                    ( IOError
-                                                    , ioe_description
-                                                    , ioe_errno
-                                                    , ioe_filename
-                                                    , ioe_handle
-                                                    , ioe_location
-                                                    , ioe_type
-                                                    )
+                                                , IOException(ioe_description, ioe_type)
                                                 )
 import           Lib.Error
 import           System.FilePath                ( (</>) )
@@ -43,8 +35,6 @@ import           UnliftIO                       ( MonadUnliftIO
                                                 , catch
                                                 )
 import           UnliftIO                       ( bracket )
-import           UnliftIO                       ( finally )
-import           UnliftIO.Exception             ( handle )
 
 readProcessWithExitCode' :: MonadIO m => String -> [String] -> ByteString -> m (ExitCode, ByteString, ByteString)
 readProcessWithExitCode' a b c = liftIO $ do
@@ -66,7 +56,7 @@ readProcessInheritStderr :: forall m a
                          -> ByteString
                          -> (ConduitT () ByteString m () -> m a) -- this is because we can't clean up the process in the unCPS'ed version of this
                          -> m a
-readProcessInheritStderr a b c sink = handle help $ do
+readProcessInheritStderr a b c sink = do
     let pc =
             setStdin (byteStringInput $ LBS.fromStrict c)
                 $ setEnvInherit
@@ -85,14 +75,6 @@ readProcessInheritStderr a b c sink = handle help $ do
                             then pure ()
                             else throwIO e
                         )
-        help e@IOError {..} = do
-            print $ ioe_handle
-            print $ ioe_type
-            print $ ioe_location
-            print $ ioe_description
-            print $ ioe_errno
-            print $ ioe_filename
-            throwIO e
 
 sourceManifest :: (MonadUnliftIO m) => FilePath -> FilePath -> (ConduitT () ByteString m () -> m r) -> m r
 sourceManifest appmgrPath pkgFile sink = do
