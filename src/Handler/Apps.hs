@@ -19,16 +19,12 @@ import           Data.Aeson                     ( ToJSON
                                                 )
 import qualified Data.Attoparsec.Text          as Atto
 import qualified Data.ByteString.Lazy          as BS
-import qualified Data.Conduit.Binary           as CB
 import qualified Data.Text                     as T
 import           Database.Persist               ( Entity(entityKey) )
 import qualified GHC.Show                       ( Show(..) )
 import           Network.HTTP.Types             ( status404 )
 import           System.FilePath                ( (<.>)
                                                 , takeBaseName
-                                                )
-import           System.Posix.Files             ( fileSize
-                                                , getFileStatus
                                                 )
 import           Yesod.Core                     ( TypedContent
                                                 , addHeader
