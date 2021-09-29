@@ -19,7 +19,6 @@ import qualified Data.ByteString.Lazy          as BS
 import qualified Data.Conduit.List             as CL
 import qualified Data.HashMap.Strict           as HM
 import           Data.List
-import qualified Data.List.NonEmpty            as NE
 import           Data.Semigroup
 import           Data.String.Interpolate.IsString
 import qualified Data.Text                     as T
