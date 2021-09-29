@@ -30,10 +30,8 @@ import           System.FilePath                ( (<.>)
 import           System.Posix.Files             ( fileSize
                                                 , getFileStatus
                                                 )
-import           Yesod.Core                     ( MonadHandler(HandlerSite)
-                                                , TypedContent
+import           Yesod.Core                     ( TypedContent
                                                 , addHeader
-                                                , getYesod
                                                 , notFound
                                                 , respondSource
                                                 , sendChunkBS
@@ -75,11 +73,6 @@ pureLog = liftA2 (*>) ($logInfo . show) pure
 
 logRet :: ToJSON a => Handler a -> Handler a
 logRet = (>>= liftA2 (*>) ($logInfo . decodeUtf8 . BS.toStrict . encode) pure)
-
-inject :: MonadHandler m => ReaderT (HandlerSite m) m a -> m a
-inject action = do
-    env <- getYesod
-    runReaderT action env
 
 data FileExtension = FileExtension FilePath (Maybe String)
 instance Show FileExtension where
