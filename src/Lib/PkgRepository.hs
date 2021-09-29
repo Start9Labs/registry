@@ -76,7 +76,8 @@ import           Startlude                      ( ($)
                                                 , throwIO
                                                 , void
                                                 )
-import           System.FSNotify                ( Event(Added)
+import           System.FSNotify                ( ActionPredicate
+                                                , Event(..)
                                                 , eventPath
                                                 , watchTree
                                                 , withManager
@@ -189,9 +190,11 @@ watchPkgRepoRoot = do
         stop
     pure $ tryPutMVar box ()
     where
-        onlyAdded = \case
-            Added path _ isDir -> not isDir && takeExtension path == ".s9pk"
-            _                  -> False
+        onlyAdded :: ActionPredicate
+        onlyAdded (Added    path _ isDir) = not isDir && takeExtension path == ".s9pk"
+        onlyAdded (Modified path _ isDir) = not isDir && takeExtension path == ".s9pk"
+        onlyAdded _                       = False
+            -- Added path _ isDir -> not isDir && takeExtension path == ".s9pk"
 
 getManifest :: (MonadResource m, MonadReader r m, Has PkgRepo r)
             => PkgId
