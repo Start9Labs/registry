@@ -49,7 +49,7 @@ instance ToJSONKey PkgId where
 instance PersistField PkgId where
     toPersistValue = PersistText . show
     fromPersistValue (PersistText t) = Right . PkgId $ toS t
-    fromPersistValue other           = Left $ "Invalid AppId: " <> show other
+    fromPersistValue other           = Left $ [i|Invalid AppId: #{other}|]
 instance PersistFieldSql PkgId where
     sqlType _ = SqlString
 instance PathPiece PkgId where

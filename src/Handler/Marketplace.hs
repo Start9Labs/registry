@@ -19,7 +19,9 @@ import           Startlude               hiding ( Handler
                                                 )
 
 import           Conduit                        ( (.|)
+                                                , awaitForever
                                                 , runConduit
+                                                , sourceFile
                                                 )
 import           Control.Monad.Except.CoHas     ( liftEither )
 import           Control.Parallel.Strategies    ( parMap
@@ -36,6 +38,7 @@ import           Data.Aeson                     ( (.:)
                                                 , object
                                                 , withObject
                                                 )
+import qualified Data.Attoparsec.Text          as Atto
 import qualified Data.ByteString.Lazy          as BS
 import qualified Data.Conduit.List             as CL
 import qualified Data.HashMap.Strict           as HM
@@ -78,9 +81,7 @@ import qualified Database.Persist              as P
 import           Foundation                     ( Handler
                                                 , RegistryCtx(appSettings)
                                                 )
-import           Lib.Error                      ( S9Error(AssetParseE, InvalidParamsE, NotFoundE)
-                                                , errOnNothing
-                                                )
+import           Lib.Error                      ( S9Error(..) )
 import           Lib.PkgRepository              ( getManifest )
 import           Lib.Types.AppIndex             ( PkgId(PkgId)
                                                 , ServiceDependencyInfo(serviceDependencyInfoVersion)
@@ -92,6 +93,8 @@ import           Lib.Types.Category             ( CategoryTitle(FEATURED) )
 import           Lib.Types.Emver                ( (<||)
                                                 , Version
                                                 , VersionRange
+                                                , parseVersion
+                                                , satisfies
                                                 )
 import           Model                          ( Category(..)
                                                 , EntityField(..)
@@ -104,9 +107,14 @@ import           Network.HTTP.Types             ( status400
                                                 , status404
                                                 )
 import           Protolude.Unsafe               ( unsafeFromJust )
-import           Settings                       ( AppSettings(registryHostname) )
+import           Settings                       ( AppSettings(registryHostname, resourcesDir) )
+import           System.FilePath                ( (</>) )
 import           UnliftIO.Async                 ( concurrently
                                                 , mapConcurrently
+                                                )
+import           UnliftIO.Directory             ( listDirectory )
+import           Util.Shared                    ( getVersionSpecFromQuery
+                                                , orThrow
                                                 )
 import           Yesod.Core                     ( HandlerFor
                                                 , MonadLogger
@@ -114,12 +122,16 @@ import           Yesod.Core                     ( HandlerFor
                                                 , MonadUnliftIO
                                                 , ToContent(..)
                                                 , ToTypedContent(..)
+                                                , TypedContent
                                                 , YesodRequest(..)
                                                 , getRequest
                                                 , getsYesod
                                                 , logWarn
                                                 , lookupGetParam
+                                                , respondSource
+                                                , sendChunkBS
                                                 , sendResponseStatus
+                                                , typeOctet
                                                 )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
@@ -266,8 +278,8 @@ getCategoriesR = do
         pure cats
     pure $ CategoryRes $ categoryName . entityVal <$> allCategories
 
-getEosR :: Handler EosRes
-getEosR = do
+getEosVersionR :: Handler EosRes
+getEosVersionR = do
     allEosVersions <- runDB $ select $ do
         vers <- from $ table @OsVersion
         orderBy [desc (vers ^. OsVersionCreatedAt)]
@@ -289,19 +301,35 @@ getReleaseNotesR :: Handler ReleaseNotes
 getReleaseNotesR = do
     getParameters <- reqGetParams <$> getRequest
     case lookup "id" getParameters of
-        Nothing      -> sendResponseStatus status400 ("expected query param \"id\" to exist" :: Text)
+        Nothing      -> sendResponseStatus status400 (InvalidParamsE "get:id" "<MISSING>")
         Just package -> do
-            (service, _) <- runDB $ fetchLatestApp (PkgId package) >>= errOnNothing status404 "package not found"
+            (service, _) <- runDB $ fetchLatestApp (PkgId package) `orThrow` sendResponseStatus
+                status404
+                (NotFoundE $ show package)
             (_, mappedVersions) <- fetchAllAppVersions (entityKey service)
             pure mappedVersions
+
+getEosR :: Handler TypedContent
+getEosR = do
+    spec    <- getVersionSpecFromQuery
+    root    <- getsYesod $ (</> "eos") . resourcesDir . appSettings
+    subdirs <- listDirectory root
+    let (failures, successes) = partitionEithers $ (Atto.parseOnly parseVersion . T.pack) <$> subdirs
+    for_ failures $ \f -> $logWarn [i|Emver Parse Failure for EOS: #{f}|]
+    let res = headMay . sortOn Down . filter (`satisfies` spec) $ successes
+    case res of
+        Nothing -> sendResponseStatus status404 (NotFoundE [i|EOS version satisfying #{spec}|])
+        Just r  -> do
+            let imgPath = root </> show r </> "eos.img"
+            respondSource typeOctet (sourceFile imgPath .| awaitForever sendChunkBS)
 
 getVersionLatestR :: Handler VersionLatestRes
 getVersionLatestR = do
     getParameters <- reqGetParams <$> getRequest
     case lookup "ids" getParameters of
-        Nothing       -> sendResponseStatus status400 ("expected query param \"ids\" to exist" :: Text)
+        Nothing       -> sendResponseStatus status400 (InvalidParamsE "get:ids" "<MISSING>")
         Just packages -> case eitherDecode $ BS.fromStrict $ encodeUtf8 packages of
-            Left e -> sendResponseStatus status400 ("could not parse query param \"ids\"" <> show e :: Text)
+            Left  _              -> sendResponseStatus status400 (InvalidParamsE "get:ids" packages)
             Right (p :: [PkgId]) -> do
                 let packageList :: [(PkgId, Maybe Version)] = (, Nothing) <$> p
                 found <- runDB $ traverse fetchLatestApp $ fst <$> packageList
@@ -404,9 +432,8 @@ getPackageListR = do
             let satisfactory = filter (<|| spec) (fst pacakgeMetadata)
             let best         = getMax <$> foldMap (Just . Max) satisfactory
             case best of
-                Nothing ->
-                    pure $ Left $ "best version could not be found for " <> show appId <> " with spec " <> show spec
-                Just v -> do
+                Nothing -> pure $ Left $ [i|Best version could not be found for #{appId} with spec #{spec}|]
+                Just v  -> do
                     pure $ Right (Just v, appId)
 
 getServiceDetails :: (MonadIO m, MonadResource m)
@@ -424,7 +451,7 @@ getServiceDetails settings metadata maybeVersion pkg = runExceptT $ do
         Nothing -> do
             -- grab first value, which will be the latest version
             case fst packageMetadata of
-                []    -> liftEither . Left $ NotFoundE $ "no latest version found for " <> show pkg
+                []    -> liftEither . Left $ NotFoundE $ [i|No latest version found for #{pkg}|]
                 x : _ -> pure x
         Just v -> pure v
     manifest <- flip runReaderT settings $ (snd <$> getManifest pkg version) >>= \bs ->
@@ -455,7 +482,7 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
     let satisfactory = filter (<|| serviceDependencyInfoVersion depInfo) (fst depMetadata)
     let best         = getMax <$> foldMap (Just . Max) satisfactory
     version <- case best of
-        Nothing -> Left $ NotFoundE $ "best version not found for dependent package " <> show appId
+        Nothing -> Left $ NotFoundE $ [i|No satisfactory version for dependent package #{appId}|]
         Just v  -> pure v
     pure
         ( appId
