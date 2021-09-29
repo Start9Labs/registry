@@ -144,13 +144,12 @@ extractPkg fp = handle @_ @SomeException cleanup $ do
     $logInfo [i|Extracting package: #{fp}|]
     PkgRepo { pkgRepoAppMgrBin = appmgr } <- ask
     let pkgRoot = takeDirectory fp
-    manifestTask <- async $ liftIO . runResourceT $ AppMgr.sourceManifest appmgr fp $ sinkIt
-        (pkgRoot </> "manifest.json")
+    manifestTask     <- async $ runResourceT $ AppMgr.sourceManifest appmgr fp $ sinkIt (pkgRoot </> "manifest.json")
     pkgHashTask      <- async $ AppMgr.getPackageHash appmgr fp
-    instructionsTask <- async $ liftIO . runResourceT $ AppMgr.sourceInstructions appmgr fp $ sinkIt
+    instructionsTask <- async $ runResourceT $ AppMgr.sourceInstructions appmgr fp $ sinkIt
         (pkgRoot </> "instructions.md")
-    licenseTask <- async $ liftIO . runResourceT $ AppMgr.sourceLicense appmgr fp $ sinkIt (pkgRoot </> "license.md")
-    iconTask    <- async $ liftIO . runResourceT $ AppMgr.sourceIcon appmgr fp $ sinkIt (pkgRoot </> "icon.tmp")
+    licenseTask <- async $ runResourceT $ AppMgr.sourceLicense appmgr fp $ sinkIt (pkgRoot </> "license.md")
+    iconTask    <- async $ runResourceT $ AppMgr.sourceIcon appmgr fp $ sinkIt (pkgRoot </> "icon.tmp")
     wait manifestTask
     eManifest <- liftIO (eitherDecodeFileStrict' (pkgRoot </> "manifest.json"))
     case eManifest of

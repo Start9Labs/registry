@@ -7,6 +7,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies     #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Lib.External.AppMgr where
 
@@ -23,6 +24,9 @@ import           System.Process.Typed    hiding ( createPipe )
 import           Conduit                        ( (.|)
                                                 , ConduitT
                                                 , runConduit
+                                                )
+import           Control.Monad.Logger           ( MonadLoggerIO
+                                                , logErrorSH
                                                 )
 import qualified Data.Conduit.List             as CL
 import           Data.Conduit.Process.Typed
@@ -77,35 +81,47 @@ readProcessInheritStderr a b c sink = do
                             else throwIO e
                         )
 
-sourceManifest :: (MonadUnliftIO m) => FilePath -> FilePath -> (ConduitT () ByteString m () -> m r) -> m r
+sourceManifest :: (MonadUnliftIO m, MonadLoggerIO m)
+               => FilePath
+               -> FilePath
+               -> (ConduitT () ByteString m () -> m r)
+               -> m r
 sourceManifest appmgrPath pkgFile sink = do
     let appmgr = readProcessInheritStderr (appmgrPath </> "embassy-sdk") ["inspect", "manifest", pkgFile] ""
     appmgr sink `catch` \ece ->
-        print ece *> throwIO (AppMgrE [i|embassy-sdk inspect manifest #{pkgFile}|] (eceExitCode ece))
+        $logErrorSH ece *> throwIO (AppMgrE [i|embassy-sdk inspect manifest #{pkgFile}|] (eceExitCode ece))
 
-sourceIcon :: (MonadUnliftIO m) => FilePath -> FilePath -> (ConduitT () ByteString m () -> m r) -> m r
+sourceIcon :: (MonadUnliftIO m, MonadLoggerIO m) => FilePath -> FilePath -> (ConduitT () ByteString m () -> m r) -> m r
 sourceIcon appmgrPath pkgFile sink = do
     let appmgr = readProcessInheritStderr (appmgrPath </> "embassy-sdk") ["inspect", "icon", pkgFile] ""
-    appmgr sink
-        `catch` \ece -> print ece *> throwIO (AppMgrE [i|embassy-sdk inspect icon #{pkgFile}|] (eceExitCode ece))
+    appmgr sink `catch` \ece ->
+        $logErrorSH ece *> throwIO (AppMgrE [i|embassy-sdk inspect icon #{pkgFile}|] (eceExitCode ece))
 
-getPackageHash :: (MonadUnliftIO m) => FilePath -> FilePath -> m ByteString
+getPackageHash :: (MonadUnliftIO m, MonadLoggerIO m) => FilePath -> FilePath -> m ByteString
 getPackageHash appmgrPath pkgFile = do
     let appmgr = readProcessInheritStderr (appmgrPath </> "embassy-sdk") ["inspect", "hash", pkgFile] ""
-    appmgr (\bsSource -> runConduit $ bsSource .| CL.foldMap id)
-        `catch` \ece -> print ece *> throwIO (AppMgrE [i|embassy-sdk inspect hash #{pkgFile}|] (eceExitCode ece))
+    appmgr (\bsSource -> runConduit $ bsSource .| CL.foldMap id) `catch` \ece ->
+        $logErrorSH ece *> throwIO (AppMgrE [i|embassy-sdk inspect hash #{pkgFile}|] (eceExitCode ece))
 
-sourceInstructions :: (MonadUnliftIO m) => FilePath -> FilePath -> (ConduitT () ByteString m () -> m r) -> m r
+sourceInstructions :: (MonadUnliftIO m, MonadLoggerIO m)
+                   => FilePath
+                   -> FilePath
+                   -> (ConduitT () ByteString m () -> m r)
+                   -> m r
 sourceInstructions appmgrPath pkgFile sink = do
     let appmgr = readProcessInheritStderr (appmgrPath </> "embassy-sdk") ["inspect", "instructions", pkgFile] ""
     appmgr sink `catch` \ece ->
-        print ece *> throwIO (AppMgrE [i|embassy-sdk inspect instructions #{pkgFile}|] (eceExitCode ece))
+        $logErrorSH ece *> throwIO (AppMgrE [i|embassy-sdk inspect instructions #{pkgFile}|] (eceExitCode ece))
 
-sourceLicense :: (MonadUnliftIO m) => FilePath -> FilePath -> (ConduitT () ByteString m () -> m r) -> m r
+sourceLicense :: (MonadUnliftIO m, MonadLoggerIO m)
+              => FilePath
+              -> FilePath
+              -> (ConduitT () ByteString m () -> m r)
+              -> m r
 sourceLicense appmgrPath pkgFile sink = do
     let appmgr = readProcessInheritStderr (appmgrPath </> "embassy-sdk") ["inspect", "license", pkgFile] ""
-    appmgr sink
-        `catch` \ece -> print ece *> throwIO (AppMgrE [i|embassy-sdk inspect license #{pkgFile}|] (eceExitCode ece))
+    appmgr sink `catch` \ece ->
+        $logErrorSH ece *> throwIO (AppMgrE [i|embassy-sdk inspect license #{pkgFile}|] (eceExitCode ece))
 
 sinkMem :: (Monad m, Monoid a) => ConduitT () a m () -> m a
 sinkMem c = runConduit $ c .| CL.foldMap id
