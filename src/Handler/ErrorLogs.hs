@@ -8,6 +8,7 @@ import           Data.Aeson                     ( (.:)
                                                 , withObject
                                                 , withText
                                                 )
+import qualified Data.Text                     as T
 import           Foundation
 import           Settings                       ( AppSettings(errorLogRoot) )
 import           Startlude               hiding ( Handler )
@@ -40,4 +41,6 @@ postErrorLogsR :: Handler ()
 postErrorLogsR = do
     ErrorLog {..} <- requireCheckJsonBody @_ @ErrorLog
     root          <- getsYesod $ errorLogRoot . appSettings
-    void $ liftIO $ forkIO $ appendFile (root </> show errorLogEpoch <.> "log") errorLogMessage
+    void $ liftIO $ forkIO $ appendFile (root </> show errorLogEpoch <.> "log") $ if "\n" `T.isSuffixOf` errorLogMessage
+        then errorLogMessage
+        else T.snoc errorLogMessage '\n'
