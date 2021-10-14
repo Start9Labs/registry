@@ -133,7 +133,6 @@ import           Yesod.Core                     ( HandlerFor
                                                 , respondSource
                                                 , sendChunkBS
                                                 , sendResponseStatus
-                                                , setHeader
                                                 , typeOctet
                                                 )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
