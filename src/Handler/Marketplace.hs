@@ -108,6 +108,7 @@ import           Network.HTTP.Types             ( status400
                                                 )
 import           Protolude.Unsafe               ( unsafeFromJust )
 import           Settings                       ( AppSettings(registryHostname, resourcesDir) )
+import           System.Directory               ( getFileSize )
 import           System.FilePath                ( (</>) )
 import           UnliftIO.Async                 ( concurrently
                                                 , mapConcurrently
@@ -124,6 +125,7 @@ import           Yesod.Core                     ( HandlerFor
                                                 , ToTypedContent(..)
                                                 , TypedContent
                                                 , YesodRequest(..)
+                                                , addHeader
                                                 , getRequest
                                                 , getsYesod
                                                 , logWarn
@@ -321,6 +323,7 @@ getEosR = do
         Nothing -> sendResponseStatus status404 (NotFoundE [i|EOS version satisfying #{spec}|])
         Just r  -> do
             let imgPath = root </> show r </> "eos.img"
+            liftIO (getFileSize imgPath) >>= addHeader "Content-Length" . show
             respondSource typeOctet (sourceFile imgPath .| awaitForever sendChunkBS)
 
 getVersionLatestR :: Handler VersionLatestRes
