@@ -117,7 +117,3 @@ instance FromJSON VersionsWithReleaseNotes
 instance PersistField VersionsWithReleaseNotes where
     fromPersistValue = fromPersistValueJSON
     toPersistValue   = PersistText . show
-
--- in progress attempt to do postgres aggregation with raw sql in esqueleto
--- getServiceVersionsWithReleaseNotes :: MonadIO m => Text -> ReaderT SqlBackend m (Entity SApp)
--- getServiceVersionsWithReleaseNotes appId = rawSql "SELECT ??, json_agg(json_build_object(v.number, v.release_notes)) as versions FROM s_app s LEFT JOIN version v ON v.app_id = s.id WHERE s.app_id = ? GROUP BY s.id;" [PersistText appId]
