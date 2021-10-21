@@ -43,12 +43,12 @@ SVersion sql=version
     deriving Eq
     deriving Show
 
-OsVersion 
+OsVersion
     createdAt UTCTime
     updatedAt UTCTime
     number Version
     headline Text
-    releaseNotes Text 
+    releaseNotes Text
     deriving Eq
     deriving Show
 

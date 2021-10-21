@@ -6,6 +6,7 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE ViewPatterns          #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Foundation where
 
 import           Startlude               hiding ( Handler )
@@ -64,12 +65,15 @@ instance Has PkgRepo RegistryCtx where
         let repo     = f $ extract ctx
             settings = (appSettings ctx) { resourcesDir = pkgRepoFileRoot repo, staticBinDir = pkgRepoAppMgrBin repo }
         in  ctx { appSettings = settings }
-instance Has PkgRepo (HandlerData RegistryCtx RegistryCtx) where
+instance Has a r => Has a (HandlerData r r) where
     extract = extract . rheSite . handlerEnv
     update f r =
         let ctx = update f (rheSite $ handlerEnv r)
             rhe = (handlerEnv r) { rheSite = ctx, rheChild = ctx }
         in  r { handlerEnv = rhe }
+instance Has AppSettings RegistryCtx where
+    extract = appSettings
+    update f ctx = ctx { appSettings = f (appSettings ctx) }
 
 
 
