@@ -10,22 +10,16 @@ import           Conduit                        ( ConduitT
                                                 , awaitForever
                                                 , yield
                                                 )
-import           Data.Aeson
-import           Data.HashMap.Strict            ( HashMap )
-import           Data.Version
 import           Database.Esqueleto.Experimental
                                                 ( (%)
                                                 , (&&.)
                                                 , (++.)
                                                 , (==.)
                                                 , Entity(entityKey, entityVal)
-                                                , PersistField(..)
-                                                , PersistValue(..)
                                                 , SqlBackend
                                                 , (^.)
                                                 , desc
                                                 , from
-                                                , fromPersistValueJSON
                                                 , ilike
                                                 , in_
                                                 , innerJoin

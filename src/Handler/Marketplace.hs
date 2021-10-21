@@ -103,7 +103,6 @@ import           Lib.Types.Category             ( CategoryTitle(FEATURED) )
 import           Lib.Types.Emver                ( (<||)
                                                 , Version
                                                 , VersionRange(Any)
-                                                , parseRange
                                                 , parseVersion
                                                 , satisfies
                                                 )

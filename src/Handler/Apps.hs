@@ -11,14 +11,7 @@ module Handler.Apps where
 
 import           Startlude               hiding ( Handler )
 
-import           Control.Monad.Logger           ( logError
-                                                , logInfo
-                                                )
-import           Data.Aeson                     ( ToJSON
-                                                , encode
-                                                )
-import qualified Data.Attoparsec.Text          as Atto
-import qualified Data.ByteString.Lazy          as BS
+import           Control.Monad.Logger           ( logError )
 import qualified Data.Text                     as T
 import           Database.Persist               ( Entity(entityKey) )
 import qualified GHC.Show                       ( Show(..) )
@@ -34,7 +27,6 @@ import           Yesod.Core                     ( TypedContent
                                                 , sendResponseStatus
                                                 , typeJson
                                                 , typeOctet
-                                                , waiRequest
                                                 )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
@@ -55,10 +47,7 @@ import           Lib.PkgRepository              ( getBestVersion
                                                 )
 import           Lib.Registry                   ( S9PK )
 import           Lib.Types.AppIndex             ( PkgId(PkgId) )
-import           Lib.Types.Emver                ( Version
-                                                , parseVersion
-                                                )
-import           Network.Wai                    ( Request(requestHeaderUserAgent) )
+import           Lib.Types.Emver                ( Version )
 import           Util.Shared                    ( addPackageHeader
                                                 , getVersionSpecFromQuery
                                                 , orThrow
