@@ -64,27 +64,10 @@ import           Util.Shared                    ( addPackageHeader
                                                 , orThrow
                                                 )
 
-pureLog :: Show a => a -> Handler a
-pureLog = liftA2 (*>) ($logInfo . show) pure
-
-logRet :: ToJSON a => Handler a -> Handler a
-logRet = (>>= liftA2 (*>) ($logInfo . decodeUtf8 . BS.toStrict . encode) pure)
-
 data FileExtension = FileExtension FilePath (Maybe String)
 instance Show FileExtension where
     show (FileExtension f Nothing ) = f
     show (FileExtension f (Just e)) = f <.> e
-
-userAgentOsVersionParser :: Atto.Parser Version
-userAgentOsVersionParser = do
-    void $ (Atto.string "EmbassyOS" <|> Atto.string "AmbassadorOS" <|> Atto.string "MeshOS") *> Atto.char '/'
-    parseVersion
-
-getEmbassyOsVersion :: Handler (Maybe Version)
-getEmbassyOsVersion = userAgentOsVersion
-    where
-        userAgentOsVersion =
-            (hush . Atto.parseOnly userAgentOsVersionParser . decodeUtf8 <=< requestHeaderUserAgent) <$> waiRequest
 
 getAppManifestR :: PkgId -> Handler TypedContent
 getAppManifestR pkg = do
