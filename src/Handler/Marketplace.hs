@@ -103,6 +103,7 @@ import           Lib.Types.Category             ( CategoryTitle(FEATURED) )
 import           Lib.Types.Emver                ( (<||)
                                                 , Version
                                                 , VersionRange(Any)
+                                                , parseRange
                                                 , parseVersion
                                                 , satisfies
                                                 )
@@ -448,12 +449,12 @@ getPackageListR = do
         getOsVersionQuery :: Handler (Maybe Version)
         getOsVersionQuery = lookupGetParam "eos-version" >>= \case
             Nothing  -> pure Nothing
-            Just osv -> case readMaybe osv of
-                Nothing -> do
+            Just osv -> case Atto.parseOnly parseVersion osv of
+                Left _ -> do
                     let e = InvalidParamsE "get:eos-version" osv
                     $logWarn (show e)
                     sendResponseStatus status400 e
-                Just v -> pure $ Just v
+                Right v -> pure $ Just v
 
 getServiceDetails :: (MonadIO m, MonadResource m, MonadReader r m, Has AppSettings r)
                   => (HM.HashMap PkgId ([Version], [CategoryTitle]))
