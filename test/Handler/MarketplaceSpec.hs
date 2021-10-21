@@ -128,12 +128,3 @@ spec = do
         _           <- runDBtest $ insert_ $ ServiceCategory time btc btcCat "bitcon" BITCOIN Nothing
         apps        <- runDBtest $ runConduit $ searchServices Nothing "" .| sinkList
         assertEq "should exist" (length apps) 2
-    xdescribe "getServiceVersionsWithReleaseNotes"
-        $ withApp
-        $ it "gets service with mapping of version to release notes"
-        $ do
-              time <- liftIO getCurrentTime
-              app  <- runDBtest $ insert $ SApp time Nothing "Bitcoin Core" "bitcoin" "short desc" "long desc" "png"
-              _    <- runDBtest $ insert $ SVersion time Nothing app "0.19.0.0" "release notes 0.19.0.0" Any Any Nothing
-              _    <- runDBtest $ insert $ SVersion time Nothing app "0.20.0.0" "release notes 0.19.0.0" Any Any Nothing
-              print ()
