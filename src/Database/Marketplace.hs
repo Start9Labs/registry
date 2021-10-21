@@ -109,11 +109,3 @@ filterOsCompatible :: Monad m
 filterOsCompatible p = awaitForever $ \(app, versions) -> do
     let compatible = filter (p . sVersionOsVersionRecommended . entityVal) versions
     when (not $ null compatible) $ yield (app, compatible)
-
-
-
-newtype VersionsWithReleaseNotes = VersionsWithReleaseNotes (HashMap Version Text) deriving (Eq, Show, Generic)
-instance FromJSON VersionsWithReleaseNotes
-instance PersistField VersionsWithReleaseNotes where
-    fromPersistValue = fromPersistValueJSON
-    toPersistValue   = PersistText . show
