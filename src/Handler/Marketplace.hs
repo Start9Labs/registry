@@ -1,14 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TemplateHaskell  #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveAnyClass #-}
 
 module Handler.Marketplace where
 
@@ -60,8 +56,7 @@ import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
 import           Database.Esqueleto.Experimental
-                                                ( (&&.)
-                                                , (:&)((:&))
+                                                ( (:&)((:&))
                                                 , (==.)
                                                 , Entity(entityKey, entityVal)
                                                 , PersistEntity(Key)
@@ -72,11 +67,9 @@ import           Database.Esqueleto.Experimental
                                                 , from
                                                 , in_
                                                 , innerJoin
-                                                , limit
                                                 , on
                                                 , orderBy
                                                 , select
-                                                , selectOne
                                                 , table
                                                 , val
                                                 , valList
@@ -99,7 +92,7 @@ import           Lib.Types.AppIndex             ( PkgId(PkgId)
                                                 , VersionInfo(..)
                                                 )
 import           Lib.Types.AppIndex             ( )
-import           Lib.Types.Category             ( CategoryTitle(FEATURED) )
+import           Lib.Types.Category             ( CategoryTitle(..) )
 import           Lib.Types.Emver                ( (<||)
                                                 , Version
                                                 , VersionRange(Any)
@@ -125,8 +118,7 @@ import           UnliftIO.Directory             ( listDirectory )
 import           Util.Shared                    ( getVersionSpecFromQuery
                                                 , orThrow
                                                 )
-import           Yesod.Core                     ( HandlerFor
-                                                , MonadResource
+import           Yesod.Core                     ( MonadResource
                                                 , ToContent(..)
                                                 , ToTypedContent(..)
                                                 , TypedContent
@@ -148,7 +140,6 @@ newtype CategoryRes = CategoryRes {
     categories :: [CategoryTitle]
 } deriving (Show, Generic)
 instance ToJSON CategoryRes
-instance FromJSON CategoryRes
 instance ToContent CategoryRes where
     toContent = toContent . toJSON
 instance ToTypedContent CategoryRes where
@@ -182,10 +173,6 @@ instance ToJSON ServiceRes where
         , "versions" .= serviceResVersions
         , "dependency-metadata" .= serviceResDependencyInfo
         ]
-instance ToContent ServiceRes where
-    toContent = toContent . toJSON
-instance ToTypedContent ServiceRes where
-    toTypedContent = toTypedContent . toJSON
 data DependencyInfo = DependencyInfo
     { dependencyInfoTitle :: PkgId
     , dependencyInfoIcon  :: URL
@@ -193,40 +180,6 @@ data DependencyInfo = DependencyInfo
     deriving (Eq, Show)
 instance ToJSON DependencyInfo where
     toJSON DependencyInfo {..} = object ["icon" .= dependencyInfoIcon, "title" .= dependencyInfoTitle]
-
-data ServiceListRes = ServiceListRes
-    { serviceListResCategories :: [CategoryTitle]
-    , serviceListResServices   :: [ServiceAvailable]
-    }
-    deriving Show
-instance ToJSON ServiceListRes where
-    toJSON ServiceListRes {..} =
-        object ["categories" .= serviceListResCategories, "services" .= serviceListResServices]
-instance ToContent ServiceListRes where
-    toContent = toContent . toJSON
-instance ToTypedContent ServiceListRes where
-    toTypedContent = toTypedContent . toJSON
-
-data ServiceAvailable = ServiceAvailable
-    { serviceAvailableId        :: PkgId
-    , serviceAvailableTitle     :: Text
-    , serviceAvailableVersion   :: Version
-    , serviceAvailableIcon      :: URL
-    , serviceAvailableDescShort :: Text
-    }
-    deriving Show
-instance ToJSON ServiceAvailable where
-    toJSON ServiceAvailable {..} = object
-        [ "id" .= serviceAvailableId
-        , "title" .= serviceAvailableTitle
-        , "version" .= serviceAvailableVersion
-        , "icon" .= serviceAvailableIcon
-        , "descriptionShort" .= serviceAvailableDescShort
-        ]
-instance ToContent ServiceAvailable where
-    toContent = toContent . toJSON
-instance ToTypedContent ServiceAvailable where
-    toTypedContent = toTypedContent . toJSON
 
 newtype ServiceAvailableRes = ServiceAvailableRes [ServiceRes]
     deriving (Generic)
@@ -338,9 +291,9 @@ getVersionLatestR = do
     case lookup "ids" getParameters of
         Nothing       -> sendResponseStatus status400 (InvalidParamsE "get:ids" "<MISSING>")
         Just packages -> case eitherDecode $ BS.fromStrict $ encodeUtf8 packages of
-            Left  _              -> sendResponseStatus status400 (InvalidParamsE "get:ids" packages)
-            Right (p :: [PkgId]) -> do
-                let packageList :: [(PkgId, Maybe Version)] = (, Nothing) <$> p
+            Left  _   -> sendResponseStatus status400 (InvalidParamsE "get:ids" packages)
+            Right (p) -> do
+                let packageList = (, Nothing) <$> p
                 found <- runDB $ traverse fetchLatestApp $ fst <$> packageList
                 pure
                     $ VersionLatestRes
@@ -510,7 +463,7 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
                          }
         )
 
-fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], ReleaseNotes)
+fetchAllAppVersions :: Key SApp -> Handler ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do
     entityAppVersions <- runDB $ P.selectList [SVersionAppId P.==. appId] []
     let vers           = entityVal <$> entityAppVersions
@@ -530,13 +483,6 @@ fetchAllAppVersions appId = do
                 )
                 <$> sv
 
-fetchMostRecentAppVersions :: MonadIO m => Key SApp -> ReaderT SqlBackend m [Entity SVersion]
-fetchMostRecentAppVersions appId = sortResults $ select $ do
-    version <- from $ table @SVersion
-    where_ (version ^. SVersionAppId ==. val appId)
-    limit 1
-    pure version
-    where sortResults = fmap $ sortOn (Down . sVersionNumber . entityVal)
 
 fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity SApp, P.Entity SVersion))
 fetchLatestApp appId = fmap headMay . sortResults . select $ do
@@ -549,18 +495,6 @@ fetchLatestApp appId = fmap headMay . sortResults . select $ do
     pure (service, version)
     where sortResults = fmap $ sortOn (Down . sVersionNumber . entityVal . snd)
 
-fetchLatestAppAtVersion :: MonadIO m
-                        => PkgId
-                        -> Version
-                        -> ReaderT SqlBackend m (Maybe (P.Entity SApp, P.Entity SVersion))
-fetchLatestAppAtVersion appId version' = selectOne $ do
-    (service :& version) <-
-        from
-        $           table @SApp
-        `innerJoin` table @SVersion
-        `on`        (\(service :& version) -> service ^. SAppId ==. version ^. SVersionAppId)
-    where_ $ (service ^. SAppAppId ==. val appId) &&. (version ^. SVersionNumber ==. val version')
-    pure (service, version)
 
 fetchAppCategories :: MonadIO m => [Key SApp] -> ReaderT SqlBackend m (HM.HashMap PkgId [Category])
 fetchAppCategories appIds = do
@@ -576,24 +510,3 @@ fetchAppCategories appIds = do
         pure (app ^. SAppAppId, cat)
     let ls = fmap (first unValue . second (pure . entityVal)) raw
     pure $ HM.fromListWith (++) ls
-
--- >>> encode hm
--- "{\"0.2.0\":\"some notes\"}"
-hm :: Data.Aeson.Value
-hm = object [ t .= v | (k, v) <- [("0.2.0", "some notes") :: (Version, Text)], let (String t) = toJSON k ]
-
--- >>> encode rn
--- "{\"0.2.0\":\"notes one\",\"0.3.0\":\"notes two\"}"
-rn :: ReleaseNotes
-rn = ReleaseNotes $ HM.fromList [("0.2.0", "notes one"), ("0.3.0", "notes two")]
-
--- >>> readMaybe $ cc :: Maybe CategoryTitle
--- Just FEATURED
-cc :: Text
-cc = T.toUpper "featured"
-
--- >>> encode ccc
--- "\"featured\""
-ccc :: CategoryTitle
-ccc = FEATURED
-

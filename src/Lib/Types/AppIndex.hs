@@ -1,38 +1,44 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE QuasiQuotes #-}
-
 module Lib.Types.AppIndex where
 
-import           Startlude               hiding ( Any )
+import           Startlude
 
-import           Control.Monad.Fail
-import           Data.Aeson
-import qualified Data.HashMap.Strict           as HM
-import qualified Data.List.NonEmpty            as NE
-
+import           Control.Monad                  ( fail )
+import           Data.Aeson                     ( (.:)
+                                                , (.:?)
+                                                , FromJSON(..)
+                                                , FromJSONKey(..)
+                                                , ToJSON(..)
+                                                , ToJSONKey(..)
+                                                , withObject
+                                                )
 import qualified Data.ByteString.Lazy          as BS
-import           Data.Functor.Contravariant     ( Contravariant(contramap) )
+import           Data.Functor.Contravariant     ( contramap )
+import qualified Data.HashMap.Strict           as HM
 import           Data.String.Interpolate.IsString
--- import Model
 import qualified Data.Text                     as T
-import           Database.Persist.Postgresql
-import qualified GHC.Read                       ( Read(..) )
-import qualified GHC.Show                       ( Show(..) )
-import           Lib.Registry
-import           Lib.Types.Emver
+import           Database.Persist               ( PersistField(..)
+                                                , PersistValue(PersistText)
+                                                , SqlType(..)
+                                                )
+import           Database.Persist.Sql           ( PersistFieldSql(sqlType) )
+import           GHC.Read                       ( Read(readsPrec) )
+import           Lib.Types.Emver                ( Version
+                                                , VersionRange
+                                                )
 import           Orphans.Emver                  ( )
-import           System.Directory
-import           Yesod
-
+import qualified Protolude.Base                as P
+                                                ( Show(..) )
+import           Yesod                          ( PathPiece(..) )
 newtype PkgId = PkgId { unPkgId :: Text }
     deriving (Eq)
 instance IsString PkgId where
     fromString = PkgId . fromString
-instance Show PkgId where
+instance P.Show PkgId where
     show = toS . unPkgId
 instance Read PkgId where
     readsPrec _ s = [(PkgId $ toS s, "")]
@@ -55,11 +61,6 @@ instance PersistFieldSql PkgId where
 instance PathPiece PkgId where
     fromPathPiece = fmap PkgId . fromPathPiece
     toPathPiece   = unPkgId
-instance ToContent PkgId where
-    toContent = toContent . toJSON
-instance ToTypedContent PkgId where
-    toTypedContent = toTypedContent . toJSON
-
 data VersionInfo = VersionInfo
     { versionInfoVersion       :: Version
     , versionInfoReleaseNotes  :: Text
@@ -69,86 +70,6 @@ data VersionInfo = VersionInfo
     , versionInfoInstallAlert  :: Maybe Text
     }
     deriving (Eq, Show)
-
-instance Ord VersionInfo where
-    compare = compare `on` versionInfoVersion
-
-instance FromJSON VersionInfo where
-    parseJSON = withObject "version info" $ \o -> do
-        versionInfoVersion       <- o .: "version"
-        versionInfoReleaseNotes  <- o .: "release-notes"
-        versionInfoDependencies  <- o .:? "dependencies" .!= HM.empty
-        versionInfoOsRequired    <- o .:? "os-version-required" .!= Any
-        versionInfoOsRecommended <- o .:? "os-version-recommended" .!= Any
-        versionInfoInstallAlert  <- o .:? "install-alert"
-        pure VersionInfo { .. }
-
-instance ToJSON VersionInfo where
-    toJSON VersionInfo {..} = object
-        [ "version" .= versionInfoVersion
-        , "release-notes" .= versionInfoReleaseNotes
-        , "dependencies" .= versionInfoDependencies
-        , "os-version-required" .= versionInfoOsRequired
-        , "os-version-recommended" .= versionInfoOsRecommended
-        , "install-alert" .= versionInfoInstallAlert
-        ]
-
-data StoreApp = StoreApp
-    { storeAppTitle       :: Text
-    , storeAppDescShort   :: Text
-    , storeAppDescLong    :: Text
-    , storeAppVersionInfo :: NonEmpty VersionInfo
-    , storeAppIconType    :: Text
-    , storeAppTimestamp   :: Maybe UTCTime
-    }
-    deriving Show
-
-instance ToJSON StoreApp where
-    toJSON StoreApp {..} = object
-        [ "title" .= storeAppTitle
-        , "icon-type" .= storeAppIconType
-        , "description" .= object ["short" .= storeAppDescShort, "long" .= storeAppDescLong]
-        , "version-info" .= storeAppVersionInfo
-        , "timestamp" .= storeAppTimestamp
-        ]
-newtype AppManifest = AppManifest { unAppManifest :: HM.HashMap PkgId StoreApp}
-    deriving (Show)
-
-instance FromJSON AppManifest where
-    parseJSON = withObject "app details to seed" $ \o -> do
-        apps <- for (HM.toList o) $ \(appId', c) -> do
-            appId               <- parseJSON $ String appId'
-            config              <- parseJSON c
-            storeAppTitle       <- config .: "title"
-            storeAppIconType    <- config .: "icon-type"
-            storeAppDescShort   <- config .: "description" >>= (.: "short")
-            storeAppDescLong    <- config .: "description" >>= (.: "long")
-            storeAppVersionInfo <- config .: "version-info" >>= \case
-                []       -> fail "No Valid Version Info"
-                (x : xs) -> pure $ x :| xs
-            storeAppTimestamp <- config .:? "timestamp"
-            pure (appId, StoreApp { .. })
-        return $ AppManifest (HM.fromList apps)
-instance ToJSON AppManifest where
-    toJSON = toJSON . unAppManifest
-
-filterOsRequired :: Version -> StoreApp -> Maybe StoreApp
-filterOsRequired av sa = case NE.filter ((av <||) . versionInfoOsRequired) (storeAppVersionInfo sa) of
-    []       -> Nothing
-    (x : xs) -> Just $ sa { storeAppVersionInfo = x :| xs }
-
-filterOsRecommended :: Version -> StoreApp -> Maybe StoreApp
-filterOsRecommended av sa = case NE.filter ((av <||) . versionInfoOsRecommended) (storeAppVersionInfo sa) of
-    []       -> Nothing
-    (x : xs) -> Just $ sa { storeAppVersionInfo = x :| xs }
-
-addFileTimestamp :: KnownSymbol a => FilePath -> Extension a -> StoreApp -> Version -> IO (Maybe StoreApp)
-addFileTimestamp appDir ext service v = do
-    getVersionedFileFromDir appDir ext v >>= \case
-        Nothing   -> pure Nothing
-        Just file -> do
-            time <- getModificationTime file
-            pure $ Just service { storeAppTimestamp = Just time }
 
 data ServiceDependencyInfo = ServiceDependencyInfo
     { serviceDependencyInfoOptional    :: Maybe Text
@@ -164,27 +85,8 @@ instance FromJSON ServiceDependencyInfo where
         serviceDependencyInfoDescription <- o .:? "description"
         serviceDependencyInfoCritical    <- o .: "critical"
         pure ServiceDependencyInfo { .. }
-instance ToJSON ServiceDependencyInfo where
-    toJSON ServiceDependencyInfo {..} = object
-        [ "description" .= serviceDependencyInfoDescription
-        , "version" .= serviceDependencyInfoVersion
-        , "optional" .= serviceDependencyInfoOptional
-        , "critical" .= serviceDependencyInfoCritical
-        ]
 data ServiceAlert = INSTALL | UNINSTALL | RESTORE | START | STOP
     deriving (Show, Eq, Generic, Hashable, Read)
-instance FromJSONKey ServiceAlert
-instance ToJSONKey ServiceAlert
-instance ToJSON ServiceAlert where
-    toJSON = String . T.toLower . show
-instance FromJSON ServiceAlert where
-    parseJSON = withText "ServiceAlert" $ \case
-        "install"   -> pure INSTALL
-        "uninstall" -> pure UNINSTALL
-        "restore"   -> pure RESTORE
-        "start"     -> pure START
-        "stop"      -> pure STOP
-        _           -> fail "unknown service alert type"
 data ServiceManifest = ServiceManifest
     { serviceManifestId               :: !PkgId
     , serviceManifestTitle            :: !Text
@@ -216,16 +118,6 @@ instance FromJSON ServiceManifest where
         let serviceManifestAlerts = HM.fromList a
         serviceManifestDependencies <- o .: "dependencies"
         pure ServiceManifest { .. }
-instance ToJSON ServiceManifest where
-    toJSON ServiceManifest {..} = object
-        [ "id" .= serviceManifestId
-        , "title" .= serviceManifestTitle
-        , "version" .= serviceManifestVersion
-        , "description" .= object ["short" .= serviceManifestDescriptionShort, "long" .= serviceManifestDescriptionLong]
-        , "release-notes" .= serviceManifestReleaseNotes
-        , "alerts" .= object [ t .= v | (k, v) <- HM.toList serviceManifestAlerts, let (String t) = toJSON k ]
-        , "dependencies" .= serviceManifestDependencies
-        ]
 
 -- >>> eitherDecode testManifest :: Either String ServiceManifest
 -- Right (ServiceManifest {serviceManifestId = embassy-pages, serviceManifestTitle = "Embassy Pages", serviceManifestVersion = 0.1.3, serviceManifestDescriptionLong = "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites.", serviceManifestDescriptionShort = "Create Tor websites, hosted on your Embassy.", serviceManifestReleaseNotes = "Upgrade to EmbassyOS v0.3.0", serviceManifestIcon = Just "icon.png", serviceManifestAlerts = fromList [(INSTALL,Nothing),(UNINSTALL,Nothing),(STOP,Nothing),(RESTORE,Nothing),(START,Nothing)], serviceManifestDependencies = fromList [(filebrowser,ServiceDependencyInfo {serviceDependencyInfoOptional = Nothing, serviceDependencyInfoVersion = >=2.14.1.1 <3.0.0, serviceDependencyInfoDescription = Just "Used to upload files to serve.", serviceDependencyInfoCritical = False})]})
