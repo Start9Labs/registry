@@ -59,7 +59,6 @@ import           Database.Esqueleto.Experimental
                                                 ( (:&)((:&))
                                                 , (==.)
                                                 , Entity(entityKey, entityVal)
-                                                , PersistEntity(Key)
                                                 , SqlBackend
                                                 , Value(unValue)
                                                 , (^.)
@@ -96,15 +95,17 @@ import           Lib.Types.Category             ( CategoryTitle(..) )
 import           Lib.Types.Emver                ( (<||)
                                                 , Version
                                                 , VersionRange(Any)
+                                                , parseRange
                                                 , parseVersion
                                                 , satisfies
                                                 )
 import           Model                          ( Category(..)
                                                 , EntityField(..)
+                                                , Key(PkgRecordKey, unPkgRecordKey)
                                                 , OsVersion(..)
-                                                , SApp(..)
-                                                , SVersion(..)
-                                                , ServiceCategory
+                                                , PkgCategory
+                                                , PkgRecord(..)
+                                                , VersionRecord(..)
                                                 )
 import           Network.HTTP.Types             ( status400
                                                 , status404
@@ -115,9 +116,7 @@ import           System.Directory               ( getFileSize )
 import           System.FilePath                ( (</>) )
 import           UnliftIO.Async                 ( mapConcurrently )
 import           UnliftIO.Directory             ( listDirectory )
-import           Util.Shared                    ( getVersionSpecFromQuery
-                                                , orThrow
-                                                )
+import           Util.Shared                    ( getVersionSpecFromQuery )
 import           Yesod.Core                     ( MonadResource
                                                 , ToContent(..)
                                                 , ToTypedContent(..)
@@ -264,11 +263,8 @@ getReleaseNotesR = do
     case lookup "id" getParameters of
         Nothing      -> sendResponseStatus status400 (InvalidParamsE "get:id" "<MISSING>")
         Just package -> do
-            (service, _) <- runDB $ fetchLatestApp (PkgId package) `orThrow` sendResponseStatus
-                status404
-                (NotFoundE $ show package)
-            (_, mappedVersions) <- fetchAllAppVersions (entityKey service)
-            pure mappedVersions
+            (_, notes) <- fetchAllAppVersions (PkgId package)
+            pure notes
 
 getEosR :: Handler TypedContent
 getEosR = do
@@ -291,15 +287,17 @@ getVersionLatestR = do
     case lookup "ids" getParameters of
         Nothing       -> sendResponseStatus status400 (InvalidParamsE "get:ids" "<MISSING>")
         Just packages -> case eitherDecode $ BS.fromStrict $ encodeUtf8 packages of
-            Left  _   -> sendResponseStatus status400 (InvalidParamsE "get:ids" packages)
-            Right (p) -> do
+            Left  _ -> sendResponseStatus status400 (InvalidParamsE "get:ids" packages)
+            Right p -> do
                 let packageList = (, Nothing) <$> p
                 found <- runDB $ traverse fetchLatestApp $ fst <$> packageList
                 pure
                     $ VersionLatestRes
                     $ HM.union
                           (   HM.fromList
-                          $   (\v -> (sAppAppId $ entityVal $ fst v, Just $ sVersionNumber $ entityVal $ snd v))
+                          $   (\v ->
+                                  (unPkgRecordKey . entityKey $ fst v, Just $ versionRecordNumber $ entityVal $ snd v)
+                              )
                           <$> catMaybes found
                           )
                     $ HM.fromList packageList
@@ -308,7 +306,7 @@ getPackageListR :: Handler ServiceAvailableRes
 getPackageListR = do
     osPredicate <- getOsVersionQuery <&> \case
         Nothing -> const True
-        Just v  -> satisfies v
+        Just v  -> flip satisfies v
     pkgIds           <- getPkgIdsQuery
     filteredServices <- case pkgIds of
         Nothing -> do
@@ -334,21 +332,21 @@ getPackageListR = do
                 .| zipVersions
                 .| mapC
                        (\(a, vs) ->
-                           let spec = fromMaybe Any $ lookup (sAppAppId $ entityVal a) vMap
-                           in  (a, filter ((<|| spec) . sVersionNumber . entityVal) vs)
+                           let spec = fromMaybe Any $ lookup (unPkgRecordKey $ entityKey a) vMap
+                           in  (a, filter ((<|| spec) . versionRecordNumber . entityVal) vs)
                        )
                 .| filterOsCompatible osPredicate
                 .| sinkList
-    let keys = entityKey . fst <$> filteredServices
+    let keys = unPkgRecordKey . entityKey . fst <$> filteredServices
     cats <- runDB $ fetchAppCategories keys
     let vers =
             filteredServices
-                <&> first (sAppAppId . entityVal)
-                <&> second (sortOn Down . fmap (sVersionNumber . entityVal))
+                <&> first (unPkgRecordKey . entityKey)
+                <&> second (sortOn Down . fmap (versionRecordNumber . entityVal))
                 &   HM.fromListWith (++)
     let packageMetadata = HM.intersectionWith (,) vers (categoryName <<$>> cats)
     serviceDetailResult <- mapConcurrently (flip (getServiceDetails packageMetadata) Nothing)
-                                           (sAppAppId . entityVal . fst <$> filteredServices)
+                                           (unPkgRecordKey . entityKey . fst <$> filteredServices)
     let services = snd $ partitionEithers serviceDetailResult
     pure $ ServiceAvailableRes services
 
@@ -398,10 +396,10 @@ getPackageListR = do
                     $logWarn (show e)
                     sendResponseStatus status400 e
                 Just l -> pure l
-        getOsVersionQuery :: Handler (Maybe Version)
+        getOsVersionQuery :: Handler (Maybe VersionRange)
         getOsVersionQuery = lookupGetParam "eos-version" >>= \case
             Nothing  -> pure Nothing
-            Just osv -> case Atto.parseOnly parseVersion osv of
+            Just osv -> case Atto.parseOnly parseRange osv of
                 Left _ -> do
                     let e = InvalidParamsE "get:eos-version" osv
                     $logWarn (show e)
@@ -463,50 +461,49 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
                          }
         )
 
-fetchAllAppVersions :: Key SApp -> Handler ([VersionInfo], ReleaseNotes)
+fetchAllAppVersions :: PkgId -> Handler ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do
-    entityAppVersions <- runDB $ P.selectList [SVersionAppId P.==. appId] []
+    entityAppVersions <- runDB $ P.selectList [VersionRecordPkgId P.==. PkgRecordKey appId] []
     let vers           = entityVal <$> entityAppVersions
     let vv             = mapSVersionToVersionInfo vers
     let mappedVersions = ReleaseNotes $ HM.fromList $ (\v -> (versionInfoVersion v, versionInfoReleaseNotes v)) <$> vv
     pure (sortOn (Down . versionInfoVersion) vv, mappedVersions)
     where
-        mapSVersionToVersionInfo :: [SVersion] -> [VersionInfo]
+        mapSVersionToVersionInfo :: [VersionRecord] -> [VersionInfo]
         mapSVersionToVersionInfo sv = do
-            (\v -> VersionInfo { versionInfoVersion       = sVersionNumber v
-                               , versionInfoReleaseNotes  = sVersionReleaseNotes v
-                               , versionInfoDependencies  = HM.empty
-                               , versionInfoOsRequired    = sVersionOsVersionRequired v
-                               , versionInfoOsRecommended = sVersionOsVersionRecommended v
-                               , versionInfoInstallAlert  = Nothing
+            (\v -> VersionInfo { versionInfoVersion      = versionRecordNumber v
+                               , versionInfoReleaseNotes = versionRecordReleaseNotes v
+                               , versionInfoDependencies = HM.empty
+                               , versionInfoOsVersion    = versionRecordOsVersion v
+                               , versionInfoInstallAlert = Nothing
                                }
                 )
                 <$> sv
 
 
-fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity SApp, P.Entity SVersion))
+fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity PkgRecord, P.Entity VersionRecord))
 fetchLatestApp appId = fmap headMay . sortResults . select $ do
     (service :& version) <-
         from
-        $           table @SApp
-        `innerJoin` table @SVersion
-        `on`        (\(service :& version) -> service ^. SAppId ==. version ^. SVersionAppId)
-    where_ (service ^. SAppAppId ==. val appId)
+        $           table @PkgRecord
+        `innerJoin` table @VersionRecord
+        `on`        (\(service :& version) -> service ^. PkgRecordId ==. version ^. VersionRecordPkgId)
+    where_ (service ^. PkgRecordId ==. val (PkgRecordKey appId))
     pure (service, version)
-    where sortResults = fmap $ sortOn (Down . sVersionNumber . entityVal . snd)
+    where sortResults = fmap $ sortOn (Down . versionRecordNumber . entityVal . snd)
 
 
-fetchAppCategories :: MonadIO m => [Key SApp] -> ReaderT SqlBackend m (HM.HashMap PkgId [Category])
+fetchAppCategories :: MonadIO m => [PkgId] -> ReaderT SqlBackend m (HM.HashMap PkgId [Category])
 fetchAppCategories appIds = do
     raw <- select $ do
         (sc :& app :& cat) <-
             from
-            $           table @ServiceCategory
-            `innerJoin` table @SApp
-            `on`        (\(sc :& app) -> sc ^. ServiceCategoryServiceId ==. app ^. SAppId)
+            $           table @PkgCategory
+            `innerJoin` table @PkgRecord
+            `on`        (\(sc :& app) -> sc ^. PkgCategoryPkgId ==. app ^. PkgRecordId)
             `innerJoin` table @Category
-            `on`        (\(sc :& _ :& cat) -> sc ^. ServiceCategoryCategoryId ==. cat ^. CategoryId)
-        where_ (sc ^. ServiceCategoryServiceId `in_` valList appIds)
-        pure (app ^. SAppAppId, cat)
-    let ls = fmap (first unValue . second (pure . entityVal)) raw
+            `on`        (\(sc :& _ :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
+        where_ (sc ^. PkgCategoryPkgId `in_` valList (PkgRecordKey <$> appIds))
+        pure (app ^. PkgRecordId, cat)
+    let ls = fmap (first (unPkgRecordKey . unValue) . second (pure . entityVal)) raw
     pure $ HM.fromListWith (++) ls

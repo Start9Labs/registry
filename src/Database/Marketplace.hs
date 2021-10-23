@@ -38,7 +38,7 @@ import           Database.Esqueleto.Experimental
                                                 )
 import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Category
-import           Lib.Types.Emver                ( VersionRange )
+import           Lib.Types.Emver                ( Version )
 import           Model
 import           Startlude               hiding ( (%)
                                                 , from
@@ -49,57 +49,64 @@ import           Startlude               hiding ( (%)
 searchServices :: (MonadResource m, MonadIO m)
                => Maybe CategoryTitle
                -> Text
-               -> ConduitT () (Entity SApp) (ReaderT SqlBackend m) ()
+               -> ConduitT () (Entity PkgRecord) (ReaderT SqlBackend m) ()
 searchServices Nothing query = selectSource $ do
-    service <- from $ table @SApp
+    service <- from $ table @PkgRecord
     where_
-        (   (service ^. SAppDescShort `ilike` (%) ++. val query ++. (%))
-        ||. (service ^. SAppDescLong `ilike` (%) ++. val query ++. (%))
-        ||. (service ^. SAppTitle `ilike` (%) ++. val query ++. (%))
+        (   (service ^. PkgRecordDescShort `ilike` (%) ++. val query ++. (%))
+        ||. (service ^. PkgRecordDescLong `ilike` (%) ++. val query ++. (%))
+        ||. (service ^. PkgRecordTitle `ilike` (%) ++. val query ++. (%))
         )
-    orderBy [desc (service ^. SAppUpdatedAt)]
+    orderBy [desc (service ^. PkgRecordUpdatedAt)]
     pure service
 searchServices (Just category) query = selectSource $ do
     services <- from
         (do
-            (service :& sc) <-
+            (service :& _ :& cat) <-
                 from
-                $           table @SApp
-                `innerJoin` table @ServiceCategory
-                `on`        (\(s :& sc) -> sc ^. ServiceCategoryServiceId ==. s ^. SAppId)
+                $           table @PkgRecord
+                `innerJoin` table @PkgCategory
+                `on`        (\(s :& sc) -> sc ^. PkgCategoryPkgId ==. s ^. PkgRecordId)
+                `innerJoin` table @Category
+                `on`        (\(_ :& sc :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
             -- if there is a cateogry, only search in category
             -- weight title, short, long (bitcoin should equal Bitcoin Core)
             where_
-                $   sc
-                ^.  ServiceCategoryCategoryName
+                $   cat
+                ^.  CategoryName
                 ==. val category
-                &&. (   (service ^. SAppDescShort `ilike` (%) ++. val query ++. (%))
-                    ||. (service ^. SAppDescLong `ilike` (%) ++. val query ++. (%))
-                    ||. (service ^. SAppTitle `ilike` (%) ++. val query ++. (%))
+                &&. (   (service ^. PkgRecordDescShort `ilike` (%) ++. val query ++. (%))
+                    ||. (service ^. PkgRecordDescLong `ilike` (%) ++. val query ++. (%))
+                    ||. (service ^. PkgRecordTitle `ilike` (%) ++. val query ++. (%))
                     )
             pure service
         )
-    orderBy [desc (services ^. SAppUpdatedAt)]
+    orderBy [desc (services ^. PkgRecordUpdatedAt)]
     pure services
 
-getPkgData :: (MonadResource m, MonadIO m) => [PkgId] -> ConduitT () (Entity SApp) (ReaderT SqlBackend m) ()
+getPkgData :: (MonadResource m, MonadIO m) => [PkgId] -> ConduitT () (Entity PkgRecord) (ReaderT SqlBackend m) ()
 getPkgData pkgs = selectSource $ do
-    pkgData <- from $ table @SApp
-    where_ (pkgData ^. SAppAppId `in_` valList pkgs)
+    pkgData <- from $ table @PkgRecord
+    where_ (pkgData ^. PkgRecordId `in_` valList (PkgRecordKey <$> pkgs))
     pure pkgData
 
-zipVersions :: MonadUnliftIO m => ConduitT (Entity SApp) (Entity SApp, [Entity SVersion]) (ReaderT SqlBackend m) ()
+zipVersions :: MonadUnliftIO m
+            => ConduitT (Entity PkgRecord) (Entity PkgRecord, [Entity VersionRecord]) (ReaderT SqlBackend m) ()
 zipVersions = awaitForever $ \i -> do
     let appDbId = entityKey i
     res <- lift $ select $ do
-        v <- from $ table @SVersion
-        where_ $ v ^. SVersionAppId ==. val appDbId
+        v <- from $ table @VersionRecord
+        where_ $ v ^. VersionRecordPkgId ==. val appDbId
         pure v
     yield (i, res)
 
 filterOsCompatible :: Monad m
-                   => (VersionRange -> Bool)
-                   -> ConduitT (Entity SApp, [Entity SVersion]) (Entity SApp, [Entity SVersion]) m ()
+                   => (Version -> Bool)
+                   -> ConduitT
+                          (Entity PkgRecord, [Entity VersionRecord])
+                          (Entity PkgRecord, [Entity VersionRecord])
+                          m
+                          ()
 filterOsCompatible p = awaitForever $ \(app, versions) -> do
-    let compatible = filter (p . sVersionOsVersionRecommended . entityVal) versions
+    let compatible = filter (p . versionRecordOsVersion . entityVal) versions
     when (not $ null compatible) $ yield (app, compatible)

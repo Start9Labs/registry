@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
@@ -33,9 +34,13 @@ import           Lib.Types.Emver                ( Version
 import           Orphans.Emver                  ( )
 import qualified Protolude.Base                as P
                                                 ( Show(..) )
+import           Web.HttpApiData                ( FromHttpApiData
+                                                , ToHttpApiData
+                                                )
 import           Yesod                          ( PathPiece(..) )
 newtype PkgId = PkgId { unPkgId :: Text }
-    deriving (Eq)
+    deriving stock (Eq, Ord)
+    deriving newtype (FromHttpApiData, ToHttpApiData)
 instance IsString PkgId where
     fromString = PkgId . fromString
 instance P.Show PkgId where
@@ -62,12 +67,11 @@ instance PathPiece PkgId where
     fromPathPiece = fmap PkgId . fromPathPiece
     toPathPiece   = unPkgId
 data VersionInfo = VersionInfo
-    { versionInfoVersion       :: Version
-    , versionInfoReleaseNotes  :: Text
-    , versionInfoDependencies  :: HM.HashMap PkgId VersionRange
-    , versionInfoOsRequired    :: VersionRange
-    , versionInfoOsRecommended :: VersionRange
-    , versionInfoInstallAlert  :: Maybe Text
+    { versionInfoVersion      :: Version
+    , versionInfoReleaseNotes :: Text
+    , versionInfoDependencies :: HM.HashMap PkgId VersionRange
+    , versionInfoOsVersion    :: Version
+    , versionInfoInstallAlert :: Maybe Text
     }
     deriving (Eq, Show)
 

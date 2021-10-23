@@ -13,7 +13,6 @@ import           Startlude               hiding ( Handler )
 
 import           Control.Monad.Logger           ( logError )
 import qualified Data.Text                     as T
-import           Database.Persist               ( Entity(entityKey) )
 import qualified GHC.Show                       ( Show(..) )
 import           Network.HTTP.Types             ( status404 )
 import           System.FilePath                ( (<.>)
@@ -88,12 +87,11 @@ recordMetrics pkg appVersion = do
         Nothing -> do
             $logError $ [i|#{pkg} not found in database|]
             notFound
-        Just a -> do
-            let appKey' = entityKey a
-            existingVersion <- runDB $ fetchAppVersion appVersion appKey'
+        Just _ -> do
+            existingVersion <- runDB $ fetchAppVersion pkg appVersion
             case existingVersion of
                 Nothing -> do
                     $logError $ [i|#{pkg}@#{appVersion} not found in database|]
                     notFound
-                Just v -> runDB $ createMetric (entityKey a) (entityKey v)
+                Just _ -> runDB $ createMetric pkg appVersion
 
