@@ -64,19 +64,3 @@ toStatus = \case
     NotFoundE _        -> status404
     InvalidParamsE _ _ -> status400
     AssetParseE    _ _ -> status500
-
-
-handleS9ErrT :: MonadHandler m => S9ErrT m a -> m a
-handleS9ErrT action = runExceptT action >>= \case
-    Left  e -> toStatus >>= sendResponseStatus $ e
-    Right a -> pure a
-
-handleS9ErrNuclear :: MonadIO m => S9ErrT m a -> m a
-handleS9ErrNuclear action = runExceptT action >>= \case
-    Left  e -> throwIO e
-    Right a -> pure a
-
-errOnNothing :: MonadHandler m => Status -> Text -> Maybe a -> m a
-errOnNothing status res entity = case entity of
-    Nothing -> sendResponseStatus status res
-    Just a  -> pure a

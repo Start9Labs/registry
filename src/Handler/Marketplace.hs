@@ -1,18 +1,16 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TemplateHaskell  #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveAnyClass #-}
 
 module Handler.Marketplace where
 
-import           Startlude               hiding ( Handler
+import           Startlude               hiding ( Any
+                                                , Handler
+                                                , ask
                                                 , from
                                                 , on
                                                 , sortOn
@@ -20,10 +18,17 @@ import           Startlude               hiding ( Handler
 
 import           Conduit                        ( (.|)
                                                 , awaitForever
+                                                , dropC
+                                                , mapC
                                                 , runConduit
+                                                , sinkList
                                                 , sourceFile
+                                                , takeC
                                                 )
 import           Control.Monad.Except.CoHas     ( liftEither )
+import           Control.Monad.Reader.Has       ( Has
+                                                , ask
+                                                )
 import           Control.Parallel.Strategies    ( parMap
                                                 , rpar
                                                 )
@@ -51,32 +56,29 @@ import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
 import           Database.Esqueleto.Experimental
-                                                ( (&&.)
-                                                , (:&)((:&))
+                                                ( (:&)((:&))
                                                 , (==.)
-                                                , (?.)
                                                 , Entity(entityKey, entityVal)
-                                                , PersistEntity(Key)
                                                 , SqlBackend
                                                 , Value(unValue)
                                                 , (^.)
                                                 , desc
                                                 , from
-                                                , groupBy
+                                                , in_
                                                 , innerJoin
-                                                , just
-                                                , leftJoin
-                                                , limit
                                                 , on
                                                 , orderBy
                                                 , select
-                                                , selectOne
                                                 , table
                                                 , val
+                                                , valList
                                                 , where_
                                                 )
-import           Database.Esqueleto.PostgreSQL  ( arrayAggDistinct )
-import           Database.Marketplace           ( searchServices )
+import           Database.Marketplace           ( filterOsCompatible
+                                                , getPkgData
+                                                , searchServices
+                                                , zipVersions
+                                                )
 import qualified Database.Persist              as P
 import           Foundation                     ( Handler
                                                 , RegistryCtx(appSettings)
@@ -89,19 +91,21 @@ import           Lib.Types.AppIndex             ( PkgId(PkgId)
                                                 , VersionInfo(..)
                                                 )
 import           Lib.Types.AppIndex             ( )
-import           Lib.Types.Category             ( CategoryTitle(FEATURED) )
+import           Lib.Types.Category             ( CategoryTitle(..) )
 import           Lib.Types.Emver                ( (<||)
                                                 , Version
-                                                , VersionRange
+                                                , VersionRange(Any)
+                                                , parseRange
                                                 , parseVersion
                                                 , satisfies
                                                 )
 import           Model                          ( Category(..)
                                                 , EntityField(..)
+                                                , Key(PkgRecordKey, unPkgRecordKey)
                                                 , OsVersion(..)
-                                                , SApp(..)
-                                                , SVersion(..)
-                                                , ServiceCategory
+                                                , PkgCategory
+                                                , PkgRecord(..)
+                                                , VersionRecord(..)
                                                 )
 import           Network.HTTP.Types             ( status400
                                                 , status404
@@ -110,17 +114,10 @@ import           Protolude.Unsafe               ( unsafeFromJust )
 import           Settings                       ( AppSettings(registryHostname, resourcesDir) )
 import           System.Directory               ( getFileSize )
 import           System.FilePath                ( (</>) )
-import           UnliftIO.Async                 ( concurrently
-                                                , mapConcurrently
-                                                )
+import           UnliftIO.Async                 ( mapConcurrently )
 import           UnliftIO.Directory             ( listDirectory )
-import           Util.Shared                    ( getVersionSpecFromQuery
-                                                , orThrow
-                                                )
-import           Yesod.Core                     ( HandlerFor
-                                                , MonadLogger
-                                                , MonadResource
-                                                , MonadUnliftIO
+import           Util.Shared                    ( getVersionSpecFromQuery )
+import           Yesod.Core                     ( MonadResource
                                                 , ToContent(..)
                                                 , ToTypedContent(..)
                                                 , TypedContent
@@ -142,7 +139,6 @@ newtype CategoryRes = CategoryRes {
     categories :: [CategoryTitle]
 } deriving (Show, Generic)
 instance ToJSON CategoryRes
-instance FromJSON CategoryRes
 instance ToContent CategoryRes where
     toContent = toContent . toJSON
 instance ToTypedContent CategoryRes where
@@ -176,10 +172,6 @@ instance ToJSON ServiceRes where
         , "versions" .= serviceResVersions
         , "dependency-metadata" .= serviceResDependencyInfo
         ]
-instance ToContent ServiceRes where
-    toContent = toContent . toJSON
-instance ToTypedContent ServiceRes where
-    toTypedContent = toTypedContent . toJSON
 data DependencyInfo = DependencyInfo
     { dependencyInfoTitle :: PkgId
     , dependencyInfoIcon  :: URL
@@ -187,40 +179,6 @@ data DependencyInfo = DependencyInfo
     deriving (Eq, Show)
 instance ToJSON DependencyInfo where
     toJSON DependencyInfo {..} = object ["icon" .= dependencyInfoIcon, "title" .= dependencyInfoTitle]
-
-data ServiceListRes = ServiceListRes
-    { serviceListResCategories :: [CategoryTitle]
-    , serviceListResServices   :: [ServiceAvailable]
-    }
-    deriving Show
-instance ToJSON ServiceListRes where
-    toJSON ServiceListRes {..} =
-        object ["categories" .= serviceListResCategories, "services" .= serviceListResServices]
-instance ToContent ServiceListRes where
-    toContent = toContent . toJSON
-instance ToTypedContent ServiceListRes where
-    toTypedContent = toTypedContent . toJSON
-
-data ServiceAvailable = ServiceAvailable
-    { serviceAvailableId        :: PkgId
-    , serviceAvailableTitle     :: Text
-    , serviceAvailableVersion   :: Version
-    , serviceAvailableIcon      :: URL
-    , serviceAvailableDescShort :: Text
-    }
-    deriving Show
-instance ToJSON ServiceAvailable where
-    toJSON ServiceAvailable {..} = object
-        [ "id" .= serviceAvailableId
-        , "title" .= serviceAvailableTitle
-        , "version" .= serviceAvailableVersion
-        , "icon" .= serviceAvailableIcon
-        , "descriptionShort" .= serviceAvailableDescShort
-        ]
-instance ToContent ServiceAvailable where
-    toContent = toContent . toJSON
-instance ToTypedContent ServiceAvailable where
-    toTypedContent = toTypedContent . toJSON
 
 newtype ServiceAvailableRes = ServiceAvailableRes [ServiceRes]
     deriving (Generic)
@@ -241,8 +199,8 @@ data OrderArrangement = ASC | DESC
     deriving (Eq, Show, Read)
 data ServiceListDefaults = ServiceListDefaults
     { serviceListOrder      :: OrderArrangement
-    , serviceListPageLimit  :: Int64 -- the number of items per page
-    , serviceListPageNumber :: Int64 -- the page you are on
+    , serviceListPageLimit  :: Int -- the number of items per page
+    , serviceListPageNumber :: Int -- the page you are on
     , serviceListCategory   :: Maybe CategoryTitle
     , serviceListQuery      :: Text
     }
@@ -305,11 +263,8 @@ getReleaseNotesR = do
     case lookup "id" getParameters of
         Nothing      -> sendResponseStatus status400 (InvalidParamsE "get:id" "<MISSING>")
         Just package -> do
-            (service, _) <- runDB $ fetchLatestApp (PkgId package) `orThrow` sendResponseStatus
-                status404
-                (NotFoundE $ show package)
-            (_, mappedVersions) <- fetchAllAppVersions (entityKey service)
-            pure mappedVersions
+            (_, notes) <- fetchAllAppVersions (PkgId package)
+            pure notes
 
 getEosR :: Handler TypedContent
 getEosR = do
@@ -332,50 +287,70 @@ getVersionLatestR = do
     case lookup "ids" getParameters of
         Nothing       -> sendResponseStatus status400 (InvalidParamsE "get:ids" "<MISSING>")
         Just packages -> case eitherDecode $ BS.fromStrict $ encodeUtf8 packages of
-            Left  _              -> sendResponseStatus status400 (InvalidParamsE "get:ids" packages)
-            Right (p :: [PkgId]) -> do
-                let packageList :: [(PkgId, Maybe Version)] = (, Nothing) <$> p
+            Left  _ -> sendResponseStatus status400 (InvalidParamsE "get:ids" packages)
+            Right p -> do
+                let packageList = (, Nothing) <$> p
                 found <- runDB $ traverse fetchLatestApp $ fst <$> packageList
                 pure
                     $ VersionLatestRes
                     $ HM.union
                           (   HM.fromList
-                          $   (\v -> (sAppAppId $ entityVal $ fst v, Just $ sVersionNumber $ entityVal $ snd v))
+                          $   (\v ->
+                                  (unPkgRecordKey . entityKey $ fst v, Just $ versionRecordNumber $ entityVal $ snd v)
+                              )
                           <$> catMaybes found
                           )
                     $ HM.fromList packageList
 
 getPackageListR :: Handler ServiceAvailableRes
 getPackageListR = do
-    pkgIds <- getPkgIdsQuery
-    case pkgIds of
+    osPredicate <- getOsVersionQuery <&> \case
+        Nothing -> const True
+        Just v  -> flip satisfies v
+    pkgIds           <- getPkgIdsQuery
+    filteredServices <- case pkgIds of
         Nothing -> do
             -- query for all
-            category         <- getCategoryQuery
-            page             <- getPageQuery
-            limit'           <- getLimitQuery
-            query            <- T.strip . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
-            filteredServices <- runDB $ searchServices category limit' ((page - 1) * limit') query
-            let filteredServices' = sAppAppId . entityVal <$> filteredServices
-            settings            <- getsYesod appSettings
-            packageMetadata     <- runDB $ fetchPackageMetadata
-            serviceDetailResult <- mapConcurrently (getServiceDetails settings packageMetadata Nothing)
-                                                   filteredServices'
-            let (_, services) = partitionEithers serviceDetailResult
-            pure $ ServiceAvailableRes services
-
+            category <- getCategoryQuery
+            page     <- getPageQuery
+            limit'   <- getLimitQuery
+            query    <- T.strip . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
+            runDB
+                $  runConduit
+                $  searchServices category query
+                .| zipVersions
+                .| filterOsCompatible osPredicate
+                -- pages start at 1 for some reason. TODO: make pages start at 0
+                .| (dropC (limit' * (page - 1)) *> takeC limit')
+                .| sinkList
         Just packages -> do
-                -- for each item in list get best available from version range
-            settings                <- getsYesod appSettings
-            -- @TODO fix _ error
-            packageMetadata         <- runDB $ fetchPackageMetadata
-            availableServicesResult <- traverse (getPackageDetails packageMetadata) packages
-            let (_, availableServices) = partitionEithers availableServicesResult
-            serviceDetailResult <- mapConcurrently (uncurry $ getServiceDetails settings packageMetadata)
-                                                   availableServices
-            -- @TODO fix _ error
-            let (_, services) = partitionEithers serviceDetailResult
-            pure $ ServiceAvailableRes services
+            -- for each item in list get best available from version range
+            let vMap = (packageVersionId &&& packageVersionVersion) <$> packages
+            runDB
+                .  runConduit
+                $  getPkgData (packageVersionId <$> packages)
+                .| zipVersions
+                .| mapC
+                       (\(a, vs) ->
+                           let spec = fromMaybe Any $ lookup (unPkgRecordKey $ entityKey a) vMap
+                           in  (a, filter ((<|| spec) . versionRecordNumber . entityVal) vs)
+                       )
+                .| filterOsCompatible osPredicate
+                .| sinkList
+    let keys = unPkgRecordKey . entityKey . fst <$> filteredServices
+    cats <- runDB $ fetchAppCategories keys
+    let vers =
+            filteredServices
+                <&> first (unPkgRecordKey . entityKey)
+                <&> second (sortOn Down . fmap (versionRecordNumber . entityVal))
+                &   HM.fromListWith (++)
+    let packageMetadata = HM.intersectionWith (,) vers (categoryName <<$>> cats)
+    serviceDetailResult <- mapConcurrently (flip (getServiceDetails packageMetadata) Nothing)
+                                           (unPkgRecordKey . entityKey . fst <$> filteredServices)
+    let services = snd $ partitionEithers serviceDetailResult
+    pure $ ServiceAvailableRes services
+
+
     where
         defaults = ServiceListDefaults { serviceListOrder      = DESC
                                        , serviceListPageLimit  = 20
@@ -401,7 +376,7 @@ getPackageListR = do
                     $logWarn (show e)
                     sendResponseStatus status400 e
                 Just t -> pure $ Just t
-        getPageQuery :: Handler Int64
+        getPageQuery :: Handler Int
         getPageQuery = lookupGetParam "page" >>= \case
             Nothing -> pure $ serviceListPageNumber defaults
             Just p  -> case readMaybe p of
@@ -412,7 +387,7 @@ getPackageListR = do
                 Just t -> pure $ case t of
                     0 -> 1 -- disallow page 0 so offset is not negative
                     _ -> t
-        getLimitQuery :: Handler Int64
+        getLimitQuery :: Handler Int
         getLimitQuery = lookupGetParam "per-page" >>= \case
             Nothing -> pure $ serviceListPageLimit defaults
             Just pp -> case readMaybe pp of
@@ -421,31 +396,23 @@ getPackageListR = do
                     $logWarn (show e)
                     sendResponseStatus status400 e
                 Just l -> pure l
-        getPackageDetails :: MonadIO m
-                          => (HM.HashMap PkgId ([Version], [CategoryTitle]))
-                          -> PackageVersion
-                          -> m (Either Text ((Maybe Version), PkgId))
-        getPackageDetails metadata pv = do
-            let appId = packageVersionId pv
-            let spec  = packageVersionVersion pv
-            pacakgeMetadata <- case HM.lookup appId metadata of
-                Nothing -> throwIO $ NotFoundE [i|dependency metadata for #{appId} not found.|]
-                Just m  -> pure m
-            -- get best version from VersionRange of dependency
-            let satisfactory = filter (<|| spec) (fst pacakgeMetadata)
-            let best         = getMax <$> foldMap (Just . Max) satisfactory
-            case best of
-                Nothing -> pure $ Left $ [i|Best version could not be found for #{appId} with spec #{spec}|]
-                Just v  -> do
-                    pure $ Right (Just v, appId)
+        getOsVersionQuery :: Handler (Maybe VersionRange)
+        getOsVersionQuery = lookupGetParam "eos-version-range" >>= \case
+            Nothing  -> pure Nothing
+            Just osv -> case Atto.parseOnly parseRange osv of
+                Left _ -> do
+                    let e = InvalidParamsE "get:eos-version-range" osv
+                    $logWarn (show e)
+                    sendResponseStatus status400 e
+                Right v -> pure $ Just v
 
-getServiceDetails :: (MonadIO m, MonadResource m)
-                  => AppSettings
-                  -> (HM.HashMap PkgId ([Version], [CategoryTitle]))
-                  -> Maybe Version
+getServiceDetails :: (MonadIO m, MonadResource m, MonadReader r m, Has AppSettings r)
+                  => (HM.HashMap PkgId ([Version], [CategoryTitle]))
                   -> PkgId
+                  -> Maybe Version
                   -> m (Either S9Error ServiceRes)
-getServiceDetails settings metadata maybeVersion pkg = runExceptT $ do
+getServiceDetails metadata pkg maybeVersion = runExceptT $ do
+    settings        <- ask
     packageMetadata <- case HM.lookup pkg metadata of
         Nothing -> liftEither . Left $ NotFoundE [i|#{pkg} not found.|]
         Just m  -> pure m
@@ -494,117 +461,49 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
                          }
         )
 
-fetchAllAppVersions :: Key SApp -> HandlerFor RegistryCtx ([VersionInfo], ReleaseNotes)
+fetchAllAppVersions :: PkgId -> Handler ([VersionInfo], ReleaseNotes)
 fetchAllAppVersions appId = do
-    entityAppVersions <- runDB $ P.selectList [SVersionAppId P.==. appId] []
+    entityAppVersions <- runDB $ P.selectList [VersionRecordPkgId P.==. PkgRecordKey appId] []
     let vers           = entityVal <$> entityAppVersions
     let vv             = mapSVersionToVersionInfo vers
     let mappedVersions = ReleaseNotes $ HM.fromList $ (\v -> (versionInfoVersion v, versionInfoReleaseNotes v)) <$> vv
     pure (sortOn (Down . versionInfoVersion) vv, mappedVersions)
     where
-        mapSVersionToVersionInfo :: [SVersion] -> [VersionInfo]
+        mapSVersionToVersionInfo :: [VersionRecord] -> [VersionInfo]
         mapSVersionToVersionInfo sv = do
-            (\v -> VersionInfo { versionInfoVersion       = sVersionNumber v
-                               , versionInfoReleaseNotes  = sVersionReleaseNotes v
-                               , versionInfoDependencies  = HM.empty
-                               , versionInfoOsRequired    = sVersionOsVersionRequired v
-                               , versionInfoOsRecommended = sVersionOsVersionRecommended v
-                               , versionInfoInstallAlert  = Nothing
+            (\v -> VersionInfo { versionInfoVersion      = versionRecordNumber v
+                               , versionInfoReleaseNotes = versionRecordReleaseNotes v
+                               , versionInfoDependencies = HM.empty
+                               , versionInfoOsVersion    = versionRecordOsVersion v
+                               , versionInfoInstallAlert = Nothing
                                }
                 )
                 <$> sv
 
-fetchMostRecentAppVersions :: MonadIO m => Key SApp -> ReaderT SqlBackend m [Entity SVersion]
-fetchMostRecentAppVersions appId = sortResults $ select $ do
-    version <- from $ table @SVersion
-    where_ (version ^. SVersionAppId ==. val appId)
-    limit 1
-    pure version
-    where sortResults = fmap $ sortOn (Down . sVersionNumber . entityVal)
 
-fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity SApp, P.Entity SVersion))
+fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity PkgRecord, P.Entity VersionRecord))
 fetchLatestApp appId = fmap headMay . sortResults . select $ do
     (service :& version) <-
         from
-        $           table @SApp
-        `innerJoin` table @SVersion
-        `on`        (\(service :& version) -> service ^. SAppId ==. version ^. SVersionAppId)
-    where_ (service ^. SAppAppId ==. val appId)
+        $           table @PkgRecord
+        `innerJoin` table @VersionRecord
+        `on`        (\(service :& version) -> service ^. PkgRecordId ==. version ^. VersionRecordPkgId)
+    where_ (service ^. PkgRecordId ==. val (PkgRecordKey appId))
     pure (service, version)
-    where sortResults = fmap $ sortOn (Down . sVersionNumber . entityVal . snd)
+    where sortResults = fmap $ sortOn (Down . versionRecordNumber . entityVal . snd)
 
-fetchLatestAppAtVersion :: MonadIO m
-                        => PkgId
-                        -> Version
-                        -> ReaderT SqlBackend m (Maybe (P.Entity SApp, P.Entity SVersion))
-fetchLatestAppAtVersion appId version' = selectOne $ do
-    (service :& version) <-
-        from
-        $           table @SApp
-        `innerJoin` table @SVersion
-        `on`        (\(service :& version) -> service ^. SAppId ==. version ^. SVersionAppId)
-    where_ $ (service ^. SAppAppId ==. val appId) &&. (version ^. SVersionNumber ==. val version')
-    pure (service, version)
 
-fetchPackageMetadata :: (MonadLogger m, MonadUnliftIO m)
-                     => ReaderT SqlBackend m (HM.HashMap PkgId ([Version], [CategoryTitle]))
-fetchPackageMetadata = do
-    let categoriesQuery = select $ do
-            (service :& category) <-
-                from
-                $          table @SApp
-                `leftJoin` table @ServiceCategory
-                `on`       (\(service :& category) ->
-                               Database.Esqueleto.Experimental.just (service ^. SAppId)
-                                   ==. category
-                                   ?.  ServiceCategoryServiceId
-                           )
-            Database.Esqueleto.Experimental.groupBy $ service ^. SAppAppId
-            pure (service ^. SAppAppId, arrayAggDistinct (category ?. ServiceCategoryCategoryName))
-    let versionsQuery = select $ do
-            (service :& version) <-
-                from
-                $           table @SApp
-                `innerJoin` table @SVersion
-                `on`        (\(service :& version) -> (service ^. SAppId) ==. version ^. SVersionAppId)
-            Database.Esqueleto.Experimental.groupBy $ (service ^. SAppAppId, version ^. SVersionNumber)
-            pure (service ^. SAppAppId, arrayAggDistinct (version ^. SVersionNumber))
-    (categories, versions) <- UnliftIO.Async.concurrently categoriesQuery versionsQuery
-    let
-        c = foreach categories
-            $ \(appId, categories') -> (unValue appId, catMaybes $ fromMaybe [] (unValue categories'))
-    let v = foreach versions $ \(appId, versions') -> (unValue appId, fromMaybe [] (unValue versions'))
-    let vv = HM.fromListWithKey (\_ vers vers' -> (++) vers vers') v
-    pure $ HM.intersectionWith (\cts vers -> (vers, cts)) (HM.fromList c) (sortVersions vv)
-    where sortVersions = fmap $ sortOn Down
-
-fetchAppCategories :: MonadIO m => Key SApp -> ReaderT SqlBackend m [P.Entity ServiceCategory]
-fetchAppCategories appId = select $ do
-    (categories :& service) <-
-        from
-        $           table @ServiceCategory
-        `innerJoin` table @SApp
-        `on`        (\(sc :& s) -> sc ^. ServiceCategoryServiceId ==. s ^. SAppId)
-    where_ (service ^. SAppId ==. val appId)
-    pure categories
-
--- >>> encode hm
--- "{\"0.2.0\":\"some notes\"}"
-hm :: Data.Aeson.Value
-hm = object [ t .= v | (k, v) <- [("0.2.0", "some notes") :: (Version, Text)], let (String t) = toJSON k ]
-
--- >>> encode rn
--- "{\"0.2.0\":\"notes one\",\"0.3.0\":\"notes two\"}"
-rn :: ReleaseNotes
-rn = ReleaseNotes $ HM.fromList [("0.2.0", "notes one"), ("0.3.0", "notes two")]
-
--- >>> readMaybe $ cc :: Maybe CategoryTitle
--- Just FEATURED
-cc :: Text
-cc = T.toUpper "featured"
-
--- >>> encode ccc
--- "\"featured\""
-ccc :: CategoryTitle
-ccc = FEATURED
-
+fetchAppCategories :: MonadIO m => [PkgId] -> ReaderT SqlBackend m (HM.HashMap PkgId [Category])
+fetchAppCategories appIds = do
+    raw <- select $ do
+        (sc :& app :& cat) <-
+            from
+            $           table @PkgCategory
+            `innerJoin` table @PkgRecord
+            `on`        (\(sc :& app) -> sc ^. PkgCategoryPkgId ==. app ^. PkgRecordId)
+            `innerJoin` table @Category
+            `on`        (\(sc :& _ :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
+        where_ (sc ^. PkgCategoryPkgId `in_` valList (PkgRecordKey <$> appIds))
+        pure (app ^. PkgRecordId, cat)
+    let ls = fmap (first (unPkgRecordKey . unValue) . second (pure . entityVal)) raw
+    pure $ HM.fromListWith (++) ls

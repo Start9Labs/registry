@@ -2,18 +2,21 @@
 
 module Handler.MarketplaceSpec
     ( spec
-    )
-where
+    ) where
 
-import           Startlude               hiding ( Any )
-import           Database.Persist.Sql
 import           Data.Maybe
+import           Database.Persist.Sql
+import           Startlude               hiding ( Any )
 
-import           TestImport
-import           Model
+import           Conduit                        ( (.|)
+                                                , runConduit
+                                                , sinkList
+                                                )
 import           Database.Marketplace
 import           Lib.Types.Category
 import           Lib.Types.Emver
+import           Model
+import           TestImport
 
 spec :: Spec
 spec = do
@@ -40,7 +43,7 @@ spec = do
         _           <- runDBtest $ insert_ $ ServiceCategory time lnd lnCat "lnd" LIGHTNING Nothing
         _           <- runDBtest $ insert_ $ ServiceCategory time lnd btcCat "lnd" BITCOIN Nothing
         _           <- runDBtest $ insert_ $ ServiceCategory time btc btcCat "bitcon" BITCOIN Nothing
-        apps        <- runDBtest $ searchServices (Just FEATURED) 20 0 ""
+        apps        <- runDBtest $ runConduit $ searchServices (Just FEATURED) "" .| sinkList
         assertEq "should exist" (length apps) 1
         let app' = fromJust $ head apps
         assertEq "should be bitcoin" (sAppTitle $ entityVal app') "Bitcoin Core"
@@ -67,7 +70,7 @@ spec = do
         _           <- runDBtest $ insert_ $ ServiceCategory time lnd lnCat "lnd" LIGHTNING Nothing
         _           <- runDBtest $ insert_ $ ServiceCategory time lnd btcCat "lnd" BITCOIN Nothing
         _           <- runDBtest $ insert_ $ ServiceCategory time btc btcCat "bitcoind" BITCOIN Nothing
-        apps        <- runDBtest $ searchServices (Just BITCOIN) 20 0 ""
+        apps        <- runDBtest $ runConduit $ searchServices (Just BITCOIN) "" .| sinkList
         assertEq "should exist" (length apps) 2
     describe "searchServices with fuzzy query"
         $ withApp
@@ -91,7 +94,7 @@ spec = do
               cate <- runDBtest $ insert $ Category time FEATURED Nothing "desc" 0
               _    <- runDBtest $ insert_ $ ServiceCategory time app1 cate "bitcoind" FEATURED Nothing
               _    <- runDBtest $ insert_ $ ServiceCategory time app2 cate "lnd" FEATURED Nothing
-              apps <- runDBtest $ searchServices (Just FEATURED) 20 0 "lightning"
+              apps <- runDBtest $ runConduit $ searchServices (Just FEATURED) "lightning" .| sinkList
               assertEq "should exist" (length apps) 1
               let app' = fromJust $ head apps
               print app'
@@ -123,14 +126,5 @@ spec = do
         _           <- runDBtest $ insert_ $ ServiceCategory time lnd lnCat "lnd" LIGHTNING Nothing
         _           <- runDBtest $ insert_ $ ServiceCategory time lnd btcCat "lnd" BITCOIN Nothing
         _           <- runDBtest $ insert_ $ ServiceCategory time btc btcCat "bitcon" BITCOIN Nothing
-        apps        <- runDBtest $ searchServices Nothing 20 0 ""
+        apps        <- runDBtest $ runConduit $ searchServices Nothing "" .| sinkList
         assertEq "should exist" (length apps) 2
-    xdescribe "getServiceVersionsWithReleaseNotes"
-        $ withApp
-        $ it "gets service with mapping of version to release notes"
-        $ do
-              time <- liftIO getCurrentTime
-              app  <- runDBtest $ insert $ SApp time Nothing "Bitcoin Core" "bitcoin" "short desc" "long desc" "png"
-              _    <- runDBtest $ insert $ SVersion time Nothing app "0.19.0.0" "release notes 0.19.0.0" Any Any Nothing
-              _    <- runDBtest $ insert $ SVersion time Nothing app "0.20.0.0" "release notes 0.19.0.0" Any Any Nothing
-              print ()

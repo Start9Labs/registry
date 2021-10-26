@@ -32,11 +32,6 @@ data IconType = PNG | JPG | JPEG | SVG
 instance ToJSON IconType
 instance FromJSON IconType
 
--- >>> readMaybe $ ixt :: Maybe IconType
--- Just PNG
-ixt :: Text
-ixt = toS $ toUpper <$> drop 1 ".png"
-
 getIconsR :: PkgId -> Handler TypedContent
 getIconsR pkg = do
     spec    <- getVersionSpecFromQuery

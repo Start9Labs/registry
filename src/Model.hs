@@ -1,4 +1,6 @@
+{-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE DerivingStrategies    #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE QuasiQuotes           #-}
@@ -6,7 +8,6 @@
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
-{-# LANGUAGE DataKinds  #-}
 
 module Model where
 
@@ -18,44 +19,42 @@ import           Orphans.Emver                  ( )
 import           Startlude
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
-SApp
+PkgRecord
+    Id PkgId sql=pkg_id
     createdAt UTCTime
     updatedAt UTCTime Maybe
     title Text
-    appId PkgId
     descShort Text
     descLong Text
     iconType Text
-    UniqueAppId appId
     deriving Eq
     deriving Show
 
-SVersion sql=version
+VersionRecord sql=version
     createdAt UTCTime
     updatedAt UTCTime Maybe
-    appId SAppId
+    pkgId PkgRecordId
     number Version
     releaseNotes Text
-    osVersionRequired VersionRange default='*'
-    osVersionRecommended VersionRange default='*'
+    osVersion Version
     arch Text Maybe
-    UniqueBin appId number
+    Primary pkgId number
     deriving Eq
     deriving Show
 
-OsVersion 
+OsVersion
     createdAt UTCTime
     updatedAt UTCTime
     number Version
     headline Text
-    releaseNotes Text 
+    releaseNotes Text
     deriving Eq
     deriving Show
 
 Metric
     createdAt UTCTime
-    appId SAppId
-    version SVersionId
+    pkgId PkgRecordId
+    version VersionRecordId
     deriving Eq
     deriving Show
 
@@ -69,13 +68,10 @@ Category
     deriving Eq
     deriving Show
 
-ServiceCategory
+PkgCategory
     createdAt UTCTime
-    serviceId SAppId
+    pkgId PkgRecordId
     categoryId CategoryId
-    serviceName Text -- SAppAppId
-    categoryName CategoryTitle -- CategoryTitle
-    priority Int Maybe
     deriving Eq
     deriving Show
 |]
