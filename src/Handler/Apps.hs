@@ -11,16 +11,8 @@ module Handler.Apps where
 
 import           Startlude               hiding ( Handler )
 
-import           Control.Monad.Logger           ( logError
-                                                , logInfo
-                                                )
-import           Data.Aeson                     ( ToJSON
-                                                , encode
-                                                )
-import qualified Data.Attoparsec.Text          as Atto
-import qualified Data.ByteString.Lazy          as BS
+import           Control.Monad.Logger           ( logError )
 import qualified Data.Text                     as T
-import           Database.Persist               ( Entity(entityKey) )
 import qualified GHC.Show                       ( Show(..) )
 import           Network.HTTP.Types             ( status404 )
 import           System.FilePath                ( (<.>)
@@ -34,7 +26,6 @@ import           Yesod.Core                     ( TypedContent
                                                 , sendResponseStatus
                                                 , typeJson
                                                 , typeOctet
-                                                , waiRequest
                                                 )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
@@ -55,36 +46,16 @@ import           Lib.PkgRepository              ( getBestVersion
                                                 )
 import           Lib.Registry                   ( S9PK )
 import           Lib.Types.AppIndex             ( PkgId(PkgId) )
-import           Lib.Types.Emver                ( Version
-                                                , parseVersion
-                                                )
-import           Network.Wai                    ( Request(requestHeaderUserAgent) )
+import           Lib.Types.Emver                ( Version )
 import           Util.Shared                    ( addPackageHeader
                                                 , getVersionSpecFromQuery
                                                 , orThrow
                                                 )
 
-pureLog :: Show a => a -> Handler a
-pureLog = liftA2 (*>) ($logInfo . show) pure
-
-logRet :: ToJSON a => Handler a -> Handler a
-logRet = (>>= liftA2 (*>) ($logInfo . decodeUtf8 . BS.toStrict . encode) pure)
-
 data FileExtension = FileExtension FilePath (Maybe String)
 instance Show FileExtension where
     show (FileExtension f Nothing ) = f
     show (FileExtension f (Just e)) = f <.> e
-
-userAgentOsVersionParser :: Atto.Parser Version
-userAgentOsVersionParser = do
-    void $ (Atto.string "EmbassyOS" <|> Atto.string "AmbassadorOS" <|> Atto.string "MeshOS") *> Atto.char '/'
-    parseVersion
-
-getEmbassyOsVersion :: Handler (Maybe Version)
-getEmbassyOsVersion = userAgentOsVersion
-    where
-        userAgentOsVersion =
-            (hush . Atto.parseOnly userAgentOsVersionParser . decodeUtf8 <=< requestHeaderUserAgent) <$> waiRequest
 
 getAppManifestR :: PkgId -> Handler TypedContent
 getAppManifestR pkg = do
@@ -116,12 +87,11 @@ recordMetrics pkg appVersion = do
         Nothing -> do
             $logError $ [i|#{pkg} not found in database|]
             notFound
-        Just a -> do
-            let appKey' = entityKey a
-            existingVersion <- runDB $ fetchAppVersion appVersion appKey'
+        Just _ -> do
+            existingVersion <- runDB $ fetchAppVersion pkg appVersion
             case existingVersion of
                 Nothing -> do
                     $logError $ [i|#{pkg}@#{appVersion} not found in database|]
                     notFound
-                Just v -> runDB $ createMetric (entityKey a) (entityKey v)
+                Just _ -> runDB $ createMetric pkg appVersion
 

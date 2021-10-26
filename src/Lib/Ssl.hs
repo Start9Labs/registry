@@ -2,12 +2,12 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Lib.Ssl where
-
-import           Startlude
-
-import           Data.String.Interpolate.IsString
 import           System.Directory
 import           System.Process
+
+import           Data.String.Interpolate.IsString
+
+import           Startlude
 
 import           Foundation
 import           Settings

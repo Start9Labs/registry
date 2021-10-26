@@ -19,13 +19,9 @@ import           Lib.Error                      ( S9Error(NotFoundE) )
 import           Lib.PkgRepository              ( getBestVersion )
 import           Lib.Types.AppIndex             ( PkgId )
 import           Network.HTTP.Types.Status      ( status404 )
-import           Settings
 import           Util.Shared                    ( getVersionSpecFromQuery
                                                 , orThrow
                                                 )
-
-getVersionR :: Handler AppVersionRes
-getVersionR = AppVersionRes . registryVersion . appSettings <$> getYesod
 
 getPkgVersionR :: PkgId -> Handler AppVersionRes
 getPkgVersionR pkg = do
