@@ -32,6 +32,7 @@ dependencies:
   - filepath
   - foreign-store
   - fsnotify
+  - http-api-data
   - http-types
   - interpolate
   - lens

@@ -1,12 +1,10 @@
 module Startlude
     ( module X
     , module Startlude
-    )
-where
+    ) where
 
 import           Control.Arrow                 as X
                                                 ( (&&&) )
--- import           Control.Comonad    as X
 import           Control.Error.Util            as X
 import           Data.Coerce                   as X
 import           Data.String                   as X
@@ -15,14 +13,14 @@ import           Data.String                   as X
                                                 )
 import           Data.Time.Clock               as X
 import           Protolude                     as X
-                                         hiding ( bool
+                                         hiding ( (<.>)
+                                                , bool
                                                 , hush
                                                 , isLeft
                                                 , isRight
                                                 , note
                                                 , readMaybe
                                                 , tryIO
-                                                , (<.>)
                                                 )
 import qualified Protolude                     as P
                                                 ( readMaybe )
