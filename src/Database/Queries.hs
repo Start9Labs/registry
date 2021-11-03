@@ -20,4 +20,4 @@ fetchAppVersion pkgId version = get (VersionRecordKey (PkgRecordKey pkgId) versi
 createMetric :: MonadIO m => PkgId -> Version -> ReaderT SqlBackend m ()
 createMetric appId version = do
     time <- liftIO getCurrentTime
-    insert_ $ Metric time (PkgRecordKey appId) (VersionRecordKey (PkgRecordKey appId) version)
+    insert_ $ Metric time (PkgRecordKey appId) version

@@ -54,7 +54,7 @@ OsVersion
 Metric
     createdAt UTCTime
     pkgId PkgRecordId
-    version VersionRecordId
+    version Version
     deriving Eq
     deriving Show
 
