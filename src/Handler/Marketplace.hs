@@ -147,6 +147,10 @@ import           Yesod.Core                     ( MonadResource
                                                 )
 import           Yesod.Persist                  ( YesodDB )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
+import           Data.Tuple.Extra        hiding ( second
+                                                , first
+                                                , (&&&)
+                                                )
 
 type URL = Text
 newtype CategoryRes = CategoryRes {
@@ -166,8 +170,7 @@ data ServiceRes = ServiceRes
     , serviceResVersions       :: [Version]
     , serviceResDependencyInfo :: HM.HashMap PkgId DependencyInfo
     }
-    deriving Generic
-
+    deriving (Show, Generic)
 newtype ReleaseNotes = ReleaseNotes { unReleaseNotes :: HM.HashMap Version Text }
     deriving (Eq, Show)
 instance ToJSON ReleaseNotes where
@@ -186,6 +189,16 @@ instance ToJSON ServiceRes where
         , "versions" .= serviceResVersions
         , "dependency-metadata" .= serviceResDependencyInfo
         ]
+instance FromJSON ServiceRes where
+    parseJSON = withObject "ServiceRes" $ \o -> do
+        serviceResIcon           <- o .: "icon"
+        serviceResLicense        <- o .: "license"
+        serviceResInstructions   <- o .: "instructions"
+        serviceResManifest       <- o .: "manifest"
+        serviceResCategories     <- o .: "categories"
+        serviceResVersions       <- o .: "versions"
+        serviceResDependencyInfo <- o .: "dependency-metadata"
+        pure ServiceRes { .. }
 data DependencyInfo = DependencyInfo
     { dependencyInfoTitle :: PkgId
     , dependencyInfoIcon  :: URL
@@ -193,7 +206,11 @@ data DependencyInfo = DependencyInfo
     deriving (Eq, Show)
 instance ToJSON DependencyInfo where
     toJSON DependencyInfo {..} = object ["icon" .= dependencyInfoIcon, "title" .= dependencyInfoTitle]
-
+instance FromJSON DependencyInfo where
+    parseJSON = withObject "DependencyInfo" $ \o -> do
+        dependencyInfoIcon  <- o .: "icon"
+        dependencyInfoTitle <- o .: "title"
+        pure DependencyInfo { .. }
 newtype ServiceAvailableRes = ServiceAvailableRes [ServiceRes]
     deriving (Generic)
 instance ToJSON ServiceAvailableRes
@@ -346,39 +363,42 @@ getPackageListR = do
                 $  runConduit
                 $  searchServices category query
                 .| zipVersions
+                .| mapC (\(a, vs) -> (,,) a vs Any)
                 .| filterOsCompatible osPredicate
                 -- pages start at 1 for some reason. TODO: make pages start at 0
                 .| (dropC (limit' * (page - 1)) *> takeC limit')
                 .| sinkList
-        Just packages -> do
+        Just packages' -> do
             -- for each item in list get best available from version range
-            let vMap = (packageVersionId &&& packageVersionVersion) <$> packages
+            let vMap = (packageVersionId &&& packageVersionVersion) <$> packages'
             runDB
                 .  runConduit
-                $  getPkgData (packageVersionId <$> packages)
+                $  getPkgData (packageVersionId <$> packages')
                 .| zipVersions
                 .| mapC
                        (\(a, vs) ->
                            let spec = fromMaybe Any $ lookup (unPkgRecordKey $ entityKey a) vMap
-                           in  (a, filter ((<|| spec) . versionRecordNumber . entityVal) vs)
+                           in  (a, filter ((<|| spec) . versionRecordNumber . entityVal) vs, spec)
                        )
                 .| filterOsCompatible osPredicate
                 .| sinkList
-    let keys = unPkgRecordKey . entityKey . fst <$> filteredServices
+    let keys = unPkgRecordKey . entityKey . fst3 <$> filteredServices
     cats <- runDB $ fetchAppCategories keys
     let vers =
             filteredServices
-                <&> first (unPkgRecordKey . entityKey)
-                <&> second (sortOn Down . fmap (versionRecordNumber . entityVal))
-                &   HM.fromListWith (++)
+                <&> first3 (unPkgRecordKey . entityKey)
+                <&> second3 (sortOn Down . fmap (versionRecordNumber . entityVal))
+                <&> (\(a, vs, vr) -> (,) a $ (,) vs vr)
+                &   HM.fromListWith mergeDupes
     let packageMetadata = HM.intersectionWith (,) vers (categoryName <<$>> cats)
-    serviceDetailResult <- mapConcurrently (flip (getServiceDetails packageMetadata) Nothing)
-                                           (unPkgRecordKey . entityKey . fst <$> filteredServices)
+    serviceDetailResult <- mapConcurrently (getServiceDetails packageMetadata)
+                                           (unPkgRecordKey . entityKey . fst3 <$> filteredServices)
     let services = snd $ partitionEithers serviceDetailResult
     pure $ ServiceAvailableRes services
 
-
     where
+        mergeDupes :: ([Version], VersionRange) -> ([Version], VersionRange) -> ([Version], VersionRange)
+        mergeDupes (vs, vr) (vs', _) = (,) ((++) vs vs') vr
         defaults = ServiceListDefaults { serviceListOrder      = DESC
                                        , serviceListPageLimit  = 20
                                        , serviceListPageNumber = 1
@@ -434,23 +454,25 @@ getPackageListR = do
                 Right v -> pure $ Just v
 
 getServiceDetails :: (MonadIO m, MonadResource m, MonadReader r m, Has AppSettings r)
-                  => (HM.HashMap PkgId ([Version], [CategoryTitle]))
+                  => (HM.HashMap PkgId (([Version], VersionRange), [CategoryTitle]))
                   -> PkgId
-                  -> Maybe Version
                   -> m (Either S9Error ServiceRes)
-getServiceDetails metadata pkg maybeVersion = runExceptT $ do
+getServiceDetails metadata pkg = runExceptT $ do
     settings        <- ask
     packageMetadata <- case HM.lookup pkg metadata of
         Nothing -> liftEither . Left $ NotFoundE [i|#{pkg} not found.|]
         Just m  -> pure m
-    let domain = registryHostname settings
-    version <- case maybeVersion of
-        Nothing -> do
+    let domain      = registryHostname settings
+    let versionInfo = fst $ (HM.!) metadata pkg
+    version <- case snd versionInfo of
+        Any -> do
             -- grab first value, which will be the latest version
-            case fst packageMetadata of
+            case fst versionInfo of
                 []    -> liftEither . Left $ NotFoundE $ [i|No latest version found for #{pkg}|]
                 x : _ -> pure x
-        Just v -> pure v
+        spec -> case headMay . sortOn Down $ filter (`satisfies` spec) $ fst versionInfo of
+            Nothing -> liftEither . Left $ NotFoundE [i|No version for #{pkg} satisfying #{spec}|]
+            Just v  -> pure v
     manifest <- flip runReaderT settings $ (snd <$> getManifest pkg version) >>= \bs ->
         runConduit $ bs .| CL.foldMap BS.fromStrict
     case eitherDecode manifest of
@@ -463,12 +485,12 @@ getServiceDetails metadata pkg maybeVersion = runExceptT $ do
                               , serviceResCategories     = snd packageMetadata
                               , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{pkg}|]
                               , serviceResLicense        = [i|https://#{domain}/package/license/#{pkg}|]
-                              , serviceResVersions       = fst packageMetadata
+                              , serviceResVersions       = fst . fst $ packageMetadata
                               , serviceResDependencyInfo = HM.fromList $ snd $ partitionEithers d
                               }
 
 mapDependencyMetadata :: Text
-                      -> HM.HashMap PkgId ([Version], [CategoryTitle])
+                      -> HM.HashMap PkgId (([Version], VersionRange), [CategoryTitle])
                       -> (PkgId, ServiceDependencyInfo)
                       -> Either S9Error (PkgId, DependencyInfo)
 mapDependencyMetadata domain metadata (appId, depInfo) = do
@@ -476,7 +498,7 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
         Nothing -> Left $ NotFoundE [i|dependency metadata for #{appId} not found.|]
         Just m  -> pure m
     -- get best version from VersionRange of dependency
-    let satisfactory = filter (<|| serviceDependencyInfoVersion depInfo) (fst depMetadata)
+    let satisfactory = filter (<|| serviceDependencyInfoVersion depInfo) (fst . fst $ depMetadata)
     let best         = getMax <$> foldMap (Just . Max) satisfactory
     version <- case best of
         Nothing -> Left $ NotFoundE $ [i|No satisfactory version for dependent package #{appId}|]
