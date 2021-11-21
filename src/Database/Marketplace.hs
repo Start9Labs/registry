@@ -38,7 +38,9 @@ import           Database.Esqueleto.Experimental
                                                 )
 import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Category
-import           Lib.Types.Emver                ( Version )
+import           Lib.Types.Emver                ( Version
+                                                , VersionRange
+                                                )
 import           Model
 import           Startlude               hiding ( (%)
                                                 , from
@@ -103,10 +105,10 @@ zipVersions = awaitForever $ \i -> do
 filterOsCompatible :: Monad m
                    => (Version -> Bool)
                    -> ConduitT
-                          (Entity PkgRecord, [Entity VersionRecord])
-                          (Entity PkgRecord, [Entity VersionRecord])
+                          (Entity PkgRecord, [Entity VersionRecord], VersionRange)
+                          (Entity PkgRecord, [Entity VersionRecord], VersionRange)
                           m
                           ()
-filterOsCompatible p = awaitForever $ \(app, versions) -> do
+filterOsCompatible p = awaitForever $ \(app, versions, requestedVersion) -> do
     let compatible = filter (p . versionRecordOsVersion . entityVal) versions
-    when (not $ null compatible) $ yield (app, compatible)
+    when (not $ null compatible) $ yield (app, compatible, requestedVersion)
