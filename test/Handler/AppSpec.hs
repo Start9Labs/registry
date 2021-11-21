@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Handler.AppSpec
     ( spec
@@ -11,68 +12,119 @@ import           Data.Maybe
 
 import           TestImport
 import           Model
-
+import           Handler.Marketplace
+import           Seed
+import           Lib.Types.AppIndex
+import           Data.Aeson
+import           Data.Either.Extra
 spec :: Spec
 spec = do
-    describe "GET /package/index" $ withApp $ it "returns list of apps" $ do
+    describe "GET /package/index" $ withApp $ it "returns list of packages" $ do
+        _ <- seedBitcoinLndStack
         request $ do
             setMethod "GET"
             setUrl ("/package/index" :: Text)
-        bodyContains "embassy-pages"
-        bodyContains "version: 0.1.3"
         statusIs 200
-    describe "GET /package/:appId with unknown version spec for embassy-pages"
+        (res :: [ServiceRes]) <- requireJSONResponse
+        assertEq "response should have two packages" (length res) 3
+    describe "GET /package/index?ids" $ withApp $ it "returns list of packages at specified version" $ do
+        _ <- seedBitcoinLndStack
+        request $ do
+            setMethod "GET"
+            setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\"=0.21.1.2\"}]" :: Text)
+        statusIs 200
+        (res :: [ServiceRes]) <- requireJSONResponse
+        assertEq "response should have one package" (length res) 1
+        let pkg                           = fromJust $ head res
+        let (manifest :: ServiceManifest) = fromRight' $ eitherDecode $ encode $ serviceResManifest pkg
+        assertEq "manifest id should be bitcoind" (serviceManifestId manifest) "bitcoind"
+    xdescribe "GET /package/index?ids"
         $ withApp
-        $ it "fails to get unknown app"
+        $ it "returns list of packages and dependencies at specified version"
         $ do
+              _ <- seedBitcoinLndStack
               request $ do
                   setMethod "GET"
-                  setUrl ("/package/embassy-pages.s9pk?spec=0.1.4" :: Text)
-              statusIs 404
-    describe "GET /package/:appId with unknown app" $ withApp $ it "fails to get an unregistered app" $ do
+                  setUrl ("/package/index?ids=[{\"id\":\"lnd\",\"version\":\"=0.13.3.1\"}]" :: Text)
+              statusIs 200
+              (res :: [ServiceRes]) <- requireJSONResponse
+              assertEq "response should have one package" (length res) 1
+              let pkg = fromJust $ head res
+              printBody
+              assertEq "package dependency metadata should not be empty" (null $ serviceResDependencyInfo pkg) False
+    describe "GET /package/index?ids" $ withApp $ it "returns list of packages at exactly specified version" $ do
+        _ <- seedBitcoinLndStack
+        request $ do
+            setMethod "GET"
+            setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\"=0.21.1.1\"}]" :: Text)
+        statusIs 200
+        (res :: [ServiceRes]) <- requireJSONResponse
+        assertEq "response should have one package" (length res) 1
+        let pkg                           = fromJust $ head res
+        let (manifest :: ServiceManifest) = fromRight' $ eitherDecode $ encode $ serviceResManifest pkg
+        assertEq "manifest version should be 0.21.1.1" (serviceManifestVersion manifest) "0.21.1.1"
+    describe "GET /package/index?ids" $ withApp $ it "returns list of packages at specified version or greater" $ do
+        _ <- seedBitcoinLndStack
+        request $ do
+            setMethod "GET"
+            setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\">=0.21.1.1\"}]" :: Text)
+        statusIs 200
+        (res :: [ServiceRes]) <- requireJSONResponse
+        assertEq "response should have one package" (length res) 1
+        let pkg                           = fromJust $ head res
+        let (manifest :: ServiceManifest) = fromRight' $ eitherDecode $ encode $ serviceResManifest pkg
+        assertEq "manifest version should be 0.21.1.2" (serviceManifestVersion manifest) "0.21.1.2"
+    describe "GET /package/index?ids" $ withApp $ it "returns list of packages at specified version or greater" $ do
+        _ <- seedBitcoinLndStack
+        request $ do
+            setMethod "GET"
+            setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\">=0.21.1.2\"}]" :: Text)
+        statusIs 200
+        (res :: [ServiceRes]) <- requireJSONResponse
+        assertEq "response should have one package" (length res) 1
+        let pkg                           = fromJust $ head res
+        let (manifest :: ServiceManifest) = fromRight' $ eitherDecode $ encode $ serviceResManifest pkg
+        assertEq "manifest version should be 0.21.1.2" (serviceManifestVersion manifest) "0.21.1.2"
+    describe "GET /package/:pkgId with unknown version spec for bitcoind" $ withApp $ it "fails to get unknown app" $ do
+        _ <- seedBitcoinLndStack
+        request $ do
+            setMethod "GET"
+            setUrl ("/package/bitcoind.s9pk?spec==0.20.0" :: Text)
+        statusIs 404
+    xdescribe "GET /package/:pkgId with unknown package" $ withApp $ it "fails to get an unregistered app" $ do
+        _ <- seedBitcoinLndStack
         request $ do
             setMethod "GET"
             setUrl ("/package/tempapp.s9pk?spec=0.0.1" :: Text)
         statusIs 404
-    describe "GET /package/:appId with existing version spec for embassy-pages"
+    xdescribe "GET /package/:pkgId with package at unknown version"
+        $ withApp
+        $ it "fails to get an unregistered app"
+        $ do
+              _ <- seedBitcoinLndStack
+              request $ do
+                  setMethod "GET"
+                  setUrl ("/package/lightning.s9pk?spec==0.0.1" :: Text)
+              statusIs 404
+    describe "GET /package/:pkgId with existing version spec for bitcoind"
         $ withApp
         $ it "creates app and metric records"
         $ do
+              _ <- seedBitcoinLndStack
               request $ do
                   setMethod "GET"
-                  setUrl ("/package/embassy-pages.s9pk?spec==0.1.3" :: Text)
+                  setUrl ("/package/bitcoind.s9pk?spec==0.21.1.2" :: Text)
               statusIs 200
-              apps <- runDBtest $ selectList [SAppAppId ==. "embassy-pages"] []
-              assertEq "app should exist" (length apps) 1
-              let app = fromJust $ head apps
-              metrics <- runDBtest $ selectList [MetricAppId ==. entityKey app] []
+              packages <- runDBtest $ selectList [PkgRecordId ==. PkgRecordKey "bitcoind"] []
+              assertEq "app should exist" (length packages) 1
+              let app = fromJust $ head packages
+              metrics <- runDBtest $ selectList [MetricPkgId ==. entityKey app] []
               assertEq "metric should exist" (length metrics) 1
-    describe "GET /package/:appId with existing version spec for filebrowser"
-        $ withApp
-        $ it "creates app and metric records"
-        $ do
-              request $ do
-                  setMethod "GET"
-                  setUrl ("/package/filebrowser.s9pk?spec==2.14.1.1" :: Text)
-              statusIs 200
-              apps <- runDBtest $ selectList [SAppAppId ==. "filebrowser"] []
-              assertEq "app should exist" (length apps) 1
-              let app = fromJust $ head apps
-              metrics <- runDBtest $ selectList [MetricAppId ==. entityKey app] []
-              assertEq "metric should exist" (length metrics) 1
-              version <- runDBtest $ selectList [SVersionAppId ==. entityKey app] []
-              assertEq "version should exist" (length version) 1
-    describe "GET /sys/proxy.pac" $ withApp $ it "does not record metric but request successful" $ do
+    describe "GET /package/:pkgId with existing version spec for lnd" $ withApp $ it "creates metric records" $ do
+        _ <- seedBitcoinLndStack
         request $ do
             setMethod "GET"
-            setUrl ("/sys/proxy.pac?spec=0.1.0" :: Text)
+            setUrl ("/package/lnd.s9pk?spec=>=0.13.3.0" :: Text)
         statusIs 200
-        apps <- runDBtest $ selectList ([] :: [Filter SApp]) []
-        assertEq "no apps should exist" (length apps) 0
-    describe "GET /sys/:sysId" $ withApp $ it "does not record metric but request successful" $ do
-        request $ do
-            setMethod "GET"
-            setUrl ("/sys/appmgr?spec=0.0.0" :: Text)
-        statusIs 200
-        apps <- runDBtest $ selectList ([] :: [Filter SApp]) []
-        assertEq "no apps should exist" (length apps) 0
+        metrics <- runDBtest $ selectList [MetricPkgId ==. PkgRecordKey "lnd"] []
+        assertEq "metric should exist" (length metrics) 1
