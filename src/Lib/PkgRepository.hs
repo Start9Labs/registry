@@ -37,7 +37,7 @@ import qualified Data.Text                     as T
 import           Lib.Error                      ( S9Error(NotFoundE) )
 import qualified Lib.External.AppMgr           as AppMgr
 import           Lib.Types.AppIndex             ( PkgId(..)
-                                                , ServiceManifest(serviceManifestIcon)
+                                                , PackageManifest(packageManifestIcon)
                                                 )
 import           Lib.Types.Emver                ( Version
                                                 , VersionRange
@@ -163,7 +163,7 @@ extractPkg fp = handle @_ @SomeException cleanup $ do
             liftIO . throwIO $ ManifestParseException (pkgRoot </> "manifest.json")
         Right manifest -> do
             wait iconTask
-            let iconDest = "icon" <.> case serviceManifestIcon manifest of
+            let iconDest = "icon" <.> case packageManifestIcon manifest of
                     Nothing -> "png"
                     Just x  -> case takeExtension (T.unpack x) of
                         ""    -> "png"
