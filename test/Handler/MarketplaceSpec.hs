@@ -39,7 +39,7 @@ spec = do
               packages <- runDBtest $ runConduit $ searchServices Nothing "lightning" .| sinkList
               assertEq "should exist" (length packages) 1
               let pkg = fromJust $ head packages
-              print pkg
+              assertEq "package should be lnd" (entityKey pkg) (PkgRecordKey "lnd")
     describe "searchServices with fuzzy query"
         $ withApp
         $ it "runs search service with fuzzy text in long description and bitcoin category"
@@ -48,7 +48,7 @@ spec = do
               packages <- runDBtest $ runConduit $ searchServices (Just BITCOIN) "proxy" .| sinkList
               assertEq "should exist" (length packages) 1
               let pkg = fromJust $ head packages
-              print pkg
+              assertEq "package should be lnc" (entityKey pkg) (PkgRecordKey "btc-rpc-proxy")
     describe "searchServices with any category" $ withApp $ it "runs search service for any category" $ do
         _        <- seedBitcoinLndStack
         packages <- runDBtest $ runConduit $ searchServices Nothing "" .| sinkList

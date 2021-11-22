@@ -75,6 +75,7 @@ data VersionInfo = VersionInfo
     }
     deriving (Eq, Show)
 
+-- TODO rename to PackageDependencyInfo
 data ServiceDependencyInfo = ServiceDependencyInfo
     { serviceDependencyInfoOptional    :: Maybe Text
     , serviceDependencyInfoVersion     :: VersionRange
