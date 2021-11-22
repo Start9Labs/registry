@@ -96,8 +96,8 @@ import           Lib.Error                      ( S9Error(..)
                                                 )
 import           Lib.PkgRepository              ( getManifest )
 import           Lib.Types.AppIndex             ( PkgId(PkgId)
-                                                , ServiceDependencyInfo(serviceDependencyInfoVersion)
-                                                , ServiceManifest(serviceManifestDependencies)
+                                                , PackageDependency(packageDependencyVersion)
+                                                , PackageManifest(packageManifestDependencies)
                                                 , VersionInfo(..)
                                                 )
 import           Lib.Types.AppIndex             ( )
@@ -168,14 +168,14 @@ instance ToContent CategoryRes where
     toContent = toContent . toJSON
 instance ToTypedContent CategoryRes where
     toTypedContent = toTypedContent . toJSON
-data ServiceRes = ServiceRes
-    { serviceResIcon           :: URL
-    , serviceResManifest       :: Data.Aeson.Value -- ServiceManifest
-    , serviceResCategories     :: [CategoryTitle]
-    , serviceResInstructions   :: URL
-    , serviceResLicense        :: URL
-    , serviceResVersions       :: [Version]
-    , serviceResDependencyInfo :: HM.HashMap PkgId DependencyInfo
+data PackageRes = PackageRes
+    { packageResIcon           :: URL
+    , packageResManifest       :: Data.Aeson.Value -- PackageManifest
+    , packageResCategories     :: [CategoryTitle]
+    , packageResInstructions   :: URL
+    , packageResLicense        :: URL
+    , packageResVersions       :: [Version]
+    , packageResDependencies :: HM.HashMap PkgId DependencyRes
     }
     deriving (Show, Generic)
 newtype ReleaseNotes = ReleaseNotes { unReleaseNotes :: HM.HashMap Version Text }
@@ -186,44 +186,44 @@ instance ToContent ReleaseNotes where
     toContent = toContent . toJSON
 instance ToTypedContent ReleaseNotes where
     toTypedContent = toTypedContent . toJSON
-instance ToJSON ServiceRes where
-    toJSON ServiceRes {..} = object
-        [ "icon" .= serviceResIcon
-        , "license" .= serviceResLicense
-        , "instructions" .= serviceResInstructions
-        , "manifest" .= serviceResManifest
-        , "categories" .= serviceResCategories
-        , "versions" .= serviceResVersions
-        , "dependency-metadata" .= serviceResDependencyInfo
+instance ToJSON PackageRes where
+    toJSON PackageRes {..} = object
+        [ "icon" .= packageResIcon
+        , "license" .= packageResLicense
+        , "instructions" .= packageResInstructions
+        , "manifest" .= packageResManifest
+        , "categories" .= packageResCategories
+        , "versions" .= packageResVersions
+        , "dependency-metadata" .= packageResDependencies
         ]
-instance FromJSON ServiceRes where
-    parseJSON = withObject "ServiceRes" $ \o -> do
-        serviceResIcon           <- o .: "icon"
-        serviceResLicense        <- o .: "license"
-        serviceResInstructions   <- o .: "instructions"
-        serviceResManifest       <- o .: "manifest"
-        serviceResCategories     <- o .: "categories"
-        serviceResVersions       <- o .: "versions"
-        serviceResDependencyInfo <- o .: "dependency-metadata"
-        pure ServiceRes { .. }
-data DependencyInfo = DependencyInfo
-    { dependencyInfoTitle :: PkgId
-    , dependencyInfoIcon  :: URL
+instance FromJSON PackageRes where
+    parseJSON = withObject "PackageRes" $ \o -> do
+        packageResIcon         <- o .: "icon"
+        packageResLicense      <- o .: "license"
+        packageResInstructions <- o .: "instructions"
+        packageResManifest     <- o .: "manifest"
+        packageResCategories   <- o .: "categories"
+        packageResVersions     <- o .: "versions"
+        packageResDependencies <- o .: "dependency-metadata"
+        pure PackageRes { .. }
+data DependencyRes = DependencyRes
+    { dependencyResTitle :: PkgId
+    , dependencyResIcon  :: URL
     }
     deriving (Eq, Show)
-instance ToJSON DependencyInfo where
-    toJSON DependencyInfo {..} = object ["icon" .= dependencyInfoIcon, "title" .= dependencyInfoTitle]
-instance FromJSON DependencyInfo where
-    parseJSON = withObject "DependencyInfo" $ \o -> do
-        dependencyInfoIcon  <- o .: "icon"
-        dependencyInfoTitle <- o .: "title"
-        pure DependencyInfo { .. }
-newtype ServiceAvailableRes = ServiceAvailableRes [ServiceRes]
+instance ToJSON DependencyRes where
+    toJSON DependencyRes {..} = object ["icon" .= dependencyResIcon, "title" .= dependencyResTitle]
+instance FromJSON DependencyRes where
+    parseJSON = withObject "DependencyRes" $ \o -> do
+        dependencyResIcon  <- o .: "icon"
+        dependencyResTitle <- o .: "title"
+        pure DependencyRes { .. }
+newtype PackageListRes = PackageListRes [PackageRes]
     deriving (Generic)
-instance ToJSON ServiceAvailableRes
-instance ToContent ServiceAvailableRes where
+instance ToJSON PackageListRes
+instance ToContent PackageListRes where
     toContent = toContent . toJSON
-instance ToTypedContent ServiceAvailableRes where
+instance ToTypedContent PackageListRes where
     toTypedContent = toTypedContent . toJSON
 
 newtype VersionLatestRes = VersionLatestRes (HM.HashMap PkgId (Maybe Version))
@@ -235,12 +235,12 @@ instance ToTypedContent VersionLatestRes where
     toTypedContent = toTypedContent . toJSON
 data OrderArrangement = ASC | DESC
     deriving (Eq, Show, Read)
-data ServiceListDefaults = ServiceListDefaults
-    { serviceListOrder      :: OrderArrangement
-    , serviceListPageLimit  :: Int -- the number of items per page
-    , serviceListPageNumber :: Int -- the page you are on
-    , serviceListCategory   :: Maybe CategoryTitle
-    , serviceListQuery      :: Text
+data PackageListDefaults = PackageListDefaults
+    { packageListOrder      :: OrderArrangement
+    , packageListPageLimit  :: Int -- the number of items per page
+    , packageListPageNumber :: Int -- the page you are on
+    , packageListCategory   :: Maybe CategoryTitle
+    , packageListQuery      :: Text
     }
     deriving (Eq, Show, Read)
 data EosRes = EosRes
@@ -257,16 +257,16 @@ instance ToContent EosRes where
 instance ToTypedContent EosRes where
     toTypedContent = toTypedContent . toJSON
 
-data PackageVersion = PackageVersion
-    { packageVersionId      :: PkgId
-    , packageVersionVersion :: VersionRange
+data PackageReq = PackageReq
+    { packageReqId      :: PkgId
+    , packageReqVersion :: VersionRange
     }
     deriving Show
-instance FromJSON PackageVersion where
+instance FromJSON PackageReq where
     parseJSON = withObject "package version" $ \o -> do
-        packageVersionId      <- o .: "id"
-        packageVersionVersion <- o .: "version"
-        pure PackageVersion { .. }
+        packageReqId      <- o .: "id"
+        packageReqVersion <- o .: "version"
+        pure PackageReq { .. }
 
 getCategoriesR :: Handler CategoryRes
 getCategoriesR = do
@@ -353,19 +353,26 @@ getVersionLatestR = do
                           )
                     $ HM.fromList packageList
 
-getPackageListR :: Handler ServiceAvailableRes
+getPackageListR :: Handler PackageListRes
 getPackageListR = do
     osPredicate <- getOsVersionQuery <&> \case
         Nothing -> const True
         Just v  -> flip satisfies v
     pkgIds           <- getPkgIdsQuery
+    -- deep info
+    -- generate data from db
+    -- filter os
+    -- filter from request
+    -- shallow info - generate get deps
+    -- transformations
+    -- assemble api response
     filteredPackages <- case pkgIds of
         Nothing -> do
             -- query for all
             category <- getCategoryQuery
             page     <- getPageQuery
             limit'   <- getLimitQuery
-            query    <- T.strip . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
+            query    <- T.strip . fromMaybe (packageListQuery defaults) <$> lookupGetParam "query"
             runDB
                 $  runConduit
                 $  searchServices category query
@@ -377,10 +384,10 @@ getPackageListR = do
                 .| sinkList
         Just packages' -> do
             -- for each item in list get best available from version range
-            let vMap = (packageVersionId &&& packageVersionVersion) <$> packages'
+            let vMap = (packageReqId &&& packageReqVersion) <$> packages'
             runDB
                 .  runConduit
-                $  getPkgData (packageVersionId <$> packages')
+                $  getPkgData (packageReqId <$> packages')
                 .| zipVersions
                 .| mapC
                        (\(a, vs) ->
@@ -398,16 +405,16 @@ getPackageListR = do
             -- log all errors but just throw first error until Validation implemented - TODO https://hackage.haskell.org/package/validation
             for_ xs (\e -> $logWarn [i|Get package list errors: #{e}|])
             sendResponseStatus (toStatus x) x
-        [] -> pure $ ServiceAvailableRes res
+        [] -> pure $ PackageListRes res
 
     where
-        defaults = ServiceListDefaults { serviceListOrder      = DESC
-                                       , serviceListPageLimit  = 20
-                                       , serviceListPageNumber = 1
-                                       , serviceListCategory   = Nothing
-                                       , serviceListQuery      = ""
+        defaults = PackageListDefaults { packageListOrder      = DESC
+                                       , packageListPageLimit  = 20
+                                       , packageListPageNumber = 1
+                                       , packageListCategory   = Nothing
+                                       , packageListQuery      = ""
                                        }
-        getPkgIdsQuery :: Handler (Maybe [PackageVersion])
+        getPkgIdsQuery :: Handler (Maybe [PackageReq])
         getPkgIdsQuery = lookupGetParam "ids" >>= \case
             Nothing  -> pure Nothing
             Just ids -> case eitherDecodeStrict (encodeUtf8 ids) of
@@ -427,7 +434,7 @@ getPackageListR = do
                 Just t -> pure $ Just t
         getPageQuery :: Handler Int
         getPageQuery = lookupGetParam "page" >>= \case
-            Nothing -> pure $ serviceListPageNumber defaults
+            Nothing -> pure $ packageListPageNumber defaults
             Just p  -> case readMaybe p of
                 Nothing -> do
                     let e = InvalidParamsE "get:page" p
@@ -438,7 +445,7 @@ getPackageListR = do
                     _ -> t
         getLimitQuery :: Handler Int
         getLimitQuery = lookupGetParam "per-page" >>= \case
-            Nothing -> pure $ serviceListPageLimit defaults
+            Nothing -> pure $ packageListPageLimit defaults
             Just pp -> case readMaybe pp of
                 Nothing -> do
                     let e = InvalidParamsE "get:per-page" pp
@@ -475,12 +482,12 @@ createPackageMetadata pkgs = do
                 &   HM.fromListWith mergeDupes
     pure $ (keys, HM.intersectionWith (,) vers (categoryName <<$>> cats))
 
-getServiceDetails :: (MonadIO m, MonadResource m, MonadReader r m, MonadLogger m, Has AppSettings r, MonadUnliftIO m)
+getServiceDetails :: (MonadResource m, MonadReader r m, MonadLogger m, Has AppSettings r, MonadUnliftIO m)
                   => (Version -> Bool)
                   -> ConnectionPool
                   -> (HM.HashMap PkgId (([Version], VersionRange), [CategoryTitle]))
                   -> PkgId
-                  -> m (Either S9Error ServiceRes)
+                  -> m (Either S9Error PackageRes)
 getServiceDetails osPredicate appConnPool metadata pkg = runExceptT $ do
     settings        <- ask
     packageMetadata <- case HM.lookup pkg metadata of
@@ -502,23 +509,22 @@ getServiceDetails osPredicate appConnPool metadata pkg = runExceptT $ do
     case eitherDecode manifest of
         Left  _ -> liftEither . Left $ AssetParseE [i|#{pkg}:manifest|] (decodeUtf8 $ BS.toStrict manifest)
         Right m -> do
-            let depVerList =
-                    (fst &&& (serviceDependencyInfoVersion . snd)) <$> (HM.toList $ serviceManifestDependencies m)
+            let depVerList = (fst &&& (packageDependencyVersion . snd)) <$> (HM.toList $ packageManifestDependencies m)
             (_, depMetadata) <- lift $ runSqlPool (createPackageMetadata =<< getDependencies depVerList) appConnPool
             let (errors, deps) = partitionEithers $ parMap
                     rpar
                     (mapDependencyMetadata domain $ (HM.union depMetadata metadata))
-                    (HM.toList $ serviceManifestDependencies m)
+                    (HM.toList $ packageManifestDependencies m)
             case errors of
                 _ : xs -> liftEither . Left $ DepMetadataE xs
-                [] -> pure $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{pkg}|]
+                [] -> pure $ PackageRes { packageResIcon         = [i|https://#{domain}/package/icon/#{pkg}|]
                                         -- pass through raw JSON Value, we have checked its correct parsing above
-                                        , serviceResManifest       = unsafeFromJust . decode $ manifest
-                                        , serviceResCategories     = snd packageMetadata
-                                        , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{pkg}|]
-                                        , serviceResLicense        = [i|https://#{domain}/package/license/#{pkg}|]
-                                        , serviceResVersions       = fst . fst $ packageMetadata
-                                        , serviceResDependencyInfo = HM.fromList deps
+                                        , packageResManifest     = unsafeFromJust . decode $ manifest
+                                        , packageResCategories   = snd packageMetadata
+                                        , packageResInstructions = [i|https://#{domain}/package/instructions/#{pkg}|]
+                                        , packageResLicense      = [i|https://#{domain}/package/license/#{pkg}|]
+                                        , packageResVersions     = fst . fst $ packageMetadata
+                                        , packageResDependencies = HM.fromList deps
                                         }
     where
         getDependencies :: (MonadResource m, MonadUnliftIO m)
@@ -538,23 +544,23 @@ getServiceDetails osPredicate appConnPool metadata pkg = runExceptT $ do
 
 mapDependencyMetadata :: Text
                       -> HM.HashMap PkgId (([Version], VersionRange), [CategoryTitle])
-                      -> (PkgId, ServiceDependencyInfo)
-                      -> Either Text (PkgId, DependencyInfo)
+                      -> (PkgId, PackageDependency)
+                      -> Either Text (PkgId, DependencyRes)
 mapDependencyMetadata domain metadata (appId, depInfo) = do
     depMetadata <- case HM.lookup appId metadata of
         Nothing -> Left [i|dependency metadata for #{appId} not found.|]
         Just m  -> pure m
     -- get best version from VersionRange of dependency
-    let satisfactory = filter (<|| serviceDependencyInfoVersion depInfo) (fst . fst $ depMetadata)
+    let satisfactory = filter (<|| packageDependencyVersion depInfo) (fst . fst $ depMetadata)
     let best         = getMax <$> foldMap (Just . Max) satisfactory
     version <- case best of
         Nothing -> Left [i|No satisfactory version for dependent package #{appId}|]
         Just v  -> pure v
     pure
         ( appId
-        , DependencyInfo { dependencyInfoTitle = appId
-                         , dependencyInfoIcon  = [i|https://#{domain}/package/icon/#{appId}?spec==#{version}|]
-                         }
+        , DependencyRes { dependencyResTitle = appId
+                        , dependencyResIcon  = [i|https://#{domain}/package/icon/#{appId}?spec==#{version}|]
+                        }
         )
 
 fetchAllAppVersions :: PkgId -> Handler ([VersionInfo], ReleaseNotes)
