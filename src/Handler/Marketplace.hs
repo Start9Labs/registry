@@ -397,11 +397,11 @@ getPackageListR = do
                     sendResponseStatus status400 e
                 Just l -> pure l
         getOsVersionQuery :: Handler (Maybe VersionRange)
-        getOsVersionQuery = lookupGetParam "eos-version-range" >>= \case
+        getOsVersionQuery = lookupGetParam "eos-version-compat" >>= \case
             Nothing  -> pure Nothing
             Just osv -> case Atto.parseOnly parseRange osv of
                 Left _ -> do
-                    let e = InvalidParamsE "get:eos-version-range" osv
+                    let e = InvalidParamsE "get:eos-version-compat" osv
                     $logWarn (show e)
                     sendResponseStatus status400 e
                 Right v -> pure $ Just v
