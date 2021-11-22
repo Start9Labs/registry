@@ -1,0 +1,260 @@
+{
+  "id": "btc-rpc-proxy",
+  "title": "Bitcoin Proxy",
+  "version": "0.3.2.1",
+  "description": {
+    "short": "Super charge your Bitcoin node",
+    "long": "Bitcoin Proxy enables you to specify several users and, for each user, the list of RPC calls they are allowed to make against your Bitcoin node. It also acts as a super charger for your pruned node. If a user or application requires a block not retained by your node, Bitcoin Proxy will dynamically fetch the block over the P2P network, then verify its hash to ensure validity. Your pruned node will now act like a full archival node!\n"
+  },
+  "assets": {
+    "license": "LICENSE",
+    "instructions": "instructions.md",
+    "icon": "icon.png",
+    "docker-images": "image.tar",
+    "assets": null
+  },
+  "build": [
+    "make"
+  ],
+  "release-notes": "Upgrade to EmbassyOS v0.3.0",
+  "license": "mit",
+  "wrapper-repo": "https://github.com/Start9Labs/btc-rpc-proxy-wrapper",
+  "upstream-repo": "https://github.com/Kixunil/btc-rpc-proxy",
+  "support-site": "https://github.com/Kixunil/btc-rpc-proxy/issues",
+  "marketing-site": null,
+  "donation-url": null,
+  "alerts": {
+    "install": "After installing, you will need to manually enable the new RPC requests if you intend to use them. We strongly recommend enabling ALL requests for your primary user.\n",
+    "uninstall": null,
+    "restore": null,
+    "start": null,
+    "stop": null
+  },
+  "main": {
+    "type": "docker",
+    "image": "main",
+    "system": false,
+    "entrypoint": "docker_entrypoint.sh",
+    "args": [],
+    "mounts": {
+      "bitcoind": "/mnt/bitcoind",
+      "main": "/root"
+    },
+    "io-format": "yaml",
+    "inject": false,
+    "shm-size-mb": null
+  },
+  "health-checks": {
+    "main": {
+      "type": "docker",
+      "image": "main",
+      "system": false,
+      "entrypoint": "sh",
+      "args": [
+        "-c",
+        "curl btc-rpc-proxy.embassy:8332 || exit 1"
+      ],
+      "mounts": {},
+      "io-format": "yaml",
+      "inject": true,
+      "shm-size-mb": null,
+      "critical": true
+    }
+  },
+  "config": {
+    "get": {
+      "type": "docker",
+      "image": "compat",
+      "system": true,
+      "entrypoint": "compat",
+      "args": [
+        "config",
+        "get",
+        "/root",
+        "/mnt/assets/config_spec.yaml"
+      ],
+      "mounts": {
+        "compat": "/mnt/assets",
+        "main": "/root"
+      },
+      "io-format": "yaml",
+      "inject": false,
+      "shm-size-mb": null
+    },
+    "set": {
+      "type": "docker",
+      "image": "compat",
+      "system": true,
+      "entrypoint": "compat",
+      "args": [
+        "config",
+        "set",
+        "btc-rpc-proxy",
+        "/root",
+        "/mnt/assets/config_rules.yaml"
+      ],
+      "mounts": {
+        "compat": "/mnt/assets",
+        "main": "/root"
+      },
+      "io-format": "yaml",
+      "inject": false,
+      "shm-size-mb": null
+    }
+  },
+  "properties": {
+    "type": "docker",
+    "image": "compat",
+    "system": true,
+    "entrypoint": "compat",
+    "args": [
+      "properties",
+      "/root"
+    ],
+    "mounts": {
+      "compat": "/mnt/assets",
+      "main": "/root"
+    },
+    "io-format": "yaml",
+    "inject": false,
+    "shm-size-mb": null
+  },
+  "volumes": {
+    "bitcoind": {
+      "type": "pointer",
+      "package-id": "bitcoind",
+      "volume-id": "main",
+      "path": "/root/.bitcoin",
+      "readonly": true
+    },
+    "compat": {
+      "type": "assets"
+    },
+    "main": {
+      "type": "data"
+    }
+  },
+  "min-os-version": "0.3.0",
+  "interfaces": {
+    "main": {
+      "name": "Network interface",
+      "description": "Specifies the interface to listen on for HTTP connections.",
+      "tor-config": {
+        "port-mapping": {
+          "8332": "8332"
+        }
+      },
+      "lan-config": {
+        "8332": {
+          "ssl": true,
+          "mapping": 443
+        }
+      },
+      "ui": false,
+      "protocols": [
+        "tcp",
+        "http"
+      ]
+    }
+  },
+  "backup": {
+    "create": {
+      "type": "docker",
+      "image": "compat",
+      "system": true,
+      "entrypoint": "compat",
+      "args": [
+        "duplicity",
+        "create",
+        "/mnt/backup",
+        "/root/data"
+      ],
+      "mounts": {
+        "BACKUP": "/mnt/backup",
+        "main": "/root/data"
+      },
+      "io-format": "yaml",
+      "inject": false,
+      "shm-size-mb": null
+    },
+    "restore": {
+      "type": "docker",
+      "image": "compat",
+      "system": true,
+      "entrypoint": "compat",
+      "args": [
+        "duplicity",
+        "restore",
+        "/mnt/backup",
+        "/root/data"
+      ],
+      "mounts": {
+        "BACKUP": "/mnt/backup",
+        "main": "/root/data"
+      },
+      "io-format": "yaml",
+      "inject": false,
+      "shm-size-mb": null
+    }
+  },
+  "migrations": {
+    "from": {},
+    "to": {}
+  },
+  "actions": {},
+  "dependencies": {
+    "bitcoind": {
+      "version": ">=0.21.1.2 <0.22.0",
+      "requirement": {
+        "type": "opt-out",
+        "how": "Can alternatively configure an external bitcoin node."
+      },
+      "description": "Bitcoin Proxy sends RPC requests to a bitcoin node, like the Bitcoin Core service.",
+      "critical": false,
+      "config": {
+        "check": {
+          "type": "docker",
+          "image": "compat",
+          "system": true,
+          "entrypoint": "compat",
+          "args": [
+            "dependency",
+            "check",
+            "btc-rpc-proxy",
+            "bitcoind",
+            "/root",
+            "/mnt/assets/bitcoind_config_rules.yaml"
+          ],
+          "mounts": {
+            "compat": "/mnt/assets",
+            "main": "/root"
+          },
+          "io-format": "yaml",
+          "inject": false,
+          "shm-size-mb": null
+        },
+        "auto-configure": {
+          "type": "docker",
+          "image": "compat",
+          "system": true,
+          "entrypoint": "compat",
+          "args": [
+            "dependency",
+            "auto-configure",
+            "btc-rpc-proxy",
+            "bitcoind",
+            "/root",
+            "/mnt/assets/bitcoind_config_rules.yaml"
+          ],
+          "mounts": {
+            "compat": "/mnt/assets",
+            "main": "/root"
+          },
+          "io-format": "yaml",
+          "inject": false,
+          "shm-size-mb": null
+        }
+      }
+    }
+  }
+}
