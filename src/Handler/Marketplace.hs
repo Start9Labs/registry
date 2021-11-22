@@ -25,11 +25,10 @@ import           Conduit                        ( (.|)
                                                 , sinkList
                                                 , sourceFile
                                                 , takeC
+                                                , MonadUnliftIO
                                                 )
 import           Control.Monad.Except.CoHas     ( liftEither )
-import           Control.Monad.Reader.Has       ( Has
-                                                , ask
-                                                )
+
 import           Control.Parallel.Strategies    ( parMap
                                                 , rpar
                                                 )
@@ -90,7 +89,7 @@ import           Database.Persist               ( PersistUniqueRead(getBy)
                                                 , insertUnique
                                                 )
 import           Foundation                     ( Handler
-                                                , RegistryCtx(appSettings)
+                                                , RegistryCtx(appSettings, appConnPool)
                                                 )
 import           Lib.Error                      ( S9Error(..)
                                                 , toStatus
@@ -145,6 +144,7 @@ import           Yesod.Core                     ( MonadResource
                                                 , sendChunkBS
                                                 , sendResponseStatus
                                                 , typeOctet
+                                                , getYesod
                                                 )
 import           Yesod.Persist                  ( YesodDB )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
@@ -153,6 +153,11 @@ import           Data.Tuple.Extra        hiding ( second
                                                 , (&&&)
                                                 )
 import           Control.Monad.Logger
+import           Database.Persist.Sql           ( runSqlPool )
+import           Database.Persist.Postgresql    ( ConnectionPool )
+import           Control.Monad.Reader.Has       ( Has
+                                                , ask
+                                                )
 
 type URL = Text
 newtype CategoryRes = CategoryRes {
@@ -354,7 +359,7 @@ getPackageListR = do
         Nothing -> const True
         Just v  -> flip satisfies v
     pkgIds           <- getPkgIdsQuery
-    filteredServices <- case pkgIds of
+    filteredPackages <- case pkgIds of
         Nothing -> do
             -- query for all
             category <- getCategoryQuery
@@ -384,26 +389,18 @@ getPackageListR = do
                        )
                 .| filterOsCompatible osPredicate
                 .| sinkList
-    let keys = unPkgRecordKey . entityKey . fst3 <$> filteredServices
-    cats <- runDB $ fetchAppCategories keys
-    let vers =
-            filteredServices
-                <&> first3 (unPkgRecordKey . entityKey)
-                <&> second3 (sortOn Down . fmap (versionRecordNumber . entityVal))
-                <&> (\(a, vs, vr) -> (,) a $ (,) vs vr)
-                &   HM.fromListWith mergeDupes
-    let packageMetadata = HM.intersectionWith (,) vers (categoryName <<$>> cats)
-    serviceDetailResult <- mapConcurrently (getServiceDetails packageMetadata)
-                                           (unPkgRecordKey . entityKey . fst3 <$> filteredServices)
-    let res = partitionEithers serviceDetailResult
-    case fst res of
-        -- just throw first error?
-        x : _ -> sendResponseStatus (toStatus x) x
-        []    -> pure $ ServiceAvailableRes $ snd res
+    (keys, packageMetadata) <- runDB $ createPackageMetadata filteredPackages
+    appConnPool             <- appConnPool <$> getYesod
+    serviceDetailResult     <- mapConcurrently (getServiceDetails osPredicate appConnPool packageMetadata) keys
+    let (errors, res) = partitionEithers serviceDetailResult
+    case errors of
+        x : xs -> do
+            -- log all errors but just throw first error until Validation implemented - TODO https://hackage.haskell.org/package/validation
+            for_ xs (\e -> $logWarn [i|Get package list errors: #{e}|])
+            sendResponseStatus (toStatus x) x
+        [] -> pure $ ServiceAvailableRes res
 
     where
-        mergeDupes :: ([Version], VersionRange) -> ([Version], VersionRange) -> ([Version], VersionRange)
-        mergeDupes (vs, vr) (vs', _) = (,) ((++) vs vs') vr
         defaults = ServiceListDefaults { serviceListOrder      = DESC
                                        , serviceListPageLimit  = 20
                                        , serviceListPageNumber = 1
@@ -458,11 +455,33 @@ getPackageListR = do
                     sendResponseStatus status400 e
                 Right v -> pure $ Just v
 
-getServiceDetails :: (MonadIO m, MonadResource m, MonadReader r m, MonadLogger m, Has AppSettings r)
-                  => (HM.HashMap PkgId (([Version], VersionRange), [CategoryTitle]))
+mergeDupes :: ([Version], VersionRange) -> ([Version], VersionRange) -> ([Version], VersionRange)
+mergeDupes (vs, vr) (vs', _) = (,) ((++) vs vs') vr
+
+createPackageMetadata :: (MonadReader r m, MonadIO m)
+                      => [(Entity PkgRecord, [Entity VersionRecord], VersionRange)]
+                      -> ReaderT
+                             SqlBackend
+                             m
+                             ([PkgId], HM.HashMap PkgId (([Version], VersionRange), [CategoryTitle]))
+createPackageMetadata pkgs = do
+    let keys = unPkgRecordKey . entityKey . fst3 <$> pkgs
+    cats <- fetchAppCategories keys
+    let vers =
+            pkgs
+                <&> first3 (unPkgRecordKey . entityKey)
+                <&> second3 (sortOn Down . fmap (versionRecordNumber . entityVal))
+                <&> (\(a, vs, vr) -> (,) a $ (,) vs vr)
+                &   HM.fromListWith mergeDupes
+    pure $ (keys, HM.intersectionWith (,) vers (categoryName <<$>> cats))
+
+getServiceDetails :: (MonadIO m, MonadResource m, MonadReader r m, MonadLogger m, Has AppSettings r, MonadUnliftIO m)
+                  => (Version -> Bool)
+                  -> ConnectionPool
+                  -> (HM.HashMap PkgId (([Version], VersionRange), [CategoryTitle]))
                   -> PkgId
                   -> m (Either S9Error ServiceRes)
-getServiceDetails metadata pkg = runExceptT $ do
+getServiceDetails osPredicate appConnPool metadata pkg = runExceptT $ do
     settings        <- ask
     packageMetadata <- case HM.lookup pkg metadata of
         Nothing -> liftEither . Left $ NotFoundE [i|#{pkg} not found.|]
@@ -483,12 +502,15 @@ getServiceDetails metadata pkg = runExceptT $ do
     case eitherDecode manifest of
         Left  _ -> liftEither . Left $ AssetParseE [i|#{pkg}:manifest|] (decodeUtf8 $ BS.toStrict manifest)
         Right m -> do
-            let deps = partitionEithers $ parMap rpar
-                                                 (mapDependencyMetadata domain metadata)
-                                                 (HM.toList $ serviceManifestDependencies m)
-            case fst deps of
-                _ : xs -> do
-                    liftEither . Left $ DepMetadataE xs
+            let depVerList =
+                    (fst &&& (serviceDependencyInfoVersion . snd)) <$> (HM.toList $ serviceManifestDependencies m)
+            (_, depMetadata) <- lift $ runSqlPool (createPackageMetadata =<< getDependencies depVerList) appConnPool
+            let (errors, deps) = partitionEithers $ parMap
+                    rpar
+                    (mapDependencyMetadata domain $ (HM.union depMetadata metadata))
+                    (HM.toList $ serviceManifestDependencies m)
+            case errors of
+                _ : xs -> liftEither . Left $ DepMetadataE xs
                 [] -> pure $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{pkg}|]
                                         -- pass through raw JSON Value, we have checked its correct parsing above
                                         , serviceResManifest       = unsafeFromJust . decode $ manifest
@@ -496,8 +518,23 @@ getServiceDetails metadata pkg = runExceptT $ do
                                         , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{pkg}|]
                                         , serviceResLicense        = [i|https://#{domain}/package/license/#{pkg}|]
                                         , serviceResVersions       = fst . fst $ packageMetadata
-                                        , serviceResDependencyInfo = HM.fromList $ snd deps
+                                        , serviceResDependencyInfo = HM.fromList deps
                                         }
+    where
+        getDependencies :: (MonadResource m, MonadUnliftIO m)
+                        => [(PkgId, VersionRange)]
+                        -> ReaderT SqlBackend m [(Entity PkgRecord, [Entity VersionRecord], VersionRange)]
+        getDependencies deps =
+            runConduit
+                $  getPkgData (fst <$> deps)
+                .| zipVersions
+                .| mapC
+                       (\(a, vs) ->
+                           let spec = fromMaybe Any $ lookup (unPkgRecordKey $ entityKey a) deps
+                           in  (a, filter ((<|| spec) . versionRecordNumber . entityVal) vs, spec)
+                       )
+                .| filterOsCompatible osPredicate
+                .| sinkList
 
 mapDependencyMetadata :: Text
                       -> HM.HashMap PkgId (([Version], VersionRange), [CategoryTitle])

@@ -38,7 +38,7 @@ spec = do
         let pkg                           = fromJust $ head res
         let (manifest :: ServiceManifest) = fromRight' $ eitherDecode $ encode $ serviceResManifest pkg
         assertEq "manifest id should be bitcoind" (serviceManifestId manifest) "bitcoind"
-    xdescribe "GET /package/index?ids"
+    describe "GET /package/index?ids"
         $ withApp
         $ it "returns list of packages and dependencies at specified version"
         $ do
@@ -50,7 +50,6 @@ spec = do
               (res :: [ServiceRes]) <- requireJSONResponse
               assertEq "response should have one package" (length res) 1
               let pkg = fromJust $ head res
-              printBody
               assertEq "package dependency metadata should not be empty" (null $ serviceResDependencyInfo pkg) False
     describe "GET /package/index?ids" $ withApp $ it "returns list of packages at exactly specified version" $ do
         _ <- seedBitcoinLndStack
