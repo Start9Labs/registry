@@ -17,6 +17,8 @@ import           Seed
 import           Lib.Types.AppIndex
 import           Data.Aeson
 import           Data.Either.Extra
+import           Handler.Marketplace            ( PackageListRes )
+
 spec :: Spec
 spec = do
     describe "GET /package/index" $ withApp $ it "returns list of packages" $ do
@@ -25,7 +27,7 @@ spec = do
             setMethod "GET"
             setUrl ("/package/index" :: Text)
         statusIs 200
-        (res :: [ServiceRes]) <- requireJSONResponse
+        (res :: PackageListRes) <- requireJSONResponse
         assertEq "response should have two packages" (length res) 3
     describe "GET /package/index?ids" $ withApp $ it "returns list of packages at specified version" $ do
         _ <- seedBitcoinLndStack
@@ -33,11 +35,11 @@ spec = do
             setMethod "GET"
             setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\"=0.21.1.2\"}]" :: Text)
         statusIs 200
-        (res :: [ServiceRes]) <- requireJSONResponse
+        (res :: PackageListRes) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
         let pkg                           = fromJust $ head res
-        let (manifest :: ServiceManifest) = fromRight' $ eitherDecode $ encode $ serviceResManifest pkg
-        assertEq "manifest id should be bitcoind" (serviceManifestId manifest) "bitcoind"
+        let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
+        assertEq "manifest id should be bitcoind" (packageManifestId manifest) "bitcoind"
     describe "GET /package/index?ids"
         $ withApp
         $ it "returns list of packages and dependencies at specified version"
@@ -47,43 +49,43 @@ spec = do
                   setMethod "GET"
                   setUrl ("/package/index?ids=[{\"id\":\"lnd\",\"version\":\"=0.13.3.1\"}]" :: Text)
               statusIs 200
-              (res :: [ServiceRes]) <- requireJSONResponse
+              (res :: PackageListRes) <- requireJSONResponse
               assertEq "response should have one package" (length res) 1
               let pkg = fromJust $ head res
-              assertEq "package dependency metadata should not be empty" (null $ serviceResDependencyInfo pkg) False
+              assertEq "package dependency metadata should not be empty" (null $ packageResDependencyInfo pkg) False
     describe "GET /package/index?ids" $ withApp $ it "returns list of packages at exactly specified version" $ do
         _ <- seedBitcoinLndStack
         request $ do
             setMethod "GET"
             setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\"=0.21.1.1\"}]" :: Text)
         statusIs 200
-        (res :: [ServiceRes]) <- requireJSONResponse
+        (res :: PackageListRes) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
         let pkg                           = fromJust $ head res
-        let (manifest :: ServiceManifest) = fromRight' $ eitherDecode $ encode $ serviceResManifest pkg
-        assertEq "manifest version should be 0.21.1.1" (serviceManifestVersion manifest) "0.21.1.1"
+        let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
+        assertEq "manifest version should be 0.21.1.1" (packageManifestVersion manifest) "0.21.1.1"
     describe "GET /package/index?ids" $ withApp $ it "returns list of packages at specified version or greater" $ do
         _ <- seedBitcoinLndStack
         request $ do
             setMethod "GET"
             setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\">=0.21.1.1\"}]" :: Text)
         statusIs 200
-        (res :: [ServiceRes]) <- requireJSONResponse
+        (res :: PackageListRes) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
         let pkg                           = fromJust $ head res
-        let (manifest :: ServiceManifest) = fromRight' $ eitherDecode $ encode $ serviceResManifest pkg
-        assertEq "manifest version should be 0.21.1.2" (serviceManifestVersion manifest) "0.21.1.2"
+        let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
+        assertEq "manifest version should be 0.21.1.2" (packageManifestVersion manifest) "0.21.1.2"
     describe "GET /package/index?ids" $ withApp $ it "returns list of packages at specified version or greater" $ do
         _ <- seedBitcoinLndStack
         request $ do
             setMethod "GET"
             setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\">=0.21.1.2\"}]" :: Text)
         statusIs 200
-        (res :: [ServiceRes]) <- requireJSONResponse
+        (res :: PackageListRes) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
         let pkg                           = fromJust $ head res
-        let (manifest :: ServiceManifest) = fromRight' $ eitherDecode $ encode $ serviceResManifest pkg
-        assertEq "manifest version should be 0.21.1.2" (serviceManifestVersion manifest) "0.21.1.2"
+        let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
+        assertEq "manifest version should be 0.21.1.2" (packageManifestVersion manifest) "0.21.1.2"
     describe "GET /package/:pkgId with unknown version spec for bitcoind" $ withApp $ it "fails to get unknown app" $ do
         _ <- seedBitcoinLndStack
         request $ do
