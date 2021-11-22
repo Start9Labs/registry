@@ -92,7 +92,9 @@ import           Database.Persist               ( PersistUniqueRead(getBy)
 import           Foundation                     ( Handler
                                                 , RegistryCtx(appSettings)
                                                 )
-import           Lib.Error                      ( S9Error(..) )
+import           Lib.Error                      ( S9Error(..)
+                                                , toStatus
+                                                )
 import           Lib.PkgRepository              ( getManifest )
 import           Lib.Types.AppIndex             ( PkgId(PkgId)
                                                 , ServiceDependencyInfo(serviceDependencyInfoVersion)
@@ -138,7 +140,6 @@ import           Yesod.Core                     ( MonadResource
                                                 , addHeader
                                                 , getRequest
                                                 , getsYesod
-                                                , logWarn
                                                 , lookupGetParam
                                                 , respondSource
                                                 , sendChunkBS
@@ -151,6 +152,7 @@ import           Data.Tuple.Extra        hiding ( second
                                                 , first
                                                 , (&&&)
                                                 )
+import           Control.Monad.Logger
 
 type URL = Text
 newtype CategoryRes = CategoryRes {
@@ -393,8 +395,11 @@ getPackageListR = do
     let packageMetadata = HM.intersectionWith (,) vers (categoryName <<$>> cats)
     serviceDetailResult <- mapConcurrently (getServiceDetails packageMetadata)
                                            (unPkgRecordKey . entityKey . fst3 <$> filteredServices)
-    let services = snd $ partitionEithers serviceDetailResult
-    pure $ ServiceAvailableRes services
+    let res = partitionEithers serviceDetailResult
+    case fst res of
+        -- just throw first error?
+        x : _ -> sendResponseStatus (toStatus x) x
+        []    -> pure $ ServiceAvailableRes $ snd res
 
     where
         mergeDupes :: ([Version], VersionRange) -> ([Version], VersionRange) -> ([Version], VersionRange)
@@ -453,7 +458,7 @@ getPackageListR = do
                     sendResponseStatus status400 e
                 Right v -> pure $ Just v
 
-getServiceDetails :: (MonadIO m, MonadResource m, MonadReader r m, Has AppSettings r)
+getServiceDetails :: (MonadIO m, MonadResource m, MonadReader r m, MonadLogger m, Has AppSettings r)
                   => (HM.HashMap PkgId (([Version], VersionRange), [CategoryTitle]))
                   -> PkgId
                   -> m (Either S9Error ServiceRes)
@@ -478,30 +483,35 @@ getServiceDetails metadata pkg = runExceptT $ do
     case eitherDecode manifest of
         Left  _ -> liftEither . Left $ AssetParseE [i|#{pkg}:manifest|] (decodeUtf8 $ BS.toStrict manifest)
         Right m -> do
-            let d = parMap rpar (mapDependencyMetadata domain metadata) (HM.toList $ serviceManifestDependencies m)
-            pure $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{pkg}|]
+            let deps = partitionEithers $ parMap rpar
+                                                 (mapDependencyMetadata domain metadata)
+                                                 (HM.toList $ serviceManifestDependencies m)
+            case fst deps of
+                _ : xs -> do
+                    liftEither . Left $ DepMetadataE xs
+                [] -> pure $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{pkg}|]
                                         -- pass through raw JSON Value, we have checked its correct parsing above
-                              , serviceResManifest       = unsafeFromJust . decode $ manifest
-                              , serviceResCategories     = snd packageMetadata
-                              , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{pkg}|]
-                              , serviceResLicense        = [i|https://#{domain}/package/license/#{pkg}|]
-                              , serviceResVersions       = fst . fst $ packageMetadata
-                              , serviceResDependencyInfo = HM.fromList $ snd $ partitionEithers d
-                              }
+                                        , serviceResManifest       = unsafeFromJust . decode $ manifest
+                                        , serviceResCategories     = snd packageMetadata
+                                        , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{pkg}|]
+                                        , serviceResLicense        = [i|https://#{domain}/package/license/#{pkg}|]
+                                        , serviceResVersions       = fst . fst $ packageMetadata
+                                        , serviceResDependencyInfo = HM.fromList $ snd deps
+                                        }
 
 mapDependencyMetadata :: Text
                       -> HM.HashMap PkgId (([Version], VersionRange), [CategoryTitle])
                       -> (PkgId, ServiceDependencyInfo)
-                      -> Either S9Error (PkgId, DependencyInfo)
+                      -> Either Text (PkgId, DependencyInfo)
 mapDependencyMetadata domain metadata (appId, depInfo) = do
     depMetadata <- case HM.lookup appId metadata of
-        Nothing -> Left $ NotFoundE [i|dependency metadata for #{appId} not found.|]
+        Nothing -> Left [i|dependency metadata for #{appId} not found.|]
         Just m  -> pure m
     -- get best version from VersionRange of dependency
     let satisfactory = filter (<|| serviceDependencyInfoVersion depInfo) (fst . fst $ depMetadata)
     let best         = getMax <$> foldMap (Just . Max) satisfactory
     version <- case best of
-        Nothing -> Left $ NotFoundE $ [i|No satisfactory version for dependent package #{appId}|]
+        Nothing -> Left [i|No satisfactory version for dependent package #{appId}|]
         Just v  -> pure v
     pure
         ( appId

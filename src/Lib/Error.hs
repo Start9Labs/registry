@@ -8,6 +8,7 @@ import           Startlude
 import           Data.String.Interpolate.IsString
 import           Network.HTTP.Types
 import           Yesod.Core
+import qualified Data.Text                     as T
 
 type S9ErrT m = ExceptT S9Error m
 
@@ -17,6 +18,7 @@ data S9Error =
     | NotFoundE Text
     | InvalidParamsE Text Text
     | AssetParseE Text Text
+    | DepMetadataE [Text]
     deriving (Show, Eq)
 
 instance Exception S9Error
@@ -29,6 +31,9 @@ toError = \case
     NotFoundE e                -> Error NOT_FOUND [i|#{e}|]
     InvalidParamsE e     m     -> Error INVALID_PARAMS [i|Could not parse request parameters #{e}: #{m}|]
     AssetParseE    asset found -> Error PARSE_ERROR [i|Could not parse #{asset}: #{found}|]
+    DepMetadataE errs          -> do
+        let errorText = T.concat errs
+        Error NOT_FOUND [i|#{errorText}|]
 
 data ErrorCode =
       DATABASE_ERROR
@@ -64,3 +69,4 @@ toStatus = \case
     NotFoundE _        -> status404
     InvalidParamsE _ _ -> status400
     AssetParseE    _ _ -> status500
+    DepMetadataE _     -> status404
