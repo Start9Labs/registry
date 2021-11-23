@@ -96,7 +96,8 @@ import           UnliftIO                       ( MonadUnliftIO
                                                 )
 import           UnliftIO                       ( tryPutMVar )
 import           UnliftIO.Concurrent            ( forkIO )
-import           UnliftIO.Directory             ( getFileSize
+import           UnliftIO.Directory             ( doesPathExist
+                                                , getFileSize
                                                 , listDirectory
                                                 , removeFile
                                                 , renameFile
@@ -257,9 +258,13 @@ getHash pkg version = do
 getPackage :: (MonadResource m, MonadReader r m, Has PkgRepo r)
            => PkgId
            -> Version
-           -> m (Integer, ConduitT () ByteString m ())
+           -> m (Maybe (Integer, ConduitT () ByteString m ()))
 getPackage pkg version = do
     root <- asks pkgRepoFileRoot
     let pkgPath = root </> show pkg </> show version </> show pkg <.> "s9pk"
-    n <- getFileSize pkgPath
-    pure (n, sourceFile pkgPath)
+    found <- doesPathExist pkgPath
+    if found
+        then do
+            n <- getFileSize pkgPath
+            pure . Just $ (n, sourceFile pkgPath)
+        else pure Nothing
