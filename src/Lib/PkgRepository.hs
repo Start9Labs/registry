@@ -128,7 +128,7 @@ getVersionsFor pkg = do
     exists <- doesDirectoryExist pkgDir
     if exists
         then do
-            subdirs <- listDirectory $ root </> show pkg
+            subdirs <- listDirectory pkgDir
             let (failures, successes) = partitionEithers $ (Atto.parseOnly parseVersion . T.pack) <$> subdirs
             for_ failures $ \f -> $logWarn [i|Emver Parse Failure for #{pkg}: #{f}|]
             pure successes
