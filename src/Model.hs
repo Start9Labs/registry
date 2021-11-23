@@ -79,4 +79,16 @@ EosHash
     version Version
     hash Text
     UniqueVersion version
+
+ErrorLogRecord
+    createdAt UTCTime
+    epoch Word64
+    commitHash Text
+    sourceFile Text
+    line Word32
+    target Text
+    level Text
+    message Text
+    incidents Word32
+    UniqueLogRecord epoch commitHash sourceFile line target level message
 |]
