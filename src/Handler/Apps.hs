@@ -76,7 +76,7 @@ getAppR file = do
     addPackageHeader pkg version
     void $ recordMetrics pkg version
     (len, src) <- getPackage pkg version >>= \case
-        Nothing -> sendResponseStatus status404 ([i|#{pkg}@#{version} not found|] :: Text)
+        Nothing -> sendResponseStatus status404 (NotFoundE [i|#{pkg}@#{version} not found|])
         Just a  -> pure a
     addHeader "Content-Length" (show len)
     respondSource typeOctet $ src .| awaitForever sendChunkBS
