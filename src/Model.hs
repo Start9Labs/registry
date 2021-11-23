@@ -74,4 +74,9 @@ PkgCategory
     categoryId CategoryId
     deriving Eq
     deriving Show
+
+EosHash
+    version Version
+    hash Text
+    UniqueVersion version
 |]
