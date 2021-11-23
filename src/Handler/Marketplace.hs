@@ -11,6 +11,7 @@ module Handler.Marketplace where
 import           Startlude               hiding ( Any
                                                 , Handler
                                                 , ask
+                                                , concurrently
                                                 , from
                                                 , on
                                                 , sortOn
@@ -32,6 +33,8 @@ import           Control.Monad.Reader.Has       ( Has
 import           Control.Parallel.Strategies    ( parMap
                                                 , rpar
                                                 )
+import           Crypto.Hash                    ( SHA256 )
+import           Crypto.Hash.Conduit            ( hashFile )
 import           Data.Aeson                     ( (.:)
                                                 , FromJSON(parseJSON)
                                                 , KeyValue((.=))
@@ -44,6 +47,9 @@ import           Data.Aeson                     ( (.:)
                                                 , withObject
                                                 )
 import qualified Data.Attoparsec.Text          as Atto
+import           Data.ByteArray.Encoding        ( Base(Base16)
+                                                , convertToBase
+                                                )
 import qualified Data.ByteString.Lazy          as BS
 import qualified Data.Conduit.List             as CL
 import qualified Data.HashMap.Strict           as HM
@@ -80,6 +86,9 @@ import           Database.Marketplace           ( filterOsCompatible
                                                 , zipVersions
                                                 )
 import qualified Database.Persist              as P
+import           Database.Persist               ( PersistUniqueRead(getBy)
+                                                , insertUnique
+                                                )
 import           Foundation                     ( Handler
                                                 , RegistryCtx(appSettings)
                                                 )
@@ -101,10 +110,12 @@ import           Lib.Types.Emver                ( (<||)
                                                 )
 import           Model                          ( Category(..)
                                                 , EntityField(..)
+                                                , EosHash(EosHash, eosHashHash)
                                                 , Key(PkgRecordKey, unPkgRecordKey)
                                                 , OsVersion(..)
                                                 , PkgCategory
                                                 , PkgRecord(..)
+                                                , Unique(UniqueVersion)
                                                 , VersionRecord(..)
                                                 )
 import           Network.HTTP.Types             ( status400
@@ -114,7 +125,9 @@ import           Protolude.Unsafe               ( unsafeFromJust )
 import           Settings                       ( AppSettings(registryHostname, resourcesDir) )
 import           System.Directory               ( getFileSize )
 import           System.FilePath                ( (</>) )
-import           UnliftIO.Async                 ( mapConcurrently )
+import           UnliftIO.Async                 ( concurrently
+                                                , mapConcurrently
+                                                )
 import           UnliftIO.Directory             ( listDirectory )
 import           Util.Shared                    ( getVersionSpecFromQuery )
 import           Yesod.Core                     ( MonadResource
@@ -132,6 +145,7 @@ import           Yesod.Core                     ( MonadResource
                                                 , sendResponseStatus
                                                 , typeOctet
                                                 )
+import           Yesod.Persist                  ( YesodDB )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
 type URL = Text
@@ -273,13 +287,26 @@ getEosR = do
     subdirs <- listDirectory root
     let (failures, successes) = partitionEithers $ (Atto.parseOnly parseVersion . T.pack) <$> subdirs
     for_ failures $ \f -> $logWarn [i|Emver Parse Failure for EOS: #{f}|]
-    let res = headMay . sortOn Down . filter (`satisfies` spec) $ successes
-    case res of
-        Nothing -> sendResponseStatus status404 (NotFoundE [i|EOS version satisfying #{spec}|])
-        Just r  -> do
-            let imgPath = root </> show r </> "eos.img"
-            liftIO (getFileSize imgPath) >>= addHeader "Content-Length" . show
+    let mVersion = headMay . sortOn Down . filter (`satisfies` spec) $ successes
+    case mVersion of
+        Nothing      -> sendResponseStatus status404 (NotFoundE [i|EOS version satisfying #{spec}|])
+        Just version -> do
+            let imgPath = root </> show version </> "eos.img"
+            (sz, h) <- runDB $ concurrently (liftIO $ getFileSize imgPath) (retrieveHash version imgPath)
+            addHeader "Content-Length" $ show sz
+            addHeader "x-eos-hash" h
             respondSource typeOctet (sourceFile imgPath .| awaitForever sendChunkBS)
+    where
+        retrieveHash :: Version -> FilePath -> YesodDB RegistryCtx Text
+        retrieveHash v fp = do
+            mHash <- getBy (UniqueVersion v)
+            case mHash of
+                Just h  -> pure . eosHashHash . entityVal $ h
+                Nothing -> do
+                    h <- hashFile @_ @SHA256 fp
+                    let t = decodeUtf8 $ convertToBase Base16 h
+                    void $ insertUnique (EosHash v t) -- lazily populate
+                    pure t
 
 getVersionLatestR :: Handler VersionLatestRes
 getVersionLatestR = do
