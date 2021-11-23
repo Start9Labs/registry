@@ -8,20 +8,25 @@ import           Data.Aeson                     ( (.:)
                                                 , withObject
                                                 , withText
                                                 )
-import qualified Data.Text                     as T
 import           Foundation
-import           Settings                       ( AppSettings(errorLogRoot) )
-import           Startlude               hiding ( Handler )
-import           System.FilePath                ( (<.>)
-                                                , (</>)
+import           Model                          ( EntityField(ErrorLogRecordIncidents)
+                                                , ErrorLogRecord(ErrorLogRecord)
                                                 )
-import           Yesod.Core                     ( getsYesod
-                                                , requireCheckJsonBody
+import           Startlude               hiding ( Handler )
+import           Yesod.Core                     ( requireCheckJsonBody )
+import           Yesod.Persist                  ( (+=.)
+                                                , runDB
+                                                , upsert
                                                 )
 
 data ErrorLog = ErrorLog
-    { errorLogEpoch   :: Word64
-    , errorLogMessage :: Text
+    { errorLogEpoch      :: Word64
+    , errorLogCommitHash :: Text
+    , errorLogSourceFile :: Text
+    , errorLogLine       :: Word32
+    , errorLogTarget     :: Text
+    , errorLogLevel      :: Text
+    , errorLogMessage    :: Text
     }
     deriving (Eq, Show)
 
@@ -33,14 +38,27 @@ instance FromJSON ErrorLog where
                 Nothing -> fail "Invalid Log Epoch"
                 Just x  -> pure x
             )
-        errorLogMessage <- o .: "log-message"
+        errorLogCommitHash <- o .: "commit-hash"
+        errorLogSourceFile <- o .: "file"
+        errorLogLine       <- o .: "line"
+        errorLogLevel      <- o .: "level"
+        errorLogTarget     <- o .: "target"
+        errorLogMessage    <- o .: "log-message"
         pure ErrorLog { .. }
 
 
 postErrorLogsR :: Handler ()
 postErrorLogsR = do
     ErrorLog {..} <- requireCheckJsonBody @_ @ErrorLog
-    root          <- getsYesod $ errorLogRoot . appSettings
-    void $ liftIO $ forkIO $ appendFile (root </> show errorLogEpoch <.> "log") $ if "\n" `T.isSuffixOf` errorLogMessage
-        then errorLogMessage
-        else T.snoc errorLogMessage '\n'
+    void $ runDB $ do
+        now <- liftIO getCurrentTime
+        let logRecord = ErrorLogRecord now
+                                       errorLogEpoch
+                                       errorLogCommitHash
+                                       errorLogSourceFile
+                                       errorLogLine
+                                       errorLogTarget
+                                       errorLogLevel
+                                       errorLogMessage
+                                       1
+        upsert logRecord [ErrorLogRecordIncidents +=. 1]
