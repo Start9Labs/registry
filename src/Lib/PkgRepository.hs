@@ -96,7 +96,8 @@ import           UnliftIO                       ( MonadUnliftIO
                                                 )
 import           UnliftIO                       ( tryPutMVar )
 import           UnliftIO.Concurrent            ( forkIO )
-import           UnliftIO.Directory             ( doesPathExist
+import           UnliftIO.Directory             ( doesDirectoryExist
+                                                , doesPathExist
                                                 , getFileSize
                                                 , listDirectory
                                                 , removeFile
@@ -122,11 +123,16 @@ data PkgRepo = PkgRepo
 
 getVersionsFor :: (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m) => PkgId -> m [Version]
 getVersionsFor pkg = do
-    root    <- asks pkgRepoFileRoot
-    subdirs <- listDirectory $ root </> show pkg
-    let (failures, successes) = partitionEithers $ (Atto.parseOnly parseVersion . T.pack) <$> subdirs
-    for_ failures $ \f -> $logWarn [i|Emver Parse Failure for #{pkg}: #{f}|]
-    pure successes
+    root <- asks pkgRepoFileRoot
+    let pkgDir = root </> show pkg
+    exists <- doesDirectoryExist pkgDir
+    if exists
+        then do
+            subdirs <- listDirectory pkgDir
+            let (failures, successes) = partitionEithers $ (Atto.parseOnly parseVersion . T.pack) <$> subdirs
+            for_ failures $ \f -> $logWarn [i|Emver Parse Failure for #{pkg}: #{f}|]
+            pure successes
+        else pure []
 
 getViableVersions :: (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m) => PkgId -> VersionRange -> m [Version]
 getViableVersions pkg spec = filter (`satisfies` spec) <$> getVersionsFor pkg
