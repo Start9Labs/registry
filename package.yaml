@@ -22,6 +22,8 @@ dependencies:
   - can-i-haz
   - conduit
   - conduit-extra
+  - cryptonite
+  - cryptonite-conduit
   - data-default
   - directory
   - errors
@@ -36,6 +38,7 @@ dependencies:
   - http-types
   - interpolate
   - lens
+  - memory
   - monad-logger
   - monad-logger-extras
   - parallel
