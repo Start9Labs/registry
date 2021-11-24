@@ -2,11 +2,9 @@
 {-# LANGUAGE TypeApplications #-}
 module Handler.ErrorLogs where
 
-import           Control.Monad                  ( MonadFail(fail) )
 import           Data.Aeson                     ( (.:)
                                                 , FromJSON(parseJSON)
                                                 , withObject
-                                                , withText
                                                 )
 import           Foundation
 import           Model                          ( EntityField(ErrorLogRecordIncidents)
@@ -20,7 +18,7 @@ import           Yesod.Persist                  ( (+=.)
                                                 )
 
 data ErrorLog = ErrorLog
-    { errorLogEpoch      :: Word64
+    { errorLogEpoch      :: Text
     , errorLogCommitHash :: Text
     , errorLogSourceFile :: Text
     , errorLogLine       :: Word32
@@ -32,12 +30,7 @@ data ErrorLog = ErrorLog
 
 instance FromJSON ErrorLog where
     parseJSON = withObject "Error Log" $ \o -> do
-        errorLogEpoch <- o .: "log-epoch" >>= withText
-            "Word64"
-            (\t -> case readMaybe t of
-                Nothing -> fail "Invalid Log Epoch"
-                Just x  -> pure x
-            )
+        errorLogEpoch      <- o .: "log-epoch"
         errorLogCommitHash <- o .: "commit-hash"
         errorLogSourceFile <- o .: "file"
         errorLogLine       <- o .: "line"
