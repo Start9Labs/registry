@@ -82,7 +82,7 @@ EosHash
 
 ErrorLogRecord
     createdAt UTCTime
-    epoch Word64
+    epoch Text
     commitHash Text
     sourceFile Text
     line Word32
