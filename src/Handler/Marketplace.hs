@@ -42,8 +42,6 @@ import           Data.Aeson                     ( (.:)
                                                 , decode
                                                 , eitherDecode
                                                 , eitherDecodeStrict
-                                                , object
-                                                , withObject
                                                 )
 import qualified Data.Attoparsec.Text          as Atto
 import           Data.ByteArray.Encoding        ( Base(Base16)
@@ -61,28 +59,22 @@ import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
 import           Database.Esqueleto.Experimental
-                                                ( (:&)((:&))
-                                                , (==.)
-                                                , Entity(entityKey, entityVal)
+                                                ( Entity(entityKey, entityVal)
                                                 , SqlBackend
-                                                , Value(unValue)
                                                 , (^.)
                                                 , desc
                                                 , from
-                                                , in_
-                                                , innerJoin
-                                                , on
                                                 , orderBy
                                                 , select
                                                 , table
-                                                , val
-                                                , valList
-                                                , where_
                                                 )
 import           Database.Marketplace           ( filterOsCompatible
                                                 , getPkgData
                                                 , searchServices
                                                 , zipVersions
+                                                , fetchAllAppVersions
+                                                , fetchLatestApp
+                                                , fetchAppCategories
                                                 )
 import qualified Database.Persist              as P
 import           Database.Persist               ( PersistUniqueRead(getBy)
@@ -98,7 +90,6 @@ import           Lib.PkgRepository              ( getManifest )
 import           Lib.Types.AppIndex             ( PkgId(PkgId)
                                                 , PackageDependency(packageDependencyVersion)
                                                 , PackageManifest(packageManifestDependencies)
-                                                , VersionInfo(..)
                                                 )
 import           Lib.Types.AppIndex             ( )
 import           Lib.Types.Category             ( CategoryTitle(..) )
@@ -114,7 +105,6 @@ import           Model                          ( Category(..)
                                                 , EosHash(EosHash, eosHashHash)
                                                 , Key(PkgRecordKey, unPkgRecordKey)
                                                 , OsVersion(..)
-                                                , PkgCategory
                                                 , PkgRecord(..)
                                                 , Unique(UniqueVersion)
                                                 , VersionRecord(..)
@@ -132,8 +122,6 @@ import           UnliftIO.Async                 ( concurrently
 import           UnliftIO.Directory             ( listDirectory )
 import           Util.Shared                    ( getVersionSpecFromQuery )
 import           Yesod.Core                     ( MonadResource
-                                                , ToContent(..)
-                                                , ToTypedContent(..)
                                                 , TypedContent
                                                 , YesodRequest(..)
                                                 , addHeader
@@ -158,115 +146,7 @@ import           Database.Persist.Postgresql    ( ConnectionPool )
 import           Control.Monad.Reader.Has       ( Has
                                                 , ask
                                                 )
-
-type URL = Text
-newtype CategoryRes = CategoryRes {
-    categories :: [CategoryTitle]
-} deriving (Show, Generic)
-instance ToJSON CategoryRes
-instance ToContent CategoryRes where
-    toContent = toContent . toJSON
-instance ToTypedContent CategoryRes where
-    toTypedContent = toTypedContent . toJSON
-data PackageRes = PackageRes
-    { packageResIcon           :: URL
-    , packageResManifest       :: Data.Aeson.Value -- PackageManifest
-    , packageResCategories     :: [CategoryTitle]
-    , packageResInstructions   :: URL
-    , packageResLicense        :: URL
-    , packageResVersions       :: [Version]
-    , packageResDependencies :: HM.HashMap PkgId DependencyRes
-    }
-    deriving (Show, Generic)
-newtype ReleaseNotes = ReleaseNotes { unReleaseNotes :: HM.HashMap Version Text }
-    deriving (Eq, Show)
-instance ToJSON ReleaseNotes where
-    toJSON ReleaseNotes {..} = object [ t .= v | (k, v) <- HM.toList unReleaseNotes, let (String t) = toJSON k ]
-instance ToContent ReleaseNotes where
-    toContent = toContent . toJSON
-instance ToTypedContent ReleaseNotes where
-    toTypedContent = toTypedContent . toJSON
-instance ToJSON PackageRes where
-    toJSON PackageRes {..} = object
-        [ "icon" .= packageResIcon
-        , "license" .= packageResLicense
-        , "instructions" .= packageResInstructions
-        , "manifest" .= packageResManifest
-        , "categories" .= packageResCategories
-        , "versions" .= packageResVersions
-        , "dependency-metadata" .= packageResDependencies
-        ]
-instance FromJSON PackageRes where
-    parseJSON = withObject "PackageRes" $ \o -> do
-        packageResIcon         <- o .: "icon"
-        packageResLicense      <- o .: "license"
-        packageResInstructions <- o .: "instructions"
-        packageResManifest     <- o .: "manifest"
-        packageResCategories   <- o .: "categories"
-        packageResVersions     <- o .: "versions"
-        packageResDependencies <- o .: "dependency-metadata"
-        pure PackageRes { .. }
-data DependencyRes = DependencyRes
-    { dependencyResTitle :: PkgId
-    , dependencyResIcon  :: URL
-    }
-    deriving (Eq, Show)
-instance ToJSON DependencyRes where
-    toJSON DependencyRes {..} = object ["icon" .= dependencyResIcon, "title" .= dependencyResTitle]
-instance FromJSON DependencyRes where
-    parseJSON = withObject "DependencyRes" $ \o -> do
-        dependencyResIcon  <- o .: "icon"
-        dependencyResTitle <- o .: "title"
-        pure DependencyRes { .. }
-newtype PackageListRes = PackageListRes [PackageRes]
-    deriving (Generic)
-instance ToJSON PackageListRes
-instance ToContent PackageListRes where
-    toContent = toContent . toJSON
-instance ToTypedContent PackageListRes where
-    toTypedContent = toTypedContent . toJSON
-
-newtype VersionLatestRes = VersionLatestRes (HM.HashMap PkgId (Maybe Version))
-    deriving (Show, Generic)
-instance ToJSON VersionLatestRes
-instance ToContent VersionLatestRes where
-    toContent = toContent . toJSON
-instance ToTypedContent VersionLatestRes where
-    toTypedContent = toTypedContent . toJSON
-data OrderArrangement = ASC | DESC
-    deriving (Eq, Show, Read)
-data PackageListDefaults = PackageListDefaults
-    { packageListOrder      :: OrderArrangement
-    , packageListPageLimit  :: Int -- the number of items per page
-    , packageListPageNumber :: Int -- the page you are on
-    , packageListCategory   :: Maybe CategoryTitle
-    , packageListQuery      :: Text
-    }
-    deriving (Eq, Show, Read)
-data EosRes = EosRes
-    { eosResVersion      :: Version
-    , eosResHeadline     :: Text
-    , eosResReleaseNotes :: ReleaseNotes
-    }
-    deriving (Eq, Show, Generic)
-instance ToJSON EosRes where
-    toJSON EosRes {..} =
-        object ["version" .= eosResVersion, "headline" .= eosResHeadline, "release-notes" .= eosResReleaseNotes]
-instance ToContent EosRes where
-    toContent = toContent . toJSON
-instance ToTypedContent EosRes where
-    toTypedContent = toTypedContent . toJSON
-
-data PackageReq = PackageReq
-    { packageReqId      :: PkgId
-    , packageReqVersion :: VersionRange
-    }
-    deriving Show
-instance FromJSON PackageReq where
-    parseJSON = withObject "package version" $ \o -> do
-        packageReqId      <- o .: "id"
-        packageReqVersion <- o .: "version"
-        pure PackageReq { .. }
+import           Handler.Types.Marketplace
 
 getCategoriesR :: Handler CategoryRes
 getCategoriesR = do
@@ -301,7 +181,8 @@ getReleaseNotesR = do
     case lookup "id" getParameters of
         Nothing      -> sendResponseStatus status400 (InvalidParamsE "get:id" "<MISSING>")
         Just package -> do
-            (_, notes) <- fetchAllAppVersions (PkgId package)
+            appConnPool <- appConnPool <$> getYesod
+            (_, notes)  <- runDB $ fetchAllAppVersions appConnPool (PkgId package)
             pure notes
 
 getEosR :: Handler TypedContent
@@ -562,50 +443,3 @@ mapDependencyMetadata domain metadata (appId, depInfo) = do
                         , dependencyResIcon  = [i|https://#{domain}/package/icon/#{appId}?spec==#{version}|]
                         }
         )
-
-fetchAllAppVersions :: PkgId -> Handler ([VersionInfo], ReleaseNotes)
-fetchAllAppVersions appId = do
-    entityAppVersions <- runDB $ P.selectList [VersionRecordPkgId P.==. PkgRecordKey appId] []
-    let vers           = entityVal <$> entityAppVersions
-    let vv             = mapSVersionToVersionInfo vers
-    let mappedVersions = ReleaseNotes $ HM.fromList $ (\v -> (versionInfoVersion v, versionInfoReleaseNotes v)) <$> vv
-    pure (sortOn (Down . versionInfoVersion) vv, mappedVersions)
-    where
-        mapSVersionToVersionInfo :: [VersionRecord] -> [VersionInfo]
-        mapSVersionToVersionInfo sv = do
-            (\v -> VersionInfo { versionInfoVersion      = versionRecordNumber v
-                               , versionInfoReleaseNotes = versionRecordReleaseNotes v
-                               , versionInfoDependencies = HM.empty
-                               , versionInfoOsVersion    = versionRecordOsVersion v
-                               , versionInfoInstallAlert = Nothing
-                               }
-                )
-                <$> sv
-
-
-fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity PkgRecord, P.Entity VersionRecord))
-fetchLatestApp appId = fmap headMay . sortResults . select $ do
-    (service :& version) <-
-        from
-        $           table @PkgRecord
-        `innerJoin` table @VersionRecord
-        `on`        (\(service :& version) -> service ^. PkgRecordId ==. version ^. VersionRecordPkgId)
-    where_ (service ^. PkgRecordId ==. val (PkgRecordKey appId))
-    pure (service, version)
-    where sortResults = fmap $ sortOn (Down . versionRecordNumber . entityVal . snd)
-
-
-fetchAppCategories :: MonadIO m => [PkgId] -> ReaderT SqlBackend m (HM.HashMap PkgId [Category])
-fetchAppCategories appIds = do
-    raw <- select $ do
-        (sc :& app :& cat) <-
-            from
-            $           table @PkgCategory
-            `innerJoin` table @PkgRecord
-            `on`        (\(sc :& app) -> sc ^. PkgCategoryPkgId ==. app ^. PkgRecordId)
-            `innerJoin` table @Category
-            `on`        (\(sc :& _ :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
-        where_ (sc ^. PkgCategoryPkgId `in_` valList (PkgRecordKey <$> appIds))
-        pure (app ^. PkgRecordId, cat)
-    let ls = fmap (first (unPkgRecordKey . unValue) . second (pure . entityVal)) raw
-    pure $ HM.fromListWith (++) ls

@@ -143,6 +143,7 @@ getBestVersion :: (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m)
                -> m (Maybe Version)
 getBestVersion pkg spec = headMay . sortOn Down <$> getViableVersions pkg spec
 
+-- TODO add loadDependencies 
 -- extract all package assets into their own respective files
 extractPkg :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => FilePath -> m ()
 extractPkg fp = handle @_ @SomeException cleanup $ do
@@ -193,7 +194,8 @@ watchPkgRepoRoot = do
         stop <- watchTree watchManager root onlyAdded $ \evt -> do
             let pkg = eventPath evt
             -- TODO: validate that package path is an actual s9pk and is in a correctly conforming path.
-            void . forkIO $ runInIO (extractPkg pkg)
+            void . forkIO $ runInIO $ do
+                (extractPkg pkg)
         takeMVar box
         stop
     pure $ tryPutMVar box ()
