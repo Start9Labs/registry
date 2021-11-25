@@ -17,7 +17,7 @@ import           Seed
 import           Lib.Types.AppIndex
 import           Data.Aeson
 import           Data.Either.Extra
-import           Handler.Marketplace            ( PackageListRes )
+import           Handler.Marketplace            ( PackageRes )
 
 spec :: Spec
 spec = do
@@ -27,7 +27,7 @@ spec = do
             setMethod "GET"
             setUrl ("/package/index" :: Text)
         statusIs 200
-        (res :: PackageListRes) <- requireJSONResponse
+        (res :: [PackageRes]) <- requireJSONResponse
         assertEq "response should have two packages" (length res) 3
     describe "GET /package/index?ids" $ withApp $ it "returns list of packages at specified version" $ do
         _ <- seedBitcoinLndStack
@@ -35,7 +35,7 @@ spec = do
             setMethod "GET"
             setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\"=0.21.1.2\"}]" :: Text)
         statusIs 200
-        (res :: PackageListRes) <- requireJSONResponse
+        (res :: [PackageRes]) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
         let pkg                           = fromJust $ head res
         let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
@@ -49,17 +49,17 @@ spec = do
                   setMethod "GET"
                   setUrl ("/package/index?ids=[{\"id\":\"lnd\",\"version\":\"=0.13.3.1\"}]" :: Text)
               statusIs 200
-              (res :: PackageListRes) <- requireJSONResponse
+              (res :: [PackageRes]) <- requireJSONResponse
               assertEq "response should have one package" (length res) 1
               let pkg = fromJust $ head res
-              assertEq "package dependency metadata should not be empty" (null $ packageResDependencyInfo pkg) False
+              assertEq "package dependency metadata should not be empty" (null $ packageResDependencies pkg) False
     describe "GET /package/index?ids" $ withApp $ it "returns list of packages at exactly specified version" $ do
         _ <- seedBitcoinLndStack
         request $ do
             setMethod "GET"
             setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\"=0.21.1.1\"}]" :: Text)
         statusIs 200
-        (res :: PackageListRes) <- requireJSONResponse
+        (res :: [PackageRes]) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
         let pkg                           = fromJust $ head res
         let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
@@ -70,7 +70,7 @@ spec = do
             setMethod "GET"
             setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\">=0.21.1.1\"}]" :: Text)
         statusIs 200
-        (res :: PackageListRes) <- requireJSONResponse
+        (res :: [PackageRes]) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
         let pkg                           = fromJust $ head res
         let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
@@ -81,7 +81,7 @@ spec = do
             setMethod "GET"
             setUrl ("/package/index?ids=[{\"id\":\"bitcoind\",\"version\":\">=0.21.1.2\"}]" :: Text)
         statusIs 200
-        (res :: PackageListRes) <- requireJSONResponse
+        (res :: [PackageRes]) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
         let pkg                           = fromJust $ head res
         let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
