@@ -147,6 +147,30 @@ complement a b | a == b = a
 complement a b = complement b a
 
 
+lt :: Operator
+lt = Right LT
+
+
+leq :: Operator
+leq = Left GT
+
+
+eq :: Operator
+eq = Right EQ
+
+
+neq :: Operator
+neq = Left EQ
+
+
+gt :: Operator
+gt = Right GT
+
+
+geq :: Operator
+geq = Left LT
+
+
 -- | 'VersionRange' is the algebra of sets of versions. They can be constructed by having an 'Anchor' term which
 -- compares against the target version, or can be described with 'Conj' which is a conjunction, or 'Disj', which is a
 -- disjunction. The 'Any' and 'All' terms are primarily there to round out the algebra, but 'Any' is also exposed due to
@@ -196,41 +220,6 @@ conj a b = reduce $ Conj a b
 -- | Smart constructor for disjunctions. Eagerly evaluates zeros and identities
 disj :: VersionRange -> VersionRange -> VersionRange
 disj a b = reduce $ Disj a b
-
-
--- conj forms
-data Diamond = Diamond
-    { lowerInclusive :: Bool
-    , lowerVersion :: Version
-    , upperVersion :: Version
-    , upperInclusive :: Bool
-    }
-
-
-data Fish = Fish
-    { noseInclusive :: Bool
-    , noseVersion :: Version
-    , tailVersion :: Version
-    }
-
-
-data DeadEyes = DeadEyes
-    { lowerEye :: Version
-    , upperEye :: Version
-    }
-
-
-diamond :: VersionRange -> Maybe Diamond
-diamond (Conj (Anchor opA vA) (Anchor opB vB)) = _
-diamond _ = Nothing
-
-
-fish :: VersionRange -> Maybe Fish
-fish = _
-
-
-deadEyes :: VersionRange -> Maybe DeadEyes
-deadEyes = _
 
 
 reduce :: VersionRange -> VersionRange
@@ -348,31 +337,75 @@ reduce x@(Disj a@(Anchor op pt) b@(Anchor op' pt')) = case compare pt pt' of
         (Right GT, Right GT) -> a
 reduce (Conj a@(Conj _ _) b@(Anchor _ _)) = reduce (Conj b a)
 reduce x@(Conj a@(Anchor op pt) b@(Conj p q)) = case (p, q) of
-    ((Anchor opP ptP), (Anchor opQ ptQ)) -> case compare ptP ptQ of
-        LT -> case (opP, opQ) of
-            -- diamonds <>
-            (Right GT, Right LT) -> case op of
-                Right GT | pt <= ptP -> b
-                Right GT | pt >= ptQ -> None
-                Right GT | pt > ptP && pt < ptQ -> Conj a q
-                Left LT | pt <= ptP -> b
-                Left LT | pt > ptQ -> None
-                _ -> x
-            (Right GT, Left GT) -> x
-            (Left LT, Right LT) -> x
-            (Left LT, Left GT) -> x
-            -- fish x>
-            (Left EQ, Right LT) -> x
-            (Left EQ, Left GT) -> x
-            -- fish <x
-            (Right GT, Left EQ) -> x
-            (Left LT, Left EQ) -> x
-            -- dead xx
-            (Left EQ, Left EQ) -> x
-            -- all other states are unstable for conj
-            _ -> reduce (Conj a (reduce b))
-        _ -> reduce (Conj a (reduce b))
+    ((Anchor opP ptP), (Anchor opQ ptQ)) ->
+        if ptP >= ptQ
+            then bail
+            else case (opP, opQ) of
+                -- diamonds <>
+                (Right GT, Right LT) ->
+                    if
+                            | (op == lt || op == leq || op == eq) && pt <= ptP -> None
+                            | (op == gt || op == geq || op == neq) && pt <= ptP -> b
+                            | (op == lt || op == leq || op == neq) && pt >= ptQ -> b
+                            | (op == gt || op == geq || op == eq) && pt >= ptQ -> None
+                            | (op == lt || op == leq) -> Conj p a
+                            | (op == gt || op == geq) -> Conj a q
+                            | op == eq -> a
+                            | op == neq -> Conj b a
+                            | otherwise -> x
+                (Left LT, Right LT) ->
+                    if
+                            | (op == lt || op == leq || op == eq) && pt < ptP -> None
+                            | (op == gt || op == geq || op == neq) && pt < ptP -> b
+                            | op == lt && pt == ptP -> None
+                            | op == leq && pt == ptP -> Anchor (Right EQ) pt
+                            | op == eq && pt == ptP -> a
+                            | op == gt && pt == ptP -> Conj a q
+                            | op == geq && pt == ptP -> b
+                            | op == neq && pt == ptP -> Conj (Anchor (Right GT) pt) q
+                            | (op == geq || op == neq) && pt == ptP -> b
+                            | (op == lt || op == leq || op == neq) && pt >= ptQ -> b
+                            | (op == gt || op == geq || op == eq) && pt >= ptQ -> None
+                            | (op == lt || op == leq) -> Conj p a
+                            | (op == gt || op == geq) -> Conj a q
+                            | op == eq -> a
+                            | op == neq -> Conj b a
+                            | otherwise -> x
+                (Right GT, Left GT) ->
+                    if
+                            | (op == lt || op == leq || op == eq) && pt <= ptP -> None
+                            | (op == gt || op == geq || op == neq) && pt <= ptP -> b
+                            | (op == gt || op == geq || op == eq) && pt > ptQ -> None
+                            | (op == lt || op == leq || op == neq) && pt > ptQ -> b
+                            | op == lt && pt == ptQ -> Conj p a
+                            | op == leq && pt == ptQ -> b
+                            | op == eq && pt == ptQ -> a
+                            | op == gt && pt == ptQ -> None
+                            | op == geq && pt == ptQ -> Anchor (Right EQ) pt
+                            | op == neq && pt == ptQ -> Conj p (Anchor lt pt)
+                            | (op == gt || op == geq) -> Conj a q
+                            | (op == lt || op == leq) -> Conj p a
+                            | op == eq -> a
+                            | op == neq -> Conj b a
+                            | otherwise -> x
+                (Left LT, Left GT) ->
+                    if
+                            | (op == lt || op == leq || op == eq) && pt < ptP -> None
+                            | (op == gt || op == geq || op == neq) && pt < ptP -> b
+                            | otherwise -> x
+                -- fish left <x
+                (Right GT, Left EQ) -> x
+                (Left LT, Left EQ) -> x
+                -- fish right x>
+                (Left EQ, Right LT) -> x
+                (Left EQ, Left GT) -> x
+                -- dead eyes xx
+                (Left EQ, Left EQ) -> x
+                -- all other states are unstable for conj
+                _ -> bail
     _ -> x
+    where
+        bail = reduce (Conj a (reduce b))
 reduce rest = rest
 
 
@@ -462,15 +495,17 @@ parseVersion = do
 -- >>> Atto.parseOnly parseRange ">=2.14.1.1 <3.0.0"
 -- Right >=2.14.1.1 <3.0.0
 parseRange :: Atto.Parser VersionRange
-parseRange = s <|> (Atto.char '*' $> Any) <|> (Anchor (Right EQ) <$> parseVersion)
+parseRange = s <|> any <|> none <|> (Anchor (Right EQ) <$> parseVersion)
     where
+        any = Atto.char '*' *> pure Any
+        none = Atto.char '!' *> pure None
         sub = Atto.char '(' *> Atto.skipSpace *> parseRange <* Atto.skipSpace <* Atto.char ')'
         s =
             unAnyRange
                 . foldMap AnyRange
                 <$> ((p <|> sub) `Atto.sepBy1` (Atto.skipSpace *> Atto.string "||" <* Atto.skipSpace))
         p = unAllRange . foldMap AllRange <$> ((a <|> sub) `Atto.sepBy1` Atto.space)
-        a = liftA2 Anchor parseOperator parseVersion <|> caret <|> tilde <|> wildcard <|> hyphen
+        a = liftA2 Anchor parseOperator parseVersion <|> caret <|> tilde <|> wildcard <|> hyphen <|> any <|> none
 
 
 -- >>> liftA2 satisfies (Atto.parseOnly parseVersion "0.20.1.1") (Atto.parseOnly parseRange "^0.20.1")
