@@ -1,15 +1,16 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveGeneric #-}
+
 module Handler.Types.Marketplace where
-import           Lib.Types.Category             ( CategoryTitle )
 import           Data.Aeson
+import qualified Data.HashMap.Internal.Strict  as HM
+import           Lib.Types.AppIndex             ( PkgId )
+import           Lib.Types.Category             ( CategoryTitle )
+import           Lib.Types.Emver                ( Version
+                                                , VersionRange
+                                                )
 import           Startlude
 import           Yesod
-import qualified Data.HashMap.Internal.Strict  as HM
-import           Lib.Types.Emver                ( VersionRange
-                                                , Version
-                                                )
-import           Lib.Types.AppIndex             ( PkgId )
 
 
 type URL = Text
@@ -22,12 +23,12 @@ instance ToContent CategoryRes where
 instance ToTypedContent CategoryRes where
     toTypedContent = toTypedContent . toJSON
 data PackageRes = PackageRes
-    { packageResIcon           :: URL
-    , packageResManifest       :: Data.Aeson.Value -- PackageManifest
-    , packageResCategories     :: [CategoryTitle]
-    , packageResInstructions   :: URL
-    , packageResLicense        :: URL
-    , packageResVersions       :: [Version]
+    { packageResIcon         :: URL
+    , packageResManifest     :: Data.Aeson.Value -- PackageManifest
+    , packageResCategories   :: [CategoryTitle]
+    , packageResInstructions :: URL
+    , packageResLicense      :: URL
+    , packageResVersions     :: [Version]
     , packageResDependencies :: HM.HashMap PkgId DependencyRes
     }
     deriving (Show, Generic)
@@ -60,7 +61,7 @@ instance FromJSON PackageRes where
         packageResDependencies <- o .: "dependency-metadata"
         pure PackageRes { .. }
 data DependencyRes = DependencyRes
-    { dependencyResTitle :: PkgId
+    { dependencyResTitle :: Text -- TODO switch to `Text` to display actual title in Marketplace. Confirm with FE that this will not break loading. Perhaps return title and id?
     , dependencyResIcon  :: URL
     }
     deriving (Eq, Show)

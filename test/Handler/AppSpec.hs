@@ -3,21 +3,19 @@
 
 module Handler.AppSpec
     ( spec
-    )
-where
+    ) where
 
-import           Startlude
-import           Database.Persist.Sql
 import           Data.Maybe
+import           Database.Persist.Sql
+import           Startlude
 
-import           TestImport
-import           Model
-import           Handler.Marketplace
-import           Seed
-import           Lib.Types.AppIndex
 import           Data.Aeson
 import           Data.Either.Extra
-import           Handler.Marketplace            ( PackageRes )
+import           Handler.Types.Marketplace      ( PackageRes(packageResDependencies, packageResManifest) )
+import           Lib.Types.AppIndex
+import           Model
+import           Seed
+import           TestImport
 
 spec :: Spec
 spec = do
@@ -92,13 +90,13 @@ spec = do
             setMethod "GET"
             setUrl ("/package/bitcoind.s9pk?spec==0.20.0" :: Text)
         statusIs 404
-    xdescribe "GET /package/:pkgId with unknown package" $ withApp $ it "fails to get an unregistered app" $ do
+    describe "GET /package/:pkgId with unknown package" $ withApp $ it "fails to get an unregistered app" $ do
         _ <- seedBitcoinLndStack
         request $ do
             setMethod "GET"
             setUrl ("/package/tempapp.s9pk?spec=0.0.1" :: Text)
         statusIs 404
-    xdescribe "GET /package/:pkgId with package at unknown version"
+    describe "GET /package/:pkgId with package at unknown version"
         $ withApp
         $ it "fails to get an unregistered app"
         $ do
