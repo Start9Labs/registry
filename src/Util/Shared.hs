@@ -4,7 +4,8 @@
 
 module Util.Shared where
 
-import           Startlude               hiding ( Handler
+import           Startlude               hiding ( Any
+                                                , Handler
                                                 , yield
                                                 )
 
@@ -29,12 +30,28 @@ import           Database.Esqueleto.Experimental
                                                 , entityVal
                                                 )
 import           Foundation
+import           GHC.List                       ( lookup )
+import           Handler.Types.Marketplace      ( PackageDependencyMetadata
+                                                    ( PackageDependencyMetadata
+                                                    , packageDependencyMetadataDepPkgRecord
+                                                    , packageDependencyMetadataDepVersions
+                                                    , packageDependencyMetadataPkgDependencyRecord
+                                                    )
+                                                , PackageMetadata
+                                                    ( PackageMetadata
+                                                    , packageMetadataPkgCategories
+                                                    , packageMetadataPkgRecord
+                                                    , packageMetadataPkgVersion
+                                                    , packageMetadataPkgVersionRecords
+                                                    )
+                                                )
 import           Lib.PkgRepository              ( PkgRepo
                                                 , getHash
                                                 )
 import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Emver
 import           Model                          ( Category
+                                                , Key(unPkgRecordKey)
                                                 , PkgDependency(pkgDependencyDepId, pkgDependencyDepVersionRange)
                                                 , PkgRecord(pkgRecordTitle)
                                                 , VersionRecord(versionRecordNumber, versionRecordOsVersion)
@@ -59,51 +76,60 @@ orThrow action other = action >>= \case
     Just x  -> pure x
 
 
-filterPkgOsCompatible :: Monad m
-                      => (Version -> Bool)
-                      -> ConduitT
-                             (Entity PkgRecord, [Entity VersionRecord], [Entity Category], Version)
-                             (Entity PkgRecord, [Entity VersionRecord], [Entity Category], Version)
-                             m
-                             ()
-filterPkgOsCompatible p = awaitForever $ \(app, versions, cats, requestedVersion) -> do
-    let compatible = filter (p . versionRecordOsVersion . entityVal) versions
-    when (not $ null compatible) $ yield (app, compatible, cats, requestedVersion)
+filterPkgOsCompatible :: Monad m => (Version -> Bool) -> ConduitT PackageMetadata PackageMetadata m ()
+filterPkgOsCompatible p =
+    awaitForever
+        $ \PackageMetadata { packageMetadataPkgRecord = pkg, packageMetadataPkgVersionRecords = versions, packageMetadataPkgCategories = cats, packageMetadataPkgVersion = requestedVersion } ->
+              do
+                  let compatible = filter (p . versionRecordOsVersion . entityVal) versions
+                  when (not $ null compatible) $ yield PackageMetadata { packageMetadataPkgRecord         = pkg
+                                                                       , packageMetadataPkgVersionRecords = compatible
+                                                                       , packageMetadataPkgCategories     = cats
+                                                                       , packageMetadataPkgVersion = requestedVersion
+                                                                       }
 
-filterDependencyOsCompatible :: (Version -> Bool)
-                             -> (Entity PkgDependency, Entity PkgRecord, [Entity VersionRecord])
-                             -> (Entity PkgDependency, Entity PkgRecord, [Entity VersionRecord])
-filterDependencyOsCompatible p (pkgDeps, pkg, versions) = do
-    let compatible = filter (p . versionRecordOsVersion . entityVal) versions
-    (pkgDeps, pkg, compatible)
+filterDependencyOsCompatible :: (Version -> Bool) -> PackageDependencyMetadata -> PackageDependencyMetadata
+filterDependencyOsCompatible p PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDeps, packageDependencyMetadataDepPkgRecord = pkg, packageDependencyMetadataDepVersions = depVersions }
+    = do
+        let compatible = filter (p . versionRecordOsVersion . entityVal) depVersions
+        PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDeps
+                                  , packageDependencyMetadataDepPkgRecord        = pkg
+                                  , packageDependencyMetadataDepVersions         = compatible
+                                  }
 
 filterLatestVersionFromSpec :: (Monad m, MonadLogger m)
-                            => ConduitT
-                                   (Entity PkgRecord, [Entity VersionRecord], [Entity Category], VersionRange)
-                                   (Entity PkgRecord, [Entity VersionRecord], [Entity Category], Version)
+                            => [(PkgId, VersionRange)]
+                            -> ConduitT
+                                   (Entity PkgRecord, [Entity VersionRecord], [Entity Category])
+                                   PackageMetadata
                                    m
                                    ()
-filterLatestVersionFromSpec = awaitForever $ \(a, vs, cats, spec) -> do
+filterLatestVersionFromSpec versionMap = awaitForever $ \(a, vs, cats) -> do
     let pkgId = entityKey a
+    -- if no packages are specified, the VersionRange is implicitly `*`
+    let spec = fromMaybe Any $ lookup (unPkgRecordKey $ entityKey a) versionMap
     case headMay . sortOn Down $ filter (`satisfies` spec) $ fmap (versionRecordNumber . entityVal) vs of
         Nothing -> $logInfo [i|No version for #{pkgId} satisfying #{spec}|]
-        Just v  -> yield $ (,,,) a vs cats v
+        Just v  -> yield $ PackageMetadata { packageMetadataPkgRecord         = a
+                                           , packageMetadataPkgVersionRecords = vs
+                                           , packageMetadataPkgCategories     = cats
+                                           , packageMetadataPkgVersion        = v
+                                           }
 
 -- get best version of the dependency based on what is specified in the db (ie. what is specified in the manifest for the package)
-filterDependencyBestVersion :: MonadLogger m
-                            => (Entity PkgDependency, Entity PkgRecord, [Entity VersionRecord])
-                            -> m (Maybe (Key PkgRecord, Text, Version))
-filterDependencyBestVersion (pkgDepRecord, depPkgRecord, depVersions) = do
+filterDependencyBestVersion :: MonadLogger m => PackageDependencyMetadata -> m (Maybe (Key PkgRecord, Text, Version))
+filterDependencyBestVersion PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDepRecord, packageDependencyMetadataDepPkgRecord = depRecord, packageDependencyMetadataDepVersions = depVersions }
+    = do
     -- get best version from VersionRange of dependency
-    let pkgId    = pkgDependencyPkgId $ entityVal pkgDepRecord
-    let depId    = pkgDependencyDepId $ entityVal pkgDepRecord
-    let depTitle = pkgRecordTitle $ entityVal depPkgRecord
-    let satisfactory = filter (<|| (pkgDependencyDepVersionRange $ entityVal pkgDepRecord))
-                              (versionRecordNumber . entityVal <$> depVersions)
-    case getMax <$> foldMap (Just . Max) satisfactory of
-        -- QUESTION is this an acceptable transformation here? These are the only values that we care about after this filter.
-        Just bestVersion -> pure $ Just (depId, depTitle, bestVersion)
-        Nothing          -> do
-            $logInfo [i|No satisfactory version of #{depId} for dependent package #{pkgId}|]
-    -- TODO it would be better if we could return the requirements for display
-            pure Nothing
+        let pkgId    = pkgDependencyPkgId $ entityVal pkgDepRecord
+        let depId    = pkgDependencyDepId $ entityVal pkgDepRecord
+        let depTitle = pkgRecordTitle $ entityVal depRecord
+        let satisfactory = filter (<|| (pkgDependencyDepVersionRange $ entityVal pkgDepRecord))
+                                  (versionRecordNumber . entityVal <$> depVersions)
+        case getMax <$> foldMap (Just . Max) satisfactory of
+            -- QUESTION is this an acceptable transformation here? These are the only values that we care about after this filter.
+            Just bestVersion -> pure $ Just (depId, depTitle, bestVersion)
+            Nothing          -> do
+                $logInfo [i|No satisfactory version of #{depId} for dependent package #{pkgId}|]
+                -- TODO it would be better if we could return the requirements for display
+                pure Nothing

@@ -51,7 +51,7 @@ stack test --flag start9-registry:library-only --flag start9-registry:dev
 
 ## Builds
 
-`stack build --copy-bins --local-bin-path=dist`
+`make`
 
 ### Tests with HIE Setup
 - install hspec-discover globally `cabal install hspec-discover` (requires cabal installation)

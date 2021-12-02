@@ -20,7 +20,6 @@ import           Startlude               hiding ( Any
 import           Conduit                        ( (.|)
                                                 , awaitForever
                                                 , dropC
-                                                , mapC
                                                 , runConduit
                                                 , sinkList
                                                 , sourceFile
@@ -81,10 +80,9 @@ import           Lib.Types.AppIndex             ( PkgId(PkgId)
 import           Lib.Types.AppIndex             ( )
 import           Lib.Types.Category             ( CategoryTitle(..) )
 import           Lib.Types.Emver                ( Version
-                                                , VersionRange(Any)
                                                 , parseRange
                                                 , parseVersion
-                                                , satisfies
+                                                , satisfies, VersionRange
                                                 )
 import           Model                          ( Category(..)
                                                 , EntityField(..)
@@ -167,7 +165,7 @@ getReleaseNotesR = do
     where
         constructReleaseNotesApiRes :: [VersionRecord] -> ReleaseNotes
         constructReleaseNotesApiRes vers = do
-            ReleaseNotes $ HM.fromList $ sortOn (Down) $ (versionRecordNumber &&& versionRecordReleaseNotes) <$> vers
+            ReleaseNotes $ HM.fromList $ sortOn Down $ (versionRecordNumber &&& versionRecordReleaseNotes) <$> vers
 
 getEosR :: Handler TypedContent
 getEosR = do
@@ -237,9 +235,8 @@ getPackageListR = do
                 $  searchServices category query
                 .| zipVersions
                 .| zipCategories
-                -- if no packages are specified, the VersionRange is implicitly `*`
-                .| mapC (\(a, vs, cats) -> (a, vs, cats,Any))
-                .| filterLatestVersionFromSpec 
+                -- empty list since there are no requested packages in this case
+                .| filterLatestVersionFromSpec []
                 .| filterPkgOsCompatible osPredicate
                 -- pages start at 1 for some reason. TODO: make pages start at 0
                 .| (dropC (limit' * (page - 1)) *> takeC limit')
@@ -253,11 +250,7 @@ getPackageListR = do
                 $  getPkgData (packageReqId <$> packages')
                 .| zipVersions
                 .| zipCategories
-                .| mapC (\(a, vs, cats) -> do
-                    let spec = fromMaybe Any $ lookup (unPkgRecordKey $ entityKey a) vMap
-                    (a, vs, cats, spec)
-                    )
-                .| filterLatestVersionFromSpec
+                .| filterLatestVersionFromSpec vMap
                 .| filterPkgOsCompatible osPredicate
                 .| sinkList
     -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
@@ -318,8 +311,8 @@ getPackageListR = do
                     $logWarn (show e)
                     sendResponseStatus status400 e
                 Right v -> pure $ Just v
-        getPackageDependencies :: (MonadIO m, MonadLogger m) => (Version -> Bool) -> (Entity PkgRecord, [Entity VersionRecord], [Entity Category], Version) -> ReaderT SqlBackend m (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)])
-        getPackageDependencies osPredicate (pkg, pkgVersions, pkgCategories, pkgVersion) = do
+        getPackageDependencies :: (MonadIO m, MonadLogger m) => (Version -> Bool) -> PackageMetadata -> ReaderT SqlBackend m (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)])
+        getPackageDependencies osPredicate PackageMetadata { packageMetadataPkgRecord = pkg, packageMetadataPkgVersionRecords = pkgVersions, packageMetadataPkgCategories = pkgCategories, packageMetadataPkgVersion = pkgVersion} = do
             let pkgId = entityKey pkg
             let pkgVersions' = versionRecordNumber . entityVal <$> pkgVersions
             let pkgCategories' = entityVal <$> pkgCategories
@@ -328,7 +321,7 @@ getPackageListR = do
             let compatiblePkgDepInfo = fmap (filterDependencyOsCompatible osPredicate) pkgDepInfoWithVersions
             res <- catMaybes <$> traverse filterDependencyBestVersion compatiblePkgDepInfo
             pure $ (pkgId, pkgCategories', pkgVersions', pkgVersion, res)
-        constructPackageListApiRes :: (Monad m, MonadResource m, MonadReader r m, Has AppSettings r) => (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)]) -> m PackageRes
+        constructPackageListApiRes :: (MonadResource m, MonadReader r m, Has AppSettings r) => (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)]) -> m PackageRes
         constructPackageListApiRes (pkgKey, pkgCategories, pkgVersions, pkgVersion, dependencies) = do
             settings        <- ask
             let pkgId = unPkgRecordKey pkgKey
@@ -350,4 +343,3 @@ getPackageListR = do
         constructDependenciesApiRes domain deps = fmap (\(depKey, depTitle, depVersion) -> do
                 let depId = unPkgRecordKey depKey
                 (depId, DependencyRes { dependencyResTitle = depTitle, dependencyResIcon  = [i|https://#{domain}/package/icon/#{depId}?spec==#{depVersion}|]})) deps
-
