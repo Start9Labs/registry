@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Handler.AppSpec
     ( spec
@@ -10,7 +11,9 @@ import           Database.Persist.Sql
 import           Startlude
 
 import           Data.Aeson
-import           Data.Either.Extra
+import           Data.Aeson.Types               ( parseEither )
+import           Data.String.Interpolate.IsString
+                                                ( i )
 import           Handler.Types.Marketplace      ( PackageRes(packageResDependencies, packageResManifest) )
 import           Lib.Types.AppIndex
 import           Model
@@ -35,8 +38,10 @@ spec = do
         statusIs 200
         (res :: [PackageRes]) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
-        let pkg                           = fromJust $ head res
-        let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
+        let pkg = fromJust $ head res
+        (manifest :: PackageManifest) <- either (\e -> panic [i|failed to parse package manifest: #{e}|])
+                                                pure
+                                                (parseEither parseJSON $ packageResManifest pkg)
         assertEq "manifest id should be bitcoind" (packageManifestId manifest) "bitcoind"
     describe "GET /package/index?ids"
         $ withApp
@@ -59,8 +64,10 @@ spec = do
         statusIs 200
         (res :: [PackageRes]) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
-        let pkg                           = fromJust $ head res
-        let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
+        let pkg = fromJust $ head res
+        (manifest :: PackageManifest) <- either (\e -> panic [i|failed to parse package manifest: #{e}|])
+                                                pure
+                                                (parseEither parseJSON $ packageResManifest pkg)
         assertEq "manifest version should be 0.21.1.1" (packageManifestVersion manifest) "0.21.1.1"
     describe "GET /package/index?ids" $ withApp $ it "returns list of packages at specified version or greater" $ do
         _ <- seedBitcoinLndStack
@@ -70,8 +77,10 @@ spec = do
         statusIs 200
         (res :: [PackageRes]) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
-        let pkg                           = fromJust $ head res
-        let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
+        let pkg = fromJust $ head res
+        (manifest :: PackageManifest) <- either (\e -> panic [i|failed to parse package manifest: #{e}|])
+                                                pure
+                                                (parseEither parseJSON $ packageResManifest pkg)
         assertEq "manifest version should be 0.21.1.2" (packageManifestVersion manifest) "0.21.1.2"
     describe "GET /package/index?ids" $ withApp $ it "returns list of packages at specified version or greater" $ do
         _ <- seedBitcoinLndStack
@@ -81,8 +90,10 @@ spec = do
         statusIs 200
         (res :: [PackageRes]) <- requireJSONResponse
         assertEq "response should have one package" (length res) 1
-        let pkg                           = fromJust $ head res
-        let (manifest :: PackageManifest) = fromRight' $ eitherDecode $ encode $ packageResManifest pkg
+        let pkg = fromJust $ head res
+        (manifest :: PackageManifest) <- either (\e -> panic [i|failed to parse package manifest: #{e}|])
+                                                pure
+                                                (parseEither parseJSON $ packageResManifest pkg)
         assertEq "manifest version should be 0.21.1.2" (packageManifestVersion manifest) "0.21.1.2"
     describe "GET /package/:pkgId with unknown version spec for bitcoind" $ withApp $ it "fails to get unknown app" $ do
         _ <- seedBitcoinLndStack

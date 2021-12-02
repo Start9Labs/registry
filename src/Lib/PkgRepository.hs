@@ -76,7 +76,6 @@ import           Startlude                      ( ($)
                                                 , MonadReader
                                                 , Show
                                                 , SomeException(..)
-                                                , Traversable(traverse)
                                                 , filter
                                                 , find
                                                 , first
@@ -167,7 +166,8 @@ loadPkgDependencies appConnPool manifest = do
     let deps       = packageManifestDependencies manifest
     time <- liftIO getCurrentTime
     let deps' = first PkgRecordKey <$> HM.toList deps
-    _ <- traverse
+    for_
+        deps'
         (\d ->
             (runSqlPool
                 ( insertUnique
@@ -176,8 +176,6 @@ loadPkgDependencies appConnPool manifest = do
                 appConnPool
             )
         )
-        deps'
-    pure ()
 
 -- extract all package assets into their own respective files
 extractPkg :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => ConnectionPool -> FilePath -> m ()
@@ -231,7 +229,7 @@ watchPkgRepoRoot pool = do
             let pkg = eventPath evt
             -- TODO: validate that package path is an actual s9pk and is in a correctly conforming path.
             void . forkIO $ runInIO $ do
-                (extractPkg pool pkg)
+                extractPkg pool pkg
         takeMVar box
         stop
     pure $ tryPutMVar box ()

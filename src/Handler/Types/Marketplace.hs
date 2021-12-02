@@ -9,6 +9,11 @@ import           Lib.Types.Category             ( CategoryTitle )
 import           Lib.Types.Emver                ( Version
                                                 , VersionRange
                                                 )
+import           Model                          ( Category
+                                                , PkgDependency
+                                                , PkgRecord
+                                                , VersionRecord
+                                                )
 import           Startlude
 import           Yesod
 
@@ -121,3 +126,16 @@ instance FromJSON PackageReq where
         packageReqId      <- o .: "id"
         packageReqVersion <- o .: "version"
         pure PackageReq { .. }
+data PackageMetadata = PackageMetadata
+    { packageMetadataPkgRecord         :: Entity PkgRecord
+    , packageMetadataPkgVersionRecords :: [Entity VersionRecord]
+    , packageMetadataPkgCategories     :: [Entity Category]
+    , packageMetadataPkgVersion        :: Version
+    }
+    deriving (Eq, Show)
+data PackageDependencyMetadata = PackageDependencyMetadata
+    { packageDependencyMetadataPkgDependencyRecord :: Entity PkgDependency
+    , packageDependencyMetadataDepPkgRecord        :: Entity PkgRecord
+    , packageDependencyMetadataDepVersions         :: [Entity VersionRecord]
+    }
+    deriving (Eq, Show)
