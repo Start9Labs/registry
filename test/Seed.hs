@@ -1,25 +1,27 @@
 module Seed where
 
-import           Startlude                      ( ($)
-                                                , Applicative(pure)
-                                                , Maybe(Nothing, Just)
-                                                , getCurrentTime
-                                                , MonadIO(liftIO)
-                                                )
-import           Database.Persist.Sql           ( PersistStoreWrite(insert_, insertKey, insert) )
-import           Model                          ( Key(PkgRecordKey)
-                                                , PkgRecord(PkgRecord)
-                                                , Category(Category)
+import           Database.Persist.Sql           ( PersistStoreWrite(insert, insertKey, insert_) )
+import           Model                          ( Category(Category)
+                                                , Key(PkgRecordKey)
                                                 , PkgCategory(PkgCategory)
+                                                , PkgDependency(PkgDependency)
+                                                , PkgRecord(PkgRecord)
                                                 , VersionRecord(VersionRecord)
                                                 )
+import           Startlude                      ( ($)
+                                                , Applicative(pure)
+                                                , Maybe(Just, Nothing)
+                                                , MonadIO(liftIO)
+                                                , getCurrentTime
+                                                )
 
-import           TestImport                     ( runDBtest
-                                                , RegistryCtx
+import           Lib.Types.Category             ( CategoryTitle(BITCOIN, FEATURED, LIGHTNING) )
+import           Prelude                        ( read )
+import           TestImport                     ( RegistryCtx
                                                 , SIO
                                                 , YesodExampleData
+                                                , runDBtest
                                                 )
-import           Lib.Types.Category             ( CategoryTitle(LIGHTNING, FEATURED, BITCOIN) )
 
 seedBitcoinLndStack :: SIO (YesodExampleData RegistryCtx) ()
 seedBitcoinLndStack = do
@@ -73,4 +75,14 @@ seedBitcoinLndStack = do
     _           <- runDBtest $ insert_ $ PkgCategory time (PkgRecordKey "lnd") btcCat
     _           <- runDBtest $ insert_ $ PkgCategory time (PkgRecordKey "bitcoind") btcCat
     _           <- runDBtest $ insert_ $ PkgCategory time (PkgRecordKey "btc-rpc-proxy") btcCat
+    _           <- runDBtest $ insert_ $ PkgDependency time
+                                                       (PkgRecordKey "lnd")
+                                                       "0.13.3.1"
+                                                       (PkgRecordKey "bitcoind")
+                                                       (read ">=0.21.1.2 <0.22.0")
+    _ <- runDBtest $ insert_ $ PkgDependency time
+                                             (PkgRecordKey "lnd")
+                                             "0.13.3.1"
+                                             (PkgRecordKey "btc-rpc-proxy")
+                                             (read ">=0.3.2.1 <0.4.0")
     pure ()

@@ -14,6 +14,7 @@ import           Database.Esqueleto.Experimental
                                                 ( (%)
                                                 , (&&.)
                                                 , (++.)
+                                                , (:&)(..)
                                                 , (==.)
                                                 , (^.)
                                                 , desc
@@ -25,36 +26,27 @@ import           Database.Esqueleto.Experimental
                                                 , orderBy
                                                 , select
                                                 , selectSource
+                                                , table
                                                 , val
                                                 , valList
                                                 , where_
                                                 , (||.)
-                                                , Value(unValue)
                                                 )
-import           Database.Esqueleto.Experimental
-                                                ( (:&)(..)
-                                                , table
+import qualified Database.Persist              as P
+import           Database.Persist.Postgresql
+                                         hiding ( (==.)
+                                                , getJust
+                                                , selectSource
+                                                , (||.)
                                                 )
-import           Lib.Types.AppIndex             ( VersionInfo(..)
-                                                , PkgId
-                                                )
+import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Category
-import           Lib.Types.Emver                ( Version
-                                                , VersionRange
-                                                )
+import           Lib.Types.Emver                ( Version )
 import           Model
 import           Startlude               hiding ( (%)
                                                 , from
                                                 , on
                                                 , yield
-                                                )
-import qualified Data.HashMap.Internal.Strict  as HM
-import           Handler.Types.Marketplace      ( ReleaseNotes(ReleaseNotes) )
-import qualified Database.Persist              as P
-import           Database.Persist.Postgresql
-                                         hiding ( (||.)
-                                                , selectSource
-                                                , (==.)
                                                 )
 
 searchServices :: (MonadResource m, MonadIO m)
@@ -101,46 +93,69 @@ getPkgData pkgs = selectSource $ do
     where_ (pkgData ^. PkgRecordId `in_` valList (PkgRecordKey <$> pkgs))
     pure pkgData
 
+getPkgDependencyData :: MonadIO m
+                     => Key PkgRecord
+                     -> Version
+                     -> ReaderT SqlBackend m ([(Entity PkgDependency, Entity PkgRecord)])
+getPkgDependencyData pkgId pkgVersion = select $ do
+    pd <- from
+        (do
+            (pkgDepRecord :& depPkgRecord) <-
+                from
+                $           table @PkgDependency
+                `innerJoin` table @PkgRecord
+                `on`        (\(pdr :& dpr) -> dpr ^. PkgRecordId ==. pdr ^. PkgDependencyDepId)
+            where_ (pkgDepRecord ^. PkgDependencyPkgId ==. (val pkgId))
+            where_ (pkgDepRecord ^. PkgDependencyPkgVersion ==. val pkgVersion)
+            pure (pkgDepRecord, depPkgRecord)
+        )
+    pure pd
+
+zipCategories :: MonadUnliftIO m
+              => ConduitT
+                     (Entity PkgRecord, [Entity VersionRecord])
+                     (Entity PkgRecord, [Entity VersionRecord], [Entity Category])
+                     (ReaderT SqlBackend m)
+                     ()
+zipCategories = awaitForever $ \(pkg, vers) -> do
+    let pkgDbId = entityKey pkg
+    raw <- lift $ select $ do
+        (sc :& cat) <-
+            from
+            $           table @PkgCategory
+            `innerJoin` table @Category
+            `on`        (\(sc :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
+        where_ (sc ^. PkgCategoryPkgId ==. val pkgDbId)
+        pure cat
+    yield (pkg, vers, raw)
+
 zipVersions :: MonadUnliftIO m
             => ConduitT (Entity PkgRecord) (Entity PkgRecord, [Entity VersionRecord]) (ReaderT SqlBackend m) ()
-zipVersions = awaitForever $ \i -> do
-    let appDbId = entityKey i
+zipVersions = awaitForever $ \pkg -> do
+    let appDbId = entityKey pkg
     res <- lift $ select $ do
         v <- from $ table @VersionRecord
         where_ $ v ^. VersionRecordPkgId ==. val appDbId
+        -- first value in list will be latest version
+        orderBy [desc (v ^. VersionRecordNumber)]
         pure v
-    yield (i, res)
+    yield (pkg, res)
 
-filterOsCompatible :: Monad m
-                   => (Version -> Bool)
-                   -> ConduitT
-                          (Entity PkgRecord, [Entity VersionRecord], VersionRange)
-                          (Entity PkgRecord, [Entity VersionRecord], VersionRange)
-                          m
-                          ()
-filterOsCompatible p = awaitForever $ \(app, versions, requestedVersion) -> do
-    let compatible = filter (p . versionRecordOsVersion . entityVal) versions
-    when (not $ null compatible) $ yield (app, compatible, requestedVersion)
+zipDependencyVersions :: (Monad m, MonadIO m)
+                      => (Entity PkgDependency, Entity PkgRecord)
+                      -> ReaderT SqlBackend m (Entity PkgDependency, Entity PkgRecord, [Entity VersionRecord])
+zipDependencyVersions (pkgDepRecord, depRecord) = do
+    let pkgDbId = entityKey $ depRecord
+    depVers <- select $ do
+        v <- from $ table @VersionRecord
+        where_ $ v ^. VersionRecordPkgId ==. val pkgDbId
+        pure v
+    pure $ (pkgDepRecord, depRecord, depVers)
 
-
-fetchAllAppVersions :: MonadUnliftIO m => ConnectionPool -> PkgId -> m ([VersionInfo], ReleaseNotes)
+fetchAllAppVersions :: MonadUnliftIO m => ConnectionPool -> PkgId -> m [VersionRecord]
 fetchAllAppVersions appConnPool appId = do
     entityAppVersions <- runSqlPool (P.selectList [VersionRecordPkgId P.==. PkgRecordKey appId] []) appConnPool
-    let vers           = entityVal <$> entityAppVersions
-    let vv             = mapSVersionToVersionInfo vers
-    let mappedVersions = ReleaseNotes $ HM.fromList $ (\v -> (versionInfoVersion v, versionInfoReleaseNotes v)) <$> vv
-    pure $ (sortOn (Down . versionInfoVersion) vv, mappedVersions)
-    where
-        mapSVersionToVersionInfo :: [VersionRecord] -> [VersionInfo]
-        mapSVersionToVersionInfo sv = do
-            (\v -> VersionInfo { versionInfoVersion      = versionRecordNumber v
-                               , versionInfoReleaseNotes = versionRecordReleaseNotes v
-                               , versionInfoDependencies = HM.empty
-                               , versionInfoOsVersion    = versionRecordOsVersion v
-                               , versionInfoInstallAlert = Nothing
-                               }
-                )
-                <$> sv
+    pure $ entityVal <$> entityAppVersions
 
 fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity PkgRecord, P.Entity VersionRecord))
 fetchLatestApp appId = fmap headMay . sortResults . select $ do
@@ -152,19 +167,3 @@ fetchLatestApp appId = fmap headMay . sortResults . select $ do
     where_ (service ^. PkgRecordId ==. val (PkgRecordKey appId))
     pure (service, version)
     where sortResults = fmap $ sortOn (Down . versionRecordNumber . entityVal . snd)
-
-
-fetchAppCategories :: MonadIO m => [PkgId] -> ReaderT SqlBackend m (HM.HashMap PkgId [Category])
-fetchAppCategories appIds = do
-    raw <- select $ do
-        (sc :& app :& cat) <-
-            from
-            $           table @PkgCategory
-            `innerJoin` table @PkgRecord
-            `on`        (\(sc :& app) -> sc ^. PkgCategoryPkgId ==. app ^. PkgRecordId)
-            `innerJoin` table @Category
-            `on`        (\(sc :& _ :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
-        where_ (sc ^. PkgCategoryPkgId `in_` valList (PkgRecordKey <$> appIds))
-        pure (app ^. PkgRecordId, cat)
-    let ls = fmap (first (unPkgRecordKey . unValue) . second (pure . entityVal)) raw
-    pure $ HM.fromListWith (++) ls
