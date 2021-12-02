@@ -17,7 +17,6 @@ import           Data.Aeson                     ( (.:)
                                                 , ToJSON(..)
                                                 , ToJSONKey(..)
                                                 , withObject
-                                                , eitherDecode
                                                 )
 import qualified Data.ByteString.Lazy          as BS
 import           Data.Functor.Contravariant     ( contramap )
@@ -77,7 +76,6 @@ data VersionInfo = VersionInfo
     }
     deriving (Eq, Show)
 
--- TODO rename to PackageDependencyInfo
 data PackageDependency = PackageDependency
     { packageDependencyOptional    :: Maybe Text
     , packageDependencyVersion     :: VersionRange

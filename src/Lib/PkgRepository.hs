@@ -31,19 +31,33 @@ import qualified Data.Attoparsec.Text          as Atto
 import           Data.ByteString                ( readFile
                                                 , writeFile
                                                 )
+import qualified Data.HashMap.Strict           as HM
 import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
+import           Data.Time                      ( getCurrentTime )
+import           Database.Esqueleto.Experimental
+                                                ( ConnectionPool
+                                                , insertUnique
+                                                , runSqlPool
+                                                )
 import           Lib.Error                      ( S9Error(NotFoundE) )
 import qualified Lib.External.AppMgr           as AppMgr
-import           Lib.Types.AppIndex             ( PkgId(..)
-                                                , PackageManifest(packageManifestIcon)
+import           Lib.Types.AppIndex             ( PackageManifest
+                                                    ( packageManifestIcon
+                                                    , packageManifestId
+                                                    , packageManifestVersion
+                                                    )
+                                                , PkgId(..)
+                                                , packageDependencyVersion
+                                                , packageManifestDependencies
                                                 )
 import           Lib.Types.Emver                ( Version
                                                 , VersionRange
                                                 , parseVersion
                                                 , satisfies
                                                 )
+import           Model
 import           Startlude                      ( ($)
                                                 , (&&)
                                                 , (.)
@@ -62,14 +76,18 @@ import           Startlude                      ( ($)
                                                 , MonadReader
                                                 , Show
                                                 , SomeException(..)
+                                                , Traversable(traverse)
                                                 , filter
                                                 , find
+                                                , first
                                                 , for_
+                                                , fst
                                                 , headMay
                                                 , not
                                                 , partitionEithers
                                                 , pure
                                                 , show
+                                                , snd
                                                 , sortOn
                                                 , throwIO
                                                 , void
@@ -111,7 +129,6 @@ import           Yesod.Core.Content             ( typeGif
                                                 , typeSvg
                                                 )
 import           Yesod.Core.Types               ( ContentType )
-
 data ManifestParseException = ManifestParseException FilePath
     deriving Show
 instance Exception ManifestParseException
@@ -143,10 +160,28 @@ getBestVersion :: (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m)
                -> m (Maybe Version)
 getBestVersion pkg spec = headMay . sortOn Down <$> getViableVersions pkg spec
 
--- TODO add loadDependencies 
+loadPkgDependencies :: MonadUnliftIO m => ConnectionPool -> PackageManifest -> m ()
+loadPkgDependencies appConnPool manifest = do
+    let pkgId      = packageManifestId manifest
+    let pkgVersion = packageManifestVersion manifest
+    let deps       = packageManifestDependencies manifest
+    time <- liftIO getCurrentTime
+    let deps' = first PkgRecordKey <$> HM.toList deps
+    _ <- traverse
+        (\d ->
+            (runSqlPool
+                ( insertUnique
+                $ PkgDependency time (PkgRecordKey pkgId) pkgVersion (fst d) (packageDependencyVersion . snd $ d)
+                )
+                appConnPool
+            )
+        )
+        deps'
+    pure ()
+
 -- extract all package assets into their own respective files
-extractPkg :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => FilePath -> m ()
-extractPkg fp = handle @_ @SomeException cleanup $ do
+extractPkg :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => ConnectionPool -> FilePath -> m ()
+extractPkg pool fp = handle @_ @SomeException cleanup $ do
     $logInfo [i|Extracting package: #{fp}|]
     PkgRepo { pkgRepoAppMgrBin = appmgr } <- ask
     let pkgRoot = takeDirectory fp
@@ -169,6 +204,7 @@ extractPkg fp = handle @_ @SomeException cleanup $ do
                     Just x  -> case takeExtension (T.unpack x) of
                         ""    -> "png"
                         other -> other
+            loadPkgDependencies pool manifest
             liftIO $ renameFile (pkgRoot </> "icon.tmp") (pkgRoot </> iconDest)
     hash <- wait pkgHashTask
     liftIO $ writeFile (pkgRoot </> "hash.bin") hash
@@ -184,8 +220,8 @@ extractPkg fp = handle @_ @SomeException cleanup $ do
             mapConcurrently_ (removeFile . (pkgRoot </>)) toRemove
             throwIO e
 
-watchPkgRepoRoot :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => m (IO Bool)
-watchPkgRepoRoot = do
+watchPkgRepoRoot :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => ConnectionPool -> m (IO Bool)
+watchPkgRepoRoot pool = do
     $logInfo "Starting FSNotify Watch Manager"
     root    <- asks pkgRepoFileRoot
     runInIO <- askRunInIO
@@ -195,7 +231,7 @@ watchPkgRepoRoot = do
             let pkg = eventPath evt
             -- TODO: validate that package path is an actual s9pk and is in a correctly conforming path.
             void . forkIO $ runInIO $ do
-                (extractPkg pkg)
+                (extractPkg pool pkg)
         takeMVar box
         stop
     pure $ tryPutMVar box ()

@@ -7,6 +7,7 @@
 {-# LANGUAGE ViewPatterns          #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+
 module Foundation where
 
 import           Startlude               hiding ( Handler )
@@ -74,9 +75,6 @@ instance Has a r => Has a (HandlerData r r) where
 instance Has AppSettings RegistryCtx where
     extract = appSettings
     update f ctx = ctx { appSettings = f (appSettings ctx) }
-
-
-
 
 setWebProcessThreadId :: (ThreadId, ThreadId) -> RegistryCtx -> IO ()
 setWebProcessThreadId tid a = putMVar (appWebServerThreadId a) $ tid

@@ -17,7 +17,6 @@ import           Lib.Types.Category
 import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 import           Startlude
-import           Yesod.Persist                  ( PersistFilter(Eq) )
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 PkgRecord
@@ -92,13 +91,14 @@ ErrorLogRecord
     message Text
     incidents Word32
     UniqueLogRecord epoch commitHash sourceFile line target level message
+
 PkgDependency
     createdAt UTCTime
     pkgId PkgRecordId
     pkgVersion Version
     depId PkgRecordId
     depVersionRange VersionRange
-    UniquePkgVersion pkgId pkgVersion
+    UniquePkgDepVersion pkgId pkgVersion depId
     deriving Eq
     deriving Show
 |]

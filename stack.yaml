@@ -44,6 +44,7 @@ extra-deps:
   - esqueleto-3.5.1.0
   - monad-logger-extras-0.1.1.1
   - wai-request-spec-0.10.2.4
+  - data-tree-print-0.1.0.2
 # Override default flag values for local packages and extra-deps
 # flags: {}
 

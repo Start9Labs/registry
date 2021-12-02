@@ -132,12 +132,13 @@ makeFoundation appSettings = do
             mkFoundation (panic "connPool forced in tempFoundation") (panic "stopFsNotify forced in tempFoundation")
         logFunc = messageLoggerSource tempFoundation appLogger
 
-    stop <- runLoggingT (runReaderT watchPkgRepoRoot appSettings) logFunc
     createDirectoryIfMissing True (errorLogRoot appSettings)
 
     -- Create the database connection pool
     pool <- flip runLoggingT logFunc
         $ createPostgresqlPool (pgConnStr $ appDatabaseConf appSettings) (pgPoolSize . appDatabaseConf $ appSettings)
+
+    stop <- runLoggingT (runReaderT (watchPkgRepoRoot pool) appSettings) logFunc
 
     -- Preform database migration using application logging settings
     runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
