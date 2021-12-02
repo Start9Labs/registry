@@ -39,6 +39,13 @@ import           Database.Persist.Postgresql
                                                 , selectSource
                                                 , (||.)
                                                 )
+import           Handler.Types.Marketplace      ( PackageDependencyMetadata
+                                                    ( PackageDependencyMetadata
+                                                    , packageDependencyMetadataDepPkgRecord
+                                                    , packageDependencyMetadataDepVersions
+                                                    , packageDependencyMetadataPkgDependencyRecord
+                                                    )
+                                                )
 import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Category
 import           Lib.Types.Emver                ( Version )
@@ -143,14 +150,17 @@ zipVersions = awaitForever $ \pkg -> do
 
 zipDependencyVersions :: (Monad m, MonadIO m)
                       => (Entity PkgDependency, Entity PkgRecord)
-                      -> ReaderT SqlBackend m (Entity PkgDependency, Entity PkgRecord, [Entity VersionRecord])
+                      -> ReaderT SqlBackend m PackageDependencyMetadata
 zipDependencyVersions (pkgDepRecord, depRecord) = do
     let pkgDbId = entityKey $ depRecord
     depVers <- select $ do
         v <- from $ table @VersionRecord
         where_ $ v ^. VersionRecordPkgId ==. val pkgDbId
         pure v
-    pure $ (pkgDepRecord, depRecord, depVers)
+    pure $ PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDepRecord
+                                     , packageDependencyMetadataDepPkgRecord        = depRecord
+                                     , packageDependencyMetadataDepVersions         = depVers
+                                     }
 
 fetchAllAppVersions :: MonadUnliftIO m => ConnectionPool -> PkgId -> m [VersionRecord]
 fetchAllAppVersions appConnPool appId = do
