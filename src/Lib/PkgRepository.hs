@@ -43,11 +43,7 @@ import           Database.Esqueleto.Experimental
                                                 )
 import           Lib.Error                      ( S9Error(NotFoundE) )
 import qualified Lib.External.AppMgr           as AppMgr
-import           Lib.Types.AppIndex             ( PackageManifest
-                                                    ( packageManifestIcon
-                                                    , packageManifestId
-                                                    , packageManifestVersion
-                                                    )
+import           Lib.Types.AppIndex             ( PackageManifest(..)
                                                 , PkgId(..)
                                                 , packageDependencyVersion
                                                 , packageManifestDependencies

@@ -39,12 +39,7 @@ import           Database.Persist.Postgresql
                                                 , selectSource
                                                 , (||.)
                                                 )
-import           Handler.Types.Marketplace      ( PackageDependencyMetadata
-                                                    ( PackageDependencyMetadata
-                                                    , packageDependencyMetadataDepPkgRecord
-                                                    , packageDependencyMetadataDepVersions
-                                                    , packageDependencyMetadataPkgDependencyRecord
-                                                    )
+import           Handler.Types.Marketplace      ( PackageDependencyMetadata(..)
                                                 )
 import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Category

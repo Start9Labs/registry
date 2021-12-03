@@ -31,19 +31,8 @@ import           Database.Esqueleto.Experimental
                                                 )
 import           Foundation
 import           GHC.List                       ( lookup )
-import           Handler.Types.Marketplace      ( PackageDependencyMetadata
-                                                    ( PackageDependencyMetadata
-                                                    , packageDependencyMetadataDepPkgRecord
-                                                    , packageDependencyMetadataDepVersions
-                                                    , packageDependencyMetadataPkgDependencyRecord
-                                                    )
-                                                , PackageMetadata
-                                                    ( PackageMetadata
-                                                    , packageMetadataPkgCategories
-                                                    , packageMetadataPkgRecord
-                                                    , packageMetadataPkgVersion
-                                                    , packageMetadataPkgVersionRecords
-                                                    )
+import           Handler.Types.Marketplace      ( PackageDependencyMetadata(..)
+                                                , PackageMetadata(..)
                                                 )
 import           Lib.PkgRepository              ( PkgRepo
                                                 , getHash
