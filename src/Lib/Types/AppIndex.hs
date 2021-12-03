@@ -8,6 +8,7 @@ module Lib.Types.AppIndex where
 
 import           Startlude
 
+-- NOTE: leave eitherDecode for inline test evaluation below
 import           Control.Monad                  ( fail )
 import           Data.Aeson                     ( (.:)
                                                 , (.:?)
@@ -75,43 +76,43 @@ data VersionInfo = VersionInfo
     }
     deriving (Eq, Show)
 
-data ServiceDependencyInfo = ServiceDependencyInfo
-    { serviceDependencyInfoOptional    :: Maybe Text
-    , serviceDependencyInfoVersion     :: VersionRange
-    , serviceDependencyInfoDescription :: Maybe Text
-    , serviceDependencyInfoCritical    :: Bool
+data PackageDependency = PackageDependency
+    { packageDependencyOptional    :: Maybe Text
+    , packageDependencyVersion     :: VersionRange
+    , packageDependencyDescription :: Maybe Text
+    , packageDependencyCritical    :: Bool
     }
     deriving Show
-instance FromJSON ServiceDependencyInfo where
+instance FromJSON PackageDependency where
     parseJSON = withObject "service dependency info" $ \o -> do
-        serviceDependencyInfoOptional    <- o .:? "optional"
-        serviceDependencyInfoVersion     <- o .: "version"
-        serviceDependencyInfoDescription <- o .:? "description"
-        serviceDependencyInfoCritical    <- o .: "critical"
-        pure ServiceDependencyInfo { .. }
+        packageDependencyOptional    <- o .:? "optional"
+        packageDependencyVersion     <- o .: "version"
+        packageDependencyDescription <- o .:? "description"
+        packageDependencyCritical    <- o .: "critical"
+        pure PackageDependency { .. }
 data ServiceAlert = INSTALL | UNINSTALL | RESTORE | START | STOP
     deriving (Show, Eq, Generic, Hashable, Read)
-data ServiceManifest = ServiceManifest
-    { serviceManifestId               :: !PkgId
-    , serviceManifestTitle            :: !Text
-    , serviceManifestVersion          :: !Version
-    , serviceManifestDescriptionLong  :: !Text
-    , serviceManifestDescriptionShort :: !Text
-    , serviceManifestReleaseNotes     :: !Text
-    , serviceManifestIcon             :: !(Maybe Text)
-    , serviceManifestAlerts           :: !(HM.HashMap ServiceAlert (Maybe Text))
-    , serviceManifestDependencies     :: !(HM.HashMap PkgId ServiceDependencyInfo)
+data PackageManifest = PackageManifest
+    { packageManifestId               :: !PkgId
+    , packageManifestTitle            :: !Text
+    , packageManifestVersion          :: !Version
+    , packageManifestDescriptionLong  :: !Text
+    , packageManifestDescriptionShort :: !Text
+    , packageManifestReleaseNotes     :: !Text
+    , packageManifestIcon             :: !(Maybe Text)
+    , packageManifestAlerts           :: !(HM.HashMap ServiceAlert (Maybe Text))
+    , packageManifestDependencies     :: !(HM.HashMap PkgId PackageDependency)
     }
     deriving Show
-instance FromJSON ServiceManifest where
+instance FromJSON PackageManifest where
     parseJSON = withObject "service manifest" $ \o -> do
-        serviceManifestId               <- o .: "id"
-        serviceManifestTitle            <- o .: "title"
-        serviceManifestVersion          <- o .: "version"
-        serviceManifestDescriptionLong  <- o .: "description" >>= (.: "long")
-        serviceManifestDescriptionShort <- o .: "description" >>= (.: "short")
-        serviceManifestIcon             <- o .: "assets" >>= (.: "icon")
-        serviceManifestReleaseNotes     <- o .: "release-notes"
+        packageManifestId               <- o .: "id"
+        packageManifestTitle            <- o .: "title"
+        packageManifestVersion          <- o .: "version"
+        packageManifestDescriptionLong  <- o .: "description" >>= (.: "long")
+        packageManifestDescriptionShort <- o .: "description" >>= (.: "short")
+        packageManifestIcon             <- o .: "assets" >>= (.: "icon")
+        packageManifestReleaseNotes     <- o .: "release-notes"
         alerts                          <- o .: "alerts"
         a                               <- for (HM.toList alerts) $ \(key, value) -> do
             alertType <- case readMaybe $ T.toUpper key of
@@ -119,12 +120,12 @@ instance FromJSON ServiceManifest where
                 Just t  -> pure t
             alertDesc <- parseJSON value
             pure (alertType, alertDesc)
-        let serviceManifestAlerts = HM.fromList a
-        serviceManifestDependencies <- o .: "dependencies"
-        pure ServiceManifest { .. }
+        let packageManifestAlerts = HM.fromList a
+        packageManifestDependencies <- o .: "dependencies"
+        pure PackageManifest { .. }
 
--- >>> eitherDecode testManifest :: Either String ServiceManifest
--- Right (ServiceManifest {serviceManifestId = embassy-pages, serviceManifestTitle = "Embassy Pages", serviceManifestVersion = 0.1.3, serviceManifestDescriptionLong = "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites.", serviceManifestDescriptionShort = "Create Tor websites, hosted on your Embassy.", serviceManifestReleaseNotes = "Upgrade to EmbassyOS v0.3.0", serviceManifestIcon = Just "icon.png", serviceManifestAlerts = fromList [(INSTALL,Nothing),(UNINSTALL,Nothing),(STOP,Nothing),(RESTORE,Nothing),(START,Nothing)], serviceManifestDependencies = fromList [(filebrowser,ServiceDependencyInfo {serviceDependencyInfoOptional = Nothing, serviceDependencyInfoVersion = >=2.14.1.1 <3.0.0, serviceDependencyInfoDescription = Just "Used to upload files to serve.", serviceDependencyInfoCritical = False})]})
+-- >>> eitherDecode testManifest :: Either String PackageManifest
+-- Right (PackageManifest {packageManifestId = embassy-pages, packageManifestTitle = "Embassy Pages", packageManifestVersion = 0.1.3, packageManifestDescriptionLong = "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites.", packageManifestDescriptionShort = "Create Tor websites, hosted on your Embassy.", packageManifestReleaseNotes = "Upgrade to EmbassyOS v0.3.0", packageManifestIcon = Just "icon.png", packageManifestAlerts = fromList [(INSTALL,Nothing),(UNINSTALL,Nothing),(STOP,Nothing),(RESTORE,Nothing),(START,Nothing)], packageManifestDependencies = fromList [(filebrowser,PackageDependency {packageDependencyOptional = Nothing, packageDependencyVersion = >=2.14.1.1 <3.0.0, packageDependencyDescription = Just "Used to upload files to serve.", packageDependencyCritical = False})]})
 testManifest :: BS.ByteString
 testManifest = [i|{
   "id": "embassy-pages",

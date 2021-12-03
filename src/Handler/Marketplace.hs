@@ -20,31 +20,17 @@ import           Startlude               hiding ( Any
 import           Conduit                        ( (.|)
                                                 , awaitForever
                                                 , dropC
-                                                , mapC
                                                 , runConduit
                                                 , sinkList
                                                 , sourceFile
                                                 , takeC
-                                                )
-import           Control.Monad.Except.CoHas     ( liftEither )
-import           Control.Monad.Reader.Has       ( Has
-                                                , ask
-                                                )
-import           Control.Parallel.Strategies    ( parMap
-                                                , rpar
+                                                
                                                 )
 import           Crypto.Hash                    ( SHA256 )
 import           Crypto.Hash.Conduit            ( hashFile )
-import           Data.Aeson                     ( (.:)
-                                                , FromJSON(parseJSON)
-                                                , KeyValue((.=))
-                                                , ToJSON(toJSON)
-                                                , Value(String)
-                                                , decode
+import           Data.Aeson                     ( decode
                                                 , eitherDecode
                                                 , eitherDecodeStrict
-                                                , object
-                                                , withObject
                                                 )
 import qualified Data.Attoparsec.Text          as Atto
 import           Data.ByteArray.Encoding        ( Base(Base16)
@@ -57,63 +43,52 @@ import           Data.List                      ( head
                                                 , lookup
                                                 , sortOn
                                                 )
-import           Data.Semigroup                 ( Max(Max, getMax) )
 import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
 import           Database.Esqueleto.Experimental
-                                                ( (:&)((:&))
-                                                , (==.)
-                                                , Entity(entityKey, entityVal)
+                                                ( Entity(entityKey, entityVal)
                                                 , SqlBackend
-                                                , Value(unValue)
                                                 , (^.)
                                                 , desc
                                                 , from
-                                                , in_
-                                                , innerJoin
-                                                , on
                                                 , orderBy
                                                 , select
                                                 , table
-                                                , val
-                                                , valList
-                                                , where_
                                                 )
-import           Database.Marketplace           ( filterOsCompatible
-                                                , getPkgData
+import           Database.Marketplace           ( getPkgData
                                                 , searchServices
                                                 , zipVersions
+                                                , fetchAllAppVersions
+                                                , fetchLatestApp
+                                                , getPkgDependencyData, zipDependencyVersions, zipCategories
                                                 )
-import qualified Database.Persist              as P
 import           Database.Persist               ( PersistUniqueRead(getBy)
                                                 , insertUnique
                                                 )
 import           Foundation                     ( Handler
-                                                , RegistryCtx(appSettings)
+                                                , RegistryCtx(appSettings, appConnPool)
                                                 )
-import           Lib.Error                      ( S9Error(..) )
+import           Lib.Error                      ( S9Error(..)
+                                                
+                                                )
 import           Lib.PkgRepository              ( getManifest )
 import           Lib.Types.AppIndex             ( PkgId(PkgId)
-                                                , ServiceDependencyInfo(serviceDependencyInfoVersion)
-                                                , ServiceManifest(serviceManifestDependencies)
-                                                , VersionInfo(..)
+                                                
+                                                
                                                 )
 import           Lib.Types.AppIndex             ( )
 import           Lib.Types.Category             ( CategoryTitle(..) )
-import           Lib.Types.Emver                ( (<||)
-                                                , Version
-                                                , VersionRange(Any)
+import           Lib.Types.Emver                ( Version
                                                 , parseRange
                                                 , parseVersion
-                                                , satisfies
+                                                , satisfies, VersionRange
                                                 )
 import           Model                          ( Category(..)
                                                 , EntityField(..)
                                                 , EosHash(EosHash, eosHashHash)
-                                                , Key(PkgRecordKey, unPkgRecordKey)
+                                                , Key(unPkgRecordKey)
                                                 , OsVersion(..)
-                                                , PkgCategory
                                                 , PkgRecord(..)
                                                 , Unique(UniqueVersion)
                                                 , VersionRecord(..)
@@ -129,120 +104,27 @@ import           UnliftIO.Async                 ( concurrently
                                                 , mapConcurrently
                                                 )
 import           UnliftIO.Directory             ( listDirectory )
-import           Util.Shared                    ( getVersionSpecFromQuery )
+import           Util.Shared                    ( getVersionSpecFromQuery, filterLatestVersionFromSpec, filterPkgOsCompatible, filterDependencyOsCompatible, filterDependencyBestVersion )
 import           Yesod.Core                     ( MonadResource
-                                                , ToContent(..)
-                                                , ToTypedContent(..)
                                                 , TypedContent
                                                 , YesodRequest(..)
                                                 , addHeader
                                                 , getRequest
                                                 , getsYesod
-                                                , logWarn
                                                 , lookupGetParam
                                                 , respondSource
                                                 , sendChunkBS
                                                 , sendResponseStatus
                                                 , typeOctet
+                                                , getYesod
                                                 )
 import           Yesod.Persist                  ( YesodDB )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
-
-type URL = Text
-newtype CategoryRes = CategoryRes {
-    categories :: [CategoryTitle]
-} deriving (Show, Generic)
-instance ToJSON CategoryRes
-instance ToContent CategoryRes where
-    toContent = toContent . toJSON
-instance ToTypedContent CategoryRes where
-    toTypedContent = toTypedContent . toJSON
-data ServiceRes = ServiceRes
-    { serviceResIcon           :: URL
-    , serviceResManifest       :: Data.Aeson.Value -- ServiceManifest
-    , serviceResCategories     :: [CategoryTitle]
-    , serviceResInstructions   :: URL
-    , serviceResLicense        :: URL
-    , serviceResVersions       :: [Version]
-    , serviceResDependencyInfo :: HM.HashMap PkgId DependencyInfo
-    }
-    deriving Generic
-
-newtype ReleaseNotes = ReleaseNotes { unReleaseNotes :: HM.HashMap Version Text }
-    deriving (Eq, Show)
-instance ToJSON ReleaseNotes where
-    toJSON ReleaseNotes {..} = object [ t .= v | (k, v) <- HM.toList unReleaseNotes, let (String t) = toJSON k ]
-instance ToContent ReleaseNotes where
-    toContent = toContent . toJSON
-instance ToTypedContent ReleaseNotes where
-    toTypedContent = toTypedContent . toJSON
-instance ToJSON ServiceRes where
-    toJSON ServiceRes {..} = object
-        [ "icon" .= serviceResIcon
-        , "license" .= serviceResLicense
-        , "instructions" .= serviceResInstructions
-        , "manifest" .= serviceResManifest
-        , "categories" .= serviceResCategories
-        , "versions" .= serviceResVersions
-        , "dependency-metadata" .= serviceResDependencyInfo
-        ]
-data DependencyInfo = DependencyInfo
-    { dependencyInfoTitle :: PkgId
-    , dependencyInfoIcon  :: URL
-    }
-    deriving (Eq, Show)
-instance ToJSON DependencyInfo where
-    toJSON DependencyInfo {..} = object ["icon" .= dependencyInfoIcon, "title" .= dependencyInfoTitle]
-
-newtype ServiceAvailableRes = ServiceAvailableRes [ServiceRes]
-    deriving (Generic)
-instance ToJSON ServiceAvailableRes
-instance ToContent ServiceAvailableRes where
-    toContent = toContent . toJSON
-instance ToTypedContent ServiceAvailableRes where
-    toTypedContent = toTypedContent . toJSON
-
-newtype VersionLatestRes = VersionLatestRes (HM.HashMap PkgId (Maybe Version))
-    deriving (Show, Generic)
-instance ToJSON VersionLatestRes
-instance ToContent VersionLatestRes where
-    toContent = toContent . toJSON
-instance ToTypedContent VersionLatestRes where
-    toTypedContent = toTypedContent . toJSON
-data OrderArrangement = ASC | DESC
-    deriving (Eq, Show, Read)
-data ServiceListDefaults = ServiceListDefaults
-    { serviceListOrder      :: OrderArrangement
-    , serviceListPageLimit  :: Int -- the number of items per page
-    , serviceListPageNumber :: Int -- the page you are on
-    , serviceListCategory   :: Maybe CategoryTitle
-    , serviceListQuery      :: Text
-    }
-    deriving (Eq, Show, Read)
-data EosRes = EosRes
-    { eosResVersion      :: Version
-    , eosResHeadline     :: Text
-    , eosResReleaseNotes :: ReleaseNotes
-    }
-    deriving (Eq, Show, Generic)
-instance ToJSON EosRes where
-    toJSON EosRes {..} =
-        object ["version" .= eosResVersion, "headline" .= eosResHeadline, "release-notes" .= eosResReleaseNotes]
-instance ToContent EosRes where
-    toContent = toContent . toJSON
-instance ToTypedContent EosRes where
-    toTypedContent = toTypedContent . toJSON
-
-data PackageVersion = PackageVersion
-    { packageVersionId      :: PkgId
-    , packageVersionVersion :: VersionRange
-    }
-    deriving Show
-instance FromJSON PackageVersion where
-    parseJSON = withObject "package version" $ \o -> do
-        packageVersionId      <- o .: "id"
-        packageVersionVersion <- o .: "version"
-        pure PackageVersion { .. }
+import           Control.Monad.Logger
+import           Control.Monad.Reader.Has       ( Has
+                                                , ask
+                                                )
+import           Handler.Types.Marketplace
 
 getCategoriesR :: Handler CategoryRes
 getCategoriesR = do
@@ -277,8 +159,13 @@ getReleaseNotesR = do
     case lookup "id" getParameters of
         Nothing      -> sendResponseStatus status400 (InvalidParamsE "get:id" "<MISSING>")
         Just package -> do
-            (_, notes) <- fetchAllAppVersions (PkgId package)
-            pure notes
+            appConnPool <- appConnPool <$> getYesod
+            versionRecords  <- runDB $ fetchAllAppVersions appConnPool (PkgId package)
+            pure $ constructReleaseNotesApiRes versionRecords
+    where
+        constructReleaseNotesApiRes :: [VersionRecord] -> ReleaseNotes
+        constructReleaseNotesApiRes vers = do
+            ReleaseNotes $ HM.fromList $ sortOn Down $ (versionRecordNumber &&& versionRecordReleaseNotes) <$> vers
 
 getEosR :: Handler TypedContent
 getEosR = do
@@ -308,6 +195,7 @@ getEosR = do
                     void $ insertUnique (EosHash v t) -- lazily populate
                     pure t
 
+-- TODO refactor with conduit
 getVersionLatestR :: Handler VersionLatestRes
 getVersionLatestR = do
     getParameters <- reqGetParams <$> getRequest
@@ -329,63 +217,54 @@ getVersionLatestR = do
                           )
                     $ HM.fromList packageList
 
-getPackageListR :: Handler ServiceAvailableRes
+getPackageListR :: Handler PackageListRes
 getPackageListR = do
     osPredicate <- getOsVersionQuery <&> \case
         Nothing -> const True
         Just v  -> flip satisfies v
     pkgIds           <- getPkgIdsQuery
-    filteredServices <- case pkgIds of
+    filteredPackages <- case pkgIds of
         Nothing -> do
             -- query for all
             category <- getCategoryQuery
             page     <- getPageQuery
             limit'   <- getLimitQuery
-            query    <- T.strip . fromMaybe (serviceListQuery defaults) <$> lookupGetParam "query"
+            query    <- T.strip . fromMaybe (packageListQuery defaults) <$> lookupGetParam "query"
             runDB
                 $  runConduit
                 $  searchServices category query
                 .| zipVersions
-                .| filterOsCompatible osPredicate
+                .| zipCategories
+                -- empty list since there are no requested packages in this case
+                .| filterLatestVersionFromSpec []
+                .| filterPkgOsCompatible osPredicate
                 -- pages start at 1 for some reason. TODO: make pages start at 0
                 .| (dropC (limit' * (page - 1)) *> takeC limit')
                 .| sinkList
-        Just packages -> do
+        Just packages' -> do
             -- for each item in list get best available from version range
-            let vMap = (packageVersionId &&& packageVersionVersion) <$> packages
+            let vMap = (packageReqId &&& packageReqVersion) <$> packages'
             runDB
+            -- TODO could probably be better with sequenceConduits
                 .  runConduit
-                $  getPkgData (packageVersionId <$> packages)
+                $  getPkgData (packageReqId <$> packages')
                 .| zipVersions
-                .| mapC
-                       (\(a, vs) ->
-                           let spec = fromMaybe Any $ lookup (unPkgRecordKey $ entityKey a) vMap
-                           in  (a, filter ((<|| spec) . versionRecordNumber . entityVal) vs)
-                       )
-                .| filterOsCompatible osPredicate
+                .| zipCategories
+                .| filterLatestVersionFromSpec vMap
+                .| filterPkgOsCompatible osPredicate
                 .| sinkList
-    let keys = unPkgRecordKey . entityKey . fst <$> filteredServices
-    cats <- runDB $ fetchAppCategories keys
-    let vers =
-            filteredServices
-                <&> first (unPkgRecordKey . entityKey)
-                <&> second (sortOn Down . fmap (versionRecordNumber . entityVal))
-                &   HM.fromListWith (++)
-    let packageMetadata = HM.intersectionWith (,) vers (categoryName <<$>> cats)
-    serviceDetailResult <- mapConcurrently (flip (getServiceDetails packageMetadata) Nothing)
-                                           (unPkgRecordKey . entityKey . fst <$> filteredServices)
-    let services = snd $ partitionEithers serviceDetailResult
-    pure $ ServiceAvailableRes services
-
+    -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
+    pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
+    PackageListRes <$> mapConcurrently constructPackageListApiRes pkgsWithDependencies
 
     where
-        defaults = ServiceListDefaults { serviceListOrder      = DESC
-                                       , serviceListPageLimit  = 20
-                                       , serviceListPageNumber = 1
-                                       , serviceListCategory   = Nothing
-                                       , serviceListQuery      = ""
+        defaults = PackageListDefaults { packageListOrder      = DESC
+                                       , packageListPageLimit  = 20
+                                       , packageListPageNumber = 1
+                                       , packageListCategory   = Nothing
+                                       , packageListQuery      = ""
                                        }
-        getPkgIdsQuery :: Handler (Maybe [PackageVersion])
+        getPkgIdsQuery :: Handler (Maybe [PackageReq])
         getPkgIdsQuery = lookupGetParam "ids" >>= \case
             Nothing  -> pure Nothing
             Just ids -> case eitherDecodeStrict (encodeUtf8 ids) of
@@ -405,7 +284,7 @@ getPackageListR = do
                 Just t -> pure $ Just t
         getPageQuery :: Handler Int
         getPageQuery = lookupGetParam "page" >>= \case
-            Nothing -> pure $ serviceListPageNumber defaults
+            Nothing -> pure $ packageListPageNumber defaults
             Just p  -> case readMaybe p of
                 Nothing -> do
                     let e = InvalidParamsE "get:page" p
@@ -416,7 +295,7 @@ getPackageListR = do
                     _ -> t
         getLimitQuery :: Handler Int
         getLimitQuery = lookupGetParam "per-page" >>= \case
-            Nothing -> pure $ serviceListPageLimit defaults
+            Nothing -> pure $ packageListPageLimit defaults
             Just pp -> case readMaybe pp of
                 Nothing -> do
                     let e = InvalidParamsE "get:per-page" pp
@@ -432,105 +311,35 @@ getPackageListR = do
                     $logWarn (show e)
                     sendResponseStatus status400 e
                 Right v -> pure $ Just v
-
-getServiceDetails :: (MonadIO m, MonadResource m, MonadReader r m, Has AppSettings r)
-                  => (HM.HashMap PkgId ([Version], [CategoryTitle]))
-                  -> PkgId
-                  -> Maybe Version
-                  -> m (Either S9Error ServiceRes)
-getServiceDetails metadata pkg maybeVersion = runExceptT $ do
-    settings        <- ask
-    packageMetadata <- case HM.lookup pkg metadata of
-        Nothing -> liftEither . Left $ NotFoundE [i|#{pkg} not found.|]
-        Just m  -> pure m
-    let domain = registryHostname settings
-    version <- case maybeVersion of
-        Nothing -> do
-            -- grab first value, which will be the latest version
-            case fst packageMetadata of
-                []    -> liftEither . Left $ NotFoundE $ [i|No latest version found for #{pkg}|]
-                x : _ -> pure x
-        Just v -> pure v
-    manifest <- flip runReaderT settings $ (snd <$> getManifest pkg version) >>= \bs ->
-        runConduit $ bs .| CL.foldMap BS.fromStrict
-    case eitherDecode manifest of
-        Left  _ -> liftEither . Left $ AssetParseE [i|#{pkg}:manifest|] (decodeUtf8 $ BS.toStrict manifest)
-        Right m -> do
-            let d = parMap rpar (mapDependencyMetadata domain metadata) (HM.toList $ serviceManifestDependencies m)
-            pure $ ServiceRes { serviceResIcon           = [i|https://#{domain}/package/icon/#{pkg}|]
-                                        -- pass through raw JSON Value, we have checked its correct parsing above
-                              , serviceResManifest       = unsafeFromJust . decode $ manifest
-                              , serviceResCategories     = snd packageMetadata
-                              , serviceResInstructions   = [i|https://#{domain}/package/instructions/#{pkg}|]
-                              , serviceResLicense        = [i|https://#{domain}/package/license/#{pkg}|]
-                              , serviceResVersions       = fst packageMetadata
-                              , serviceResDependencyInfo = HM.fromList $ snd $ partitionEithers d
-                              }
-
-mapDependencyMetadata :: Text
-                      -> HM.HashMap PkgId ([Version], [CategoryTitle])
-                      -> (PkgId, ServiceDependencyInfo)
-                      -> Either S9Error (PkgId, DependencyInfo)
-mapDependencyMetadata domain metadata (appId, depInfo) = do
-    depMetadata <- case HM.lookup appId metadata of
-        Nothing -> Left $ NotFoundE [i|dependency metadata for #{appId} not found.|]
-        Just m  -> pure m
-    -- get best version from VersionRange of dependency
-    let satisfactory = filter (<|| serviceDependencyInfoVersion depInfo) (fst depMetadata)
-    let best         = getMax <$> foldMap (Just . Max) satisfactory
-    version <- case best of
-        Nothing -> Left $ NotFoundE $ [i|No satisfactory version for dependent package #{appId}|]
-        Just v  -> pure v
-    pure
-        ( appId
-        , DependencyInfo { dependencyInfoTitle = appId
-                         , dependencyInfoIcon  = [i|https://#{domain}/package/icon/#{appId}?spec==#{version}|]
-                         }
-        )
-
-fetchAllAppVersions :: PkgId -> Handler ([VersionInfo], ReleaseNotes)
-fetchAllAppVersions appId = do
-    entityAppVersions <- runDB $ P.selectList [VersionRecordPkgId P.==. PkgRecordKey appId] []
-    let vers           = entityVal <$> entityAppVersions
-    let vv             = mapSVersionToVersionInfo vers
-    let mappedVersions = ReleaseNotes $ HM.fromList $ (\v -> (versionInfoVersion v, versionInfoReleaseNotes v)) <$> vv
-    pure (sortOn (Down . versionInfoVersion) vv, mappedVersions)
-    where
-        mapSVersionToVersionInfo :: [VersionRecord] -> [VersionInfo]
-        mapSVersionToVersionInfo sv = do
-            (\v -> VersionInfo { versionInfoVersion      = versionRecordNumber v
-                               , versionInfoReleaseNotes = versionRecordReleaseNotes v
-                               , versionInfoDependencies = HM.empty
-                               , versionInfoOsVersion    = versionRecordOsVersion v
-                               , versionInfoInstallAlert = Nothing
-                               }
-                )
-                <$> sv
-
-
-fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity PkgRecord, P.Entity VersionRecord))
-fetchLatestApp appId = fmap headMay . sortResults . select $ do
-    (service :& version) <-
-        from
-        $           table @PkgRecord
-        `innerJoin` table @VersionRecord
-        `on`        (\(service :& version) -> service ^. PkgRecordId ==. version ^. VersionRecordPkgId)
-    where_ (service ^. PkgRecordId ==. val (PkgRecordKey appId))
-    pure (service, version)
-    where sortResults = fmap $ sortOn (Down . versionRecordNumber . entityVal . snd)
-
-
-fetchAppCategories :: MonadIO m => [PkgId] -> ReaderT SqlBackend m (HM.HashMap PkgId [Category])
-fetchAppCategories appIds = do
-    raw <- select $ do
-        (sc :& app :& cat) <-
-            from
-            $           table @PkgCategory
-            `innerJoin` table @PkgRecord
-            `on`        (\(sc :& app) -> sc ^. PkgCategoryPkgId ==. app ^. PkgRecordId)
-            `innerJoin` table @Category
-            `on`        (\(sc :& _ :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
-        where_ (sc ^. PkgCategoryPkgId `in_` valList (PkgRecordKey <$> appIds))
-        pure (app ^. PkgRecordId, cat)
-    let ls = fmap (first (unPkgRecordKey . unValue) . second (pure . entityVal)) raw
-    pure $ HM.fromListWith (++) ls
+        getPackageDependencies :: (MonadIO m, MonadLogger m) => (Version -> Bool) -> PackageMetadata -> ReaderT SqlBackend m (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)])
+        getPackageDependencies osPredicate PackageMetadata { packageMetadataPkgRecord = pkg, packageMetadataPkgVersionRecords = pkgVersions, packageMetadataPkgCategories = pkgCategories, packageMetadataPkgVersion = pkgVersion} = do
+            let pkgId = entityKey pkg
+            let pkgVersions' = versionRecordNumber . entityVal <$> pkgVersions
+            let pkgCategories' = entityVal <$> pkgCategories
+            pkgDepInfo <- getPkgDependencyData pkgId pkgVersion
+            pkgDepInfoWithVersions <- traverse zipDependencyVersions pkgDepInfo
+            let compatiblePkgDepInfo = fmap (filterDependencyOsCompatible osPredicate) pkgDepInfoWithVersions
+            res <- catMaybes <$> traverse filterDependencyBestVersion compatiblePkgDepInfo
+            pure $ (pkgId, pkgCategories', pkgVersions', pkgVersion, res)
+        constructPackageListApiRes :: (MonadResource m, MonadReader r m, Has AppSettings r) => (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)]) -> m PackageRes
+        constructPackageListApiRes (pkgKey, pkgCategories, pkgVersions, pkgVersion, dependencies) = do
+            settings        <- ask
+            let pkgId = unPkgRecordKey pkgKey
+            let domain = registryHostname settings
+            manifest <- flip runReaderT settings $ (snd <$> getManifest pkgId pkgVersion) >>= \bs ->
+                runConduit $ bs .| CL.foldMap BS.fromStrict
+            pure $ PackageRes { packageResIcon = [i|https://#{domain}/package/icon/#{pkgId}|]
+                        -- pass through raw JSON Value, we have checked its correct parsing above
+                        , packageResManifest     = unsafeFromJust . decode $ manifest
+                        , packageResCategories   = categoryName <$> pkgCategories
+                        , packageResInstructions = [i|https://#{domain}/package/instructions/#{pkgId}|]
+                        , packageResLicense      = [i|https://#{domain}/package/license/#{pkgId}|]
+                        , packageResVersions     = pkgVersions
+                        , packageResDependencies = HM.fromList $ constructDependenciesApiRes domain dependencies
+                        }
+        constructDependenciesApiRes :: Text
+                            -> [(Key PkgRecord, Text, Version)]
+                            -> [(PkgId, DependencyRes)]
+        constructDependenciesApiRes domain deps = fmap (\(depKey, depTitle, depVersion) -> do
+                let depId = unPkgRecordKey depKey
+                (depId, DependencyRes { dependencyResTitle = depTitle, dependencyResIcon  = [i|https://#{domain}/package/icon/#{depId}?spec==#{depVersion}|]})) deps

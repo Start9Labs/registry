@@ -91,4 +91,14 @@ ErrorLogRecord
     message Text
     incidents Word32
     UniqueLogRecord epoch commitHash sourceFile line target level message
+
+PkgDependency
+    createdAt UTCTime
+    pkgId PkgRecordId
+    pkgVersion Version
+    depId PkgRecordId
+    depVersionRange VersionRange
+    UniquePkgDepVersion pkgId pkgVersion depId
+    deriving Eq
+    deriving Show
 |]

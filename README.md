@@ -3,10 +3,10 @@
 After installing Postgres, run:
 
 ```
-createuser start9-companion-server --pwprompt --superuser
-# Enter password start9-companion-server when prompted
-createdb start9-companion-server
-createdb start9-companion-server_test
+createuser start9-registry --pwprompt --superuser
+# Enter password start9-registry when prompted
+createdb start9-registry
+createdb start9-registry_test
 ```
 
 ## Haskell Setup
@@ -44,10 +44,14 @@ To create `hie.yaml` if it does not exist:
 ## Tests
 
 ```
-stack test --flag start9-companion-server:library-only --flag start9-companion-server:dev
+stack test --flag start9-registry:library-only --flag start9-registry:dev
 ```
 
 (Because `yesod devel` passes the `library-only` and `dev` flags, matching those flags means you don't need to recompile between tests and development, and it disables optimization to speed up your test compile times).
+
+## Builds
+
+`make`
 
 ### Tests with HIE Setup
 - install hspec-discover globally `cabal install hspec-discover` (requires cabal installation)
