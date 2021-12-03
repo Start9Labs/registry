@@ -80,7 +80,6 @@ data PackageDependency = PackageDependency
     { packageDependencyOptional    :: Maybe Text
     , packageDependencyVersion     :: VersionRange
     , packageDependencyDescription :: Maybe Text
-    , packageDependencyCritical    :: Bool
     }
     deriving Show
 instance FromJSON PackageDependency where
@@ -88,7 +87,6 @@ instance FromJSON PackageDependency where
         packageDependencyOptional    <- o .:? "optional"
         packageDependencyVersion     <- o .: "version"
         packageDependencyDescription <- o .:? "description"
-        packageDependencyCritical    <- o .: "critical"
         pure PackageDependency { .. }
 data ServiceAlert = INSTALL | UNINSTALL | RESTORE | START | STOP
     deriving (Show, Eq, Generic, Hashable, Read)
@@ -125,7 +123,6 @@ instance FromJSON PackageManifest where
         pure PackageManifest { .. }
 
 -- >>> eitherDecode testManifest :: Either String PackageManifest
--- Right (PackageManifest {packageManifestId = embassy-pages, packageManifestTitle = "Embassy Pages", packageManifestVersion = 0.1.3, packageManifestDescriptionLong = "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites.", packageManifestDescriptionShort = "Create Tor websites, hosted on your Embassy.", packageManifestReleaseNotes = "Upgrade to EmbassyOS v0.3.0", packageManifestIcon = Just "icon.png", packageManifestAlerts = fromList [(INSTALL,Nothing),(UNINSTALL,Nothing),(STOP,Nothing),(RESTORE,Nothing),(START,Nothing)], packageManifestDependencies = fromList [(filebrowser,PackageDependency {packageDependencyOptional = Nothing, packageDependencyVersion = >=2.14.1.1 <3.0.0, packageDependencyDescription = Just "Used to upload files to serve.", packageDependencyCritical = False})]})
 testManifest :: BS.ByteString
 testManifest = [i|{
   "id": "embassy-pages",
