@@ -24,7 +24,10 @@ import           Conduit                        ( (.|)
                                                 , sinkList
                                                 , sourceFile
                                                 , takeC
-                                                
+                                                )
+import           Control.Monad.Logger           ( MonadLogger, logWarn )
+import           Control.Monad.Reader.Has       ( Has
+                                                , ask
                                                 )
 import           Crypto.Hash                    ( SHA256 )
 import           Crypto.Hash.Conduit            ( hashFile )
@@ -46,6 +49,8 @@ import           Data.List                      ( head
 import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
+import qualified Data.Text.Lazy                as TL
+import qualified Data.Text.Lazy.Builder        as TB
 import           Database.Esqueleto.Experimental
                                                 ( Entity(entityKey, entityVal)
                                                 , SqlBackend
@@ -67,15 +72,13 @@ import           Database.Persist               ( PersistUniqueRead(getBy)
                                                 , insertUnique
                                                 )
 import           Foundation                     ( Handler
-                                                , RegistryCtx(appSettings, appConnPool)
+                                                , RegistryCtx(appSettings, appConnPool), Route (IconsR, InstructionsR, LicenseR)
                                                 )
+import           Handler.Types.Marketplace
 import           Lib.Error                      ( S9Error(..)
-                                                
                                                 )
 import           Lib.PkgRepository              ( getManifest )
 import           Lib.Types.AppIndex             ( PkgId(PkgId)
-                                                
-                                                
                                                 )
 import           Lib.Types.AppIndex             ( )
 import           Lib.Types.Category             ( CategoryTitle(..) )
@@ -97,14 +100,19 @@ import           Network.HTTP.Types             ( status400
                                                 , status404
                                                 )
 import           Protolude.Unsafe               ( unsafeFromJust )
-import           Settings                       ( AppSettings(registryHostname, resourcesDir) )
+import           Settings
 import           System.Directory               ( getFileSize )
 import           System.FilePath                ( (</>) )
 import           UnliftIO.Async                 ( concurrently
                                                 , mapConcurrently
                                                 )
 import           UnliftIO.Directory             ( listDirectory )
-import           Util.Shared                    ( getVersionSpecFromQuery, filterLatestVersionFromSpec, filterPkgOsCompatible, filterDependencyOsCompatible, filterDependencyBestVersion )
+import           Util.Shared                    ( getVersionSpecFromQuery
+                                                , filterLatestVersionFromSpec
+                                                , filterPkgOsCompatible
+                                                , filterDependencyOsCompatible
+                                                , filterDependencyBestVersion
+                                                )
 import           Yesod.Core                     ( MonadResource
                                                 , TypedContent
                                                 , YesodRequest(..)
@@ -116,15 +124,10 @@ import           Yesod.Core                     ( MonadResource
                                                 , sendChunkBS
                                                 , sendResponseStatus
                                                 , typeOctet
-                                                , getYesod
+                                                , getYesod, RenderRoute (renderRoute)
                                                 )
 import           Yesod.Persist                  ( YesodDB )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
-import           Control.Monad.Logger
-import           Control.Monad.Reader.Has       ( Has
-                                                , ask
-                                                )
-import           Handler.Types.Marketplace
 
 getCategoriesR :: Handler CategoryRes
 getCategoriesR = do
@@ -323,23 +326,30 @@ getPackageListR = do
             pure $ (pkgId, pkgCategories', pkgVersions', pkgVersion, res)
         constructPackageListApiRes :: (MonadResource m, MonadReader r m, Has AppSettings r) => (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)]) -> m PackageRes
         constructPackageListApiRes (pkgKey, pkgCategories, pkgVersions, pkgVersion, dependencies) = do
-            settings        <- ask
+            settings <- ask @_ @_ @AppSettings
             let pkgId = unPkgRecordKey pkgKey
-            let domain = registryHostname settings
             manifest <- flip runReaderT settings $ (snd <$> getManifest pkgId pkgVersion) >>= \bs ->
                 runConduit $ bs .| CL.foldMap BS.fromStrict
-            pure $ PackageRes { packageResIcon = [i|https://#{domain}/package/icon/#{pkgId}|]
+            pure $ PackageRes
+                        { packageResIcon         = basicRender $ IconsR pkgId
                         -- pass through raw JSON Value, we have checked its correct parsing above
                         , packageResManifest     = unsafeFromJust . decode $ manifest
                         , packageResCategories   = categoryName <$> pkgCategories
-                        , packageResInstructions = [i|https://#{domain}/package/instructions/#{pkgId}|]
-                        , packageResLicense      = [i|https://#{domain}/package/license/#{pkgId}|]
+                        , packageResInstructions = basicRender $ InstructionsR pkgId
+                        , packageResLicense      = basicRender $ LicenseR pkgId
                         , packageResVersions     = pkgVersions
-                        , packageResDependencies = HM.fromList $ constructDependenciesApiRes domain dependencies
+                        , packageResDependencies = HM.fromList $ constructDependenciesApiRes dependencies
                         }
-        constructDependenciesApiRes :: Text
-                            -> [(Key PkgRecord, Text, Version)]
+        constructDependenciesApiRes :: [(Key PkgRecord, Text, Version)]
                             -> [(PkgId, DependencyRes)]
-        constructDependenciesApiRes domain deps = fmap (\(depKey, depTitle, depVersion) -> do
+        constructDependenciesApiRes deps = fmap (\(depKey, depTitle, depVersion) -> do
                 let depId = unPkgRecordKey depKey
-                (depId, DependencyRes { dependencyResTitle = depTitle, dependencyResIcon  = [i|https://#{domain}/package/icon/#{depId}?spec==#{depVersion}|]})) deps
+                (depId, DependencyRes { dependencyResTitle = depTitle, dependencyResIcon  = (basicRender $ IconsR depId) <> [i|?spec==#{depVersion}|]})) deps
+
+basicRender :: RenderRoute a => Route a -> Text
+basicRender = TL.toStrict
+    . TB.toLazyText
+    . fold
+    . fmap (mappend (TB.singleton '/') . TB.fromText)
+    . fst
+    . renderRoute
