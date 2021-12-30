@@ -6,6 +6,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Handler.Apps where
 
@@ -14,7 +15,8 @@ import           Startlude
 import           Control.Monad.Logger
 import           Data.Aeson
 import qualified Data.Attoparsec.Text          as Atto
-import qualified Data.ByteString.Lazy          as BS
+import qualified Data.ByteString               as BS
+import qualified Data.ByteString.Lazy          as LBS
 import           Data.Char
 import           Data.Conduit
 import qualified Data.Conduit.Binary           as CB
@@ -34,16 +36,16 @@ import           System.Posix.Files             ( fileSize
 import           Yesod.Core
 import           Yesod.Persist.Core
 
+import           Database.Queries
 import           Foundation
+import           Lib.Error
+import           Lib.External.AppMgr
 import           Lib.Registry
 import           Lib.Types.AppIndex
 import           Lib.Types.Emver
 import           Lib.Types.FileSystem
-import           Lib.Error
-import           Lib.External.AppMgr
-import           Settings
-import           Database.Queries
 import           Network.Wai                    ( Request(requestHeaderUserAgent) )
+import           Settings
 import           Util.Shared
 
 
@@ -51,7 +53,7 @@ pureLog :: Show a => a -> Handler a
 pureLog = liftA2 (*>) ($logInfo . show) pure
 
 logRet :: ToJSON a => Handler a -> Handler a
-logRet = (>>= liftA2 (*>) ($logInfo . decodeUtf8 . BS.toStrict . encode) pure)
+logRet = (>>= liftA2 (*>) ($logInfo . decodeUtf8 . LBS.toStrict . encode) pure)
 
 data FileExtension = FileExtension FilePath (Maybe String)
 instance Show FileExtension where
@@ -71,32 +73,37 @@ getEmbassyOsVersion = userAgentOsVersion
 
 getAppsManifestR :: Handler TypedContent
 getAppsManifestR = do
-    osVersion                              <- getEmbassyOsVersion
-    appsDir <- (</> "apps") . resourcesDir . appSettings <$> getYesod
+    osVersion <- getEmbassyOsVersion
+    appsDir   <- (</> "apps") . resourcesDir . appSettings <$> getYesod
     let appResourceFile = appsDir </> "apps.yaml"
-    manifest  <- liftIO (Yaml.decodeFileEither appResourceFile) >>= \case
-        Left e -> do
+    appResourceBytes <- liftIO $ BS.readFile appResourceFile
+    manifest         <- case {-# SCC yaml_decode_either #-} Yaml.decodeEither' appResourceBytes of
+        Left !e -> do
             $logError "COULD NOT PARSE APP INDEX! CORRECT IMMEDIATELY!"
             $logError (show e)
             sendResponseStatus status500 ("Internal Server Error" :: Text)
-        Right a -> pure a
-    m <- mapM (addFileTimestamp' appsDir) (HM.toList $ unAppManifest manifest)
-    let withServiceTimestamps = AppManifest $ HM.fromList m
+        Right !a -> pure a
     let pruned = case osVersion of
-            Nothing -> withServiceTimestamps
-            Just av -> AppManifest $ HM.mapMaybe (filterOsRecommended av) $ unAppManifest withServiceTimestamps
-    pure $ TypedContent "application/x-yaml" (toContent $ Yaml.encode pruned)
+            Nothing -> manifest
+            Just av -> AppManifest . HM.mapMaybe (filterOsRecommended av) . unAppManifest $ manifest
+    withServiceTimestamps <-
+        fmap AppManifest
+        . HM.traverseWithKey (const pure {-addFileTimestamp' appsDir-}
+                                        )
+        . unAppManifest
+        $ pruned
+    pure . TypedContent "application/x-yaml" . toContent . Yaml.encode $! withServiceTimestamps
     where
-        addFileTimestamp' :: (MonadHandler m, MonadIO m) => FilePath -> (AppIdentifier, StoreApp) -> m (AppIdentifier, StoreApp)
-        addFileTimestamp' dir (appId, service) = do
+        addFileTimestamp' :: (MonadHandler m, MonadIO m) => FilePath -> AppIdentifier -> StoreApp -> m StoreApp
+        addFileTimestamp' dir appId service = do
             let ext = (Extension (toS appId) :: Extension "s9pk")
             mostRecentVersion <- liftIO $ getMostRecentAppVersion dir ext
-            (v, _) <- case mostRecentVersion of
-                    Nothing -> notFound
-                    Just a -> pure $ unRegisteredAppVersion a
+            (v, _)            <- case mostRecentVersion of
+                Nothing -> notFound
+                Just a  -> pure $ unRegisteredAppVersion a
             liftIO (addFileTimestamp dir ext service v) >>= \case
-                            Nothing -> notFound
-                            Just appWithTimestamp -> pure (appId, appWithTimestamp)
+                Nothing               -> notFound
+                Just appWithTimestamp -> pure appWithTimestamp
 
 getSysR :: Extension "" -> Handler TypedContent
 getSysR e = do
@@ -106,7 +113,7 @@ getSysR e = do
 getAppManifestR :: AppIdentifier -> Handler TypedContent
 getAppManifestR appId = do
     (appsDir, appMgrDir) <- getsYesod $ ((</> "apps") . resourcesDir &&& staticBinDir) . appSettings
-    av <- getVersionFromQuery appsDir appExt >>= \case
+    av                   <- getVersionFromQuery appsDir appExt >>= \case
         Nothing -> sendResponseStatus status400 ("Specified App Version Not Found" :: Text)
         Just v  -> pure v
     let appDir = (<> "/") . (</> show av) . (</> toS appId) $ appsDir
@@ -145,10 +152,10 @@ getApp rootDir ext@(Extension appId) = do
     case best of
         Nothing -> notFound
         Just (RegisteredAppVersion (appVersion, filePath)) -> do
-            exists <- liftIO $ doesFileExist filePath >>= \case
+            existence <- liftIO $ doesFileExist filePath >>= \case
                 True  -> pure Existent
                 False -> pure NonExistent
-            determineEvent exists (extension ext) filePath appVersion
+            determineEvent existence (extension ext) filePath appVersion
     where
         determineEvent :: FileExistence -> String -> FilePath -> Version -> HandlerFor RegistryCtx TypedContent
         -- for app files

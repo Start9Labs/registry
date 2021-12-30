@@ -10,20 +10,20 @@ import           Data.Aeson
 import qualified Data.HashMap.Strict           as HM
 import qualified Data.List.NonEmpty            as NE
 
+import           Lib.Registry
 import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 import           System.Directory
-import           Lib.Registry
 
 type AppIdentifier = Text
 
 data VersionInfo = VersionInfo
-    { versionInfoVersion       :: Version
-    , versionInfoReleaseNotes  :: Text
-    , versionInfoDependencies  :: HM.HashMap Text VersionRange
-    , versionInfoOsRequired    :: VersionRange
-    , versionInfoOsRecommended :: VersionRange
-    , versionInfoInstallAlert  :: Maybe Text
+    { versionInfoVersion       :: !Version
+    , versionInfoReleaseNotes  :: !Text
+    , versionInfoDependencies  :: !(HM.HashMap Text VersionRange)
+    , versionInfoOsRequired    :: !VersionRange
+    , versionInfoOsRecommended :: !VersionRange
+    , versionInfoInstallAlert  :: !(Maybe Text)
     }
     deriving (Eq, Show)
 
@@ -51,12 +51,12 @@ instance ToJSON VersionInfo where
         ]
 
 data StoreApp = StoreApp
-    { storeAppTitle       :: Text
-    , storeAppDescShort   :: Text
-    , storeAppDescLong    :: Text
-    , storeAppVersionInfo :: NonEmpty VersionInfo
-    , storeAppIconType    :: Text
-    , storeAppTimestamp   :: Maybe UTCTime
+    { storeAppTitle       :: !Text
+    , storeAppDescShort   :: !Text
+    , storeAppDescLong    :: !Text
+    , storeAppVersionInfo :: !(NonEmpty VersionInfo)
+    , storeAppIconType    :: !Text
+    , storeAppTimestamp   :: !(Maybe UTCTime)
     }
     deriving Show
 
@@ -84,7 +84,7 @@ instance FromJSON AppManifest where
             storeAppVersionInfo <- config .: "version-info" >>= \case
                 []       -> fail "No Valid Version Info"
                 (x : xs) -> pure $ x :| xs
-            storeAppTimestamp   <- config .:? "timestamp"
+            storeAppTimestamp <- config .:? "timestamp"
             pure (appId, StoreApp { .. })
         return $ AppManifest (HM.fromList apps)
 instance ToJSON AppManifest where
@@ -104,7 +104,7 @@ filterOsRecommended av sa = case NE.filter ((av <||) . versionInfoOsRecommended)
 addFileTimestamp :: KnownSymbol a => FilePath -> Extension a -> StoreApp -> Version -> IO (Maybe StoreApp)
 addFileTimestamp appDir ext service v = do
     getVersionedFileFromDir appDir ext v >>= \case
-                Nothing -> pure Nothing
-                Just file -> do
-                    time <- getModificationTime file
-                    pure $ Just service {storeAppTimestamp = Just time }
+        Nothing   -> pure Nothing
+        Just file -> do
+            time <- getModificationTime file
+            pure $ Just service { storeAppTimestamp = Just time }
