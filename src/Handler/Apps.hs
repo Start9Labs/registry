@@ -86,12 +86,7 @@ getAppsManifestR = do
     let pruned = case osVersion of
             Nothing -> manifest
             Just av -> AppManifest . HM.mapMaybe (filterOsRecommended av) . unAppManifest $ manifest
-    withServiceTimestamps <-
-        fmap AppManifest
-        . HM.traverseWithKey (const pure {-addFileTimestamp' appsDir-}
-                                        )
-        . unAppManifest
-        $ pruned
+    withServiceTimestamps <- fmap AppManifest . HM.traverseWithKey (addFileTimestamp' appsDir) . unAppManifest $ pruned
     pure . TypedContent "application/x-yaml" . toContent . Yaml.encode $! withServiceTimestamps
     where
         addFileTimestamp' :: (MonadHandler m, MonadIO m) => FilePath -> AppIdentifier -> StoreApp -> m StoreApp
@@ -185,22 +180,21 @@ recordMetrics appId rootDir appVersion = do
                 Just x  -> pure x
             pure (sa, vi)
     -- lazy load app at requested version if it does not yet exist to automatically transfer from using apps.yaml
-    sa                   <- runDB $ fetchApp appId'
-    (appKey, versionKey) <- case sa of
-        Nothing -> do
-            appKey'     <- runDB $ createApp appId' storeApp >>= errOnNothing status500 "duplicate app created"
-            versionKey' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing
-                status500
-                "duplicate app version created"
-            pure (appKey', versionKey')
-        Just a -> do
-            let appKey' = entityKey a
-            existingVersion <- runDB $ fetchAppVersion appVersion appKey'
-            case existingVersion of
-                Nothing -> do
-                    appVersion' <- runDB $ createAppVersion appKey' versionInfo >>= errOnNothing
-                        status500
-                        "duplicate app version created"
-                    pure (appKey', appVersion')
-                Just v -> pure (appKey', entityKey v)
-    runDB $ createMetric appKey versionKey
+    runDB $ do
+        sa                   <- fetchApp appId'
+        (appKey, versionKey) <- case sa of
+            Nothing -> do
+                appKey'     <- createApp appId' storeApp >>= errOnNothing status500 "duplicate app created"
+                versionKey' <- createAppVersion appKey' versionInfo
+                    >>= errOnNothing status500 "duplicate app version created"
+                pure (appKey', versionKey')
+            Just a -> do
+                let appKey' = entityKey a
+                existingVersion <- fetchAppVersion appVersion appKey'
+                case existingVersion of
+                    Nothing -> do
+                        appVersion' <- createAppVersion appKey' versionInfo
+                            >>= errOnNothing status500 "duplicate app version created"
+                        pure (appKey', appVersion')
+                    Just v -> pure (appKey', entityKey v)
+        createMetric appKey versionKey
