@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Util.Shared where
 
@@ -54,6 +54,15 @@ getVersionSpecFromQuery = do
         Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
         Just t  -> pure t
 
+versionPriorityFromQueryIsMin :: Handler Bool
+versionPriorityFromQueryIsMin = do
+    priorityString <- lookupGetParam "version-priority"
+    case priorityString of
+        Nothing      -> pure False
+        (Just "max") -> pure False
+        (Just "min") -> pure True
+        (Just t    ) -> sendResponseStatus status400 ("Invalid Version Priority Specification: " <> t)
+
 addPackageHeader :: (MonadUnliftIO m, MonadHandler m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m ()
 addPackageHeader pkg version = do
     packageHash <- getHash pkg version
@@ -63,7 +72,6 @@ orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other = action >>= \case
     Nothing -> other
     Just x  -> pure x
-
 
 filterPkgOsCompatible :: Monad m => (Version -> Bool) -> ConduitT PackageMetadata PackageMetadata m ()
 filterPkgOsCompatible p =
@@ -109,7 +117,7 @@ filterLatestVersionFromSpec versionMap = awaitForever $ \(a, vs, cats) -> do
 filterDependencyBestVersion :: MonadLogger m => PackageDependencyMetadata -> m (Maybe (Key PkgRecord, Text, Version))
 filterDependencyBestVersion PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDepRecord, packageDependencyMetadataDepPkgRecord = depRecord, packageDependencyMetadataDepVersions = depVersions }
     = do
-    -- get best version from VersionRange of dependency
+        -- get best version from VersionRange of dependency
         let pkgId    = pkgDependencyPkgId $ entityVal pkgDepRecord
         let depId    = pkgDependencyDepId $ entityVal pkgDepRecord
         let depTitle = pkgRecordTitle $ entityVal depRecord
@@ -119,6 +127,6 @@ filterDependencyBestVersion PackageDependencyMetadata { packageDependencyMetadat
             -- QUESTION is this an acceptable transformation here? These are the only values that we care about after this filter.
             Just bestVersion -> pure $ Just (depId, depTitle, bestVersion)
             Nothing          -> do
-                $logInfo [i|No satisfactory version of #{depId} for dependent package #{pkgId}|]
                 -- TODO it would be better if we could return the requirements for display
+                $logInfo [i|No satisfactory version of #{depId} for dependent package #{pkgId}|]
                 pure Nothing

@@ -50,6 +50,7 @@ import           Lib.Types.Emver                ( Version )
 import           Util.Shared                    ( addPackageHeader
                                                 , getVersionSpecFromQuery
                                                 , orThrow
+                                                , versionPriorityFromQueryIsMin
                                                 )
 
 data FileExtension = FileExtension FilePath (Maybe String)
@@ -60,7 +61,8 @@ instance Show FileExtension where
 getAppManifestR :: PkgId -> Handler TypedContent
 getAppManifestR pkg = do
     versionSpec <- getVersionSpecFromQuery
-    version     <- getBestVersion pkg versionSpec
+    preferMin   <- versionPriorityFromQueryIsMin
+    version     <- getBestVersion pkg versionSpec preferMin
         `orThrow` sendResponseStatus status404 (NotFoundE [i|#{pkg} satisfying #{versionSpec}|])
     addPackageHeader pkg version
     (len, src) <- getManifest pkg version
@@ -71,7 +73,8 @@ getAppR :: S9PK -> Handler TypedContent
 getAppR file = do
     let pkg = PkgId . T.pack $ takeBaseName (show file)
     versionSpec <- getVersionSpecFromQuery
-    version     <- getBestVersion pkg versionSpec
+    preferMin   <- versionPriorityFromQueryIsMin
+    version     <- getBestVersion pkg versionSpec preferMin
         `orThrow` sendResponseStatus status404 (NotFoundE [i|#{pkg} satisfying #{versionSpec}|])
     addPackageHeader pkg version
     void $ recordMetrics pkg version

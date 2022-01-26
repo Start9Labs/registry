@@ -34,8 +34,9 @@ instance FromJSON IconType
 
 getIconsR :: PkgId -> Handler TypedContent
 getIconsR pkg = do
-    spec    <- getVersionSpecFromQuery
-    version <- getBestVersion pkg spec
+    spec      <- getVersionSpecFromQuery
+    preferMin <- versionPriorityFromQueryIsMin
+    version   <- getBestVersion pkg spec preferMin
         `orThrow` sendResponseStatus status400 (NotFoundE [i|Icon for #{pkg} satisfying #{spec}|])
     (ct, len, src) <- getIcon pkg version
     addHeader "Content-Length" (show len)
@@ -43,8 +44,9 @@ getIconsR pkg = do
 
 getLicenseR :: PkgId -> Handler TypedContent
 getLicenseR pkg = do
-    spec    <- getVersionSpecFromQuery
-    version <- getBestVersion pkg spec
+    spec      <- getVersionSpecFromQuery
+    preferMin <- versionPriorityFromQueryIsMin
+    version   <- getBestVersion pkg spec preferMin
         `orThrow` sendResponseStatus status400 (NotFoundE [i|License for #{pkg} satisfying #{spec}|])
     (len, src) <- getLicense pkg version
     addHeader "Content-Length" (show len)
@@ -52,8 +54,9 @@ getLicenseR pkg = do
 
 getInstructionsR :: PkgId -> Handler TypedContent
 getInstructionsR pkg = do
-    spec    <- getVersionSpecFromQuery
-    version <- getBestVersion pkg spec
+    spec      <- getVersionSpecFromQuery
+    preferMin <- versionPriorityFromQueryIsMin
+    version   <- getBestVersion pkg spec preferMin
         `orThrow` sendResponseStatus status400 (NotFoundE [i|Instructions for #{pkg} satisfying #{spec}|])
     (len, src) <- getInstructions pkg version
     addHeader "Content-Length" (show len)
