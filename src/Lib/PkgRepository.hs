@@ -1,11 +1,12 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+
 module Lib.PkgRepository where
 
 import           Conduit                        ( (.|)
@@ -70,6 +71,7 @@ import           Startlude                      ( ($)
                                                 , Maybe(..)
                                                 , MonadIO(liftIO)
                                                 , MonadReader
+                                                , Ord(compare)
                                                 , Show
                                                 , SomeException(..)
                                                 , filter
@@ -79,11 +81,12 @@ import           Startlude                      ( ($)
                                                 , fst
                                                 , headMay
                                                 , not
+                                                , on
                                                 , partitionEithers
                                                 , pure
                                                 , show
                                                 , snd
-                                                , sortOn
+                                                , sortBy
                                                 , throwIO
                                                 , void
                                                 )
@@ -105,9 +108,9 @@ import           UnliftIO                       ( MonadUnliftIO
                                                 , mapConcurrently_
                                                 , newEmptyMVar
                                                 , takeMVar
+                                                , tryPutMVar
                                                 , wait
                                                 )
-import           UnliftIO                       ( tryPutMVar )
 import           UnliftIO.Concurrent            ( forkIO )
 import           UnliftIO.Directory             ( doesDirectoryExist
                                                 , doesPathExist
@@ -124,6 +127,7 @@ import           Yesod.Core.Content             ( typeGif
                                                 , typeSvg
                                                 )
 import           Yesod.Core.Types               ( ContentType )
+
 data ManifestParseException = ManifestParseException FilePath
     deriving Show
 instance Exception ManifestParseException
@@ -152,8 +156,10 @@ getViableVersions pkg spec = filter (`satisfies` spec) <$> getVersionsFor pkg
 getBestVersion :: (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m)
                => PkgId
                -> VersionRange
+               -> Bool
                -> m (Maybe Version)
-getBestVersion pkg spec = headMay . sortOn Down <$> getViableVersions pkg spec
+getBestVersion pkg spec preferMin = headMay . sortBy comparator <$> getViableVersions pkg spec
+    where comparator = if preferMin then compare else compare `on` Down
 
 loadPkgDependencies :: MonadUnliftIO m => ConnectionPool -> PackageManifest -> m ()
 loadPkgDependencies appConnPool manifest = do
@@ -234,7 +240,6 @@ watchPkgRepoRoot pool = do
         onlyAdded (Added    path _ isDir) = not isDir && takeExtension path == ".s9pk"
         onlyAdded (Modified path _ isDir) = not isDir && takeExtension path == ".s9pk"
         onlyAdded _                       = False
-            -- Added path _ isDir -> not isDir && takeExtension path == ".s9pk"
 
 getManifest :: (MonadResource m, MonadReader r m, Has PkgRepo r)
             => PkgId
