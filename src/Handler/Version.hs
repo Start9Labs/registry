@@ -21,11 +21,13 @@ import           Lib.Types.AppIndex             ( PkgId )
 import           Network.HTTP.Types.Status      ( status404 )
 import           Util.Shared                    ( getVersionSpecFromQuery
                                                 , orThrow
+                                                , versionPriorityFromQueryIsMin
                                                 )
 
 getPkgVersionR :: PkgId -> Handler AppVersionRes
 getPkgVersionR pkg = do
-    spec <- getVersionSpecFromQuery
-    AppVersionRes <$> getBestVersion pkg spec `orThrow` sendResponseStatus
+    spec      <- getVersionSpecFromQuery
+    preferMin <- versionPriorityFromQueryIsMin
+    AppVersionRes <$> getBestVersion pkg spec preferMin `orThrow` sendResponseStatus
         status404
         (NotFoundE [i|Version for #{pkg} satisfying #{spec}|])
