@@ -1,10 +1,9 @@
-!/package/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
-/package/data                           InfoR              GET -- get all marketplace categories
-/package/index                          PackageListR       GET -- filter marketplace services by various query params
--- /package/updates
 /eos/latest                             EosVersionR        GET -- get eos information
 /eos/eos.img                            EosR               GET -- get eos.img
 /latest-version                         VersionLatestR     GET -- get latest version of apps in query param id
+!/package/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
+/package/data                           InfoR              GET -- get all marketplace categories
+/package/index                          PackageListR       GET -- filter marketplace services by various query params
 /package/manifest/#PkgId                AppManifestR       GET -- get app manifest from appmgr -- ?version={semver-spec}
 /package/release-notes                  ReleaseNotesR      GET -- get release notes for package - expects query param of id=<pacakge-id>
 /package/icon/#PkgId                    IconsR             GET -- get icons - can specify version with ?spec=<emver>
@@ -12,4 +11,4 @@
 /package/instructions/#PkgId            InstructionsR      GET -- get icons - can specify version with ?spec=<emver>
 /package/version/#PkgId                 PkgVersionR        GET -- get most recent appId version
 
-/error-logs                              ErrorLogsR         POST
+/support/error-logs                     ErrorLogsR         POST
