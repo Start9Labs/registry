@@ -44,6 +44,11 @@ extra-deps:
   - esqueleto-3.5.1.0
   - monad-logger-extras-0.1.1.1
   - wai-request-spec-0.10.2.4
+  - git: https://github.com/ProofOfKeags/wai
+    commit: 2eef8506c7eec67fa5c1be0e0470a38e277ab5d8
+    subdirs:
+      - warp
+      - warp-tls
 # Override default flag values for local packages and extra-deps
 # flags: {}
 
