@@ -129,13 +129,14 @@ import           Yesod.Core                     ( MonadResource
 import           Yesod.Persist                  ( YesodDB )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
-getCategoriesR :: Handler CategoryRes
-getCategoriesR = do
+getInfoR :: Handler InfoRes
+getInfoR = do
+    name <- getsYesod $ marketplaceName . appSettings
     allCategories <- runDB $ select $ do
         cats <- from $ table @Category
         orderBy [desc (cats ^. CategoryPriority)]
         pure cats
-    pure $ CategoryRes $ categoryName . entityVal <$> allCategories
+    pure $ InfoRes name $ categoryName . entityVal <$> allCategories
 
 getEosVersionR :: Handler EosRes
 getEosVersionR = do

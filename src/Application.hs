@@ -78,7 +78,6 @@ import           Yesod.Core
 import           Yesod.Core.Types        hiding ( Logger )
 import           Yesod.Default.Config2
 
-import           Control.Arrow                  ( (***) )
 import           Control.Lens
 import           Data.List                      ( lookup )
 import           Data.String.Interpolate.IsString
