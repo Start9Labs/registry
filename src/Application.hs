@@ -301,23 +301,27 @@ startWeb foundation = do
             runLog $ $logInfo $ [i|Launching Tor Web Server on port #{torPort}|]
             torAction <- async $ runSettings (warpSettings torPort foundation) app
             runLog $ $logInfo $ [i|Launching Web Server on port #{appPort}|]
-            action <- if sslAuto
-                then async $ runTLS (tlsSettings sslCertLocation sslKeyLocation) (warpSettings appPort foundation) app
-                else async $ runSettings (warpSettings appPort foundation) app
-            let actions = (action, torAction)
+            action <- async $ if sslAuto
+                then runTLS (tlsSettings sslCertLocation sslKeyLocation) (warpSettings appPort foundation) app
+                else runSettings (warpSettings appPort foundation) app
 
-            setWebProcessThreadId (join (***) asyncThreadId actions) foundation
-            (clearRes, torRes) <- both waitCatch actions
-            case clearRes of
-                Left e -> do
-                    putStr @Text "Clearnet ServerError: "
-                    print e
-                Right _ -> pure ()
-            case torRes of
-                Left e -> do
-                    putStr @Text "Tor ServerError: "
-                    print e
-                Right _ -> pure ()
+            setWebProcessThreadId (asyncThreadId action, asyncThreadId torAction) foundation
+            res <- waitEitherCatchCancel action torAction
+            case res of
+                Left clearRes -> case clearRes of
+                    Left e -> do
+                        putStr @Text "Clearnet ServerError: "
+                        print e
+                    Right _ -> do
+                        putStrLn @Text "Clearnet Server Exited"
+                        void $ swapMVar (appShouldRestartWeb foundation) True
+                Right torRes -> case torRes of
+                    Left e -> do
+                        putStr @Text "Tor ServerError: "
+                        print e
+                    Right _ -> do
+                        putStrLn @Text "Tor Server Exited"
+                        void $ swapMVar (appShouldRestartWeb foundation) True
             shouldRestart <- takeMVar (appShouldRestartWeb foundation)
             when shouldRestart $ do
                 putMVar (appShouldRestartWeb foundation) False
