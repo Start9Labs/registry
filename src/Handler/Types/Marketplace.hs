@@ -19,13 +19,15 @@ import           Yesod
 
 
 type URL = Text
-newtype CategoryRes = CategoryRes {
-    categories :: [CategoryTitle]
-} deriving (Show, Generic)
-instance ToJSON CategoryRes
-instance ToContent CategoryRes where
+data InfoRes = InfoRes
+    { name       :: Text
+    , categories :: [CategoryTitle]
+    }
+    deriving (Show, Generic)
+instance ToJSON InfoRes
+instance ToContent InfoRes where
     toContent = toContent . toJSON
-instance ToTypedContent CategoryRes where
+instance ToTypedContent InfoRes where
     toTypedContent = toTypedContent . toJSON
 data PackageRes = PackageRes
     { packageResIcon         :: URL

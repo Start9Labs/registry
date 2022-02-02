@@ -56,6 +56,7 @@ data AppSettings = AppSettings
     , torPort                   :: AppPort
     , staticBinDir              :: FilePath
     , errorLogRoot              :: FilePath
+    , marketplaceName           :: Text
     }
 instance Has PkgRepo AppSettings where
     extract = liftA2 PkgRepo ((</> "apps") . resourcesDir) staticBinDir
@@ -83,6 +84,8 @@ instance FromJSON AppSettings where
         let sslCsrLocation  = sslPath </> "certificate.csr"
         let sslCertLocation = sslPath </> "certificate.pem"
         let registryVersion = fromJust . parseMaybe parseJSON . String . toS . showVersion $ version
+
+        marketplaceName <- o .:? "marketplace-name" .!= "Start9 Embassy Marketplace"
 
         return AppSettings { .. }
 
