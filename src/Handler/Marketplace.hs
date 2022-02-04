@@ -36,6 +36,8 @@ import           Data.Aeson                     ( decode
                                                 , eitherDecodeStrict
                                                 )
 import qualified Data.Attoparsec.Text          as Atto
+
+import Data.ByteString.Base64
 import           Data.ByteArray.Encoding        ( Base(Base16)
                                                 , convertToBase
                                                 )
@@ -77,7 +79,7 @@ import           Foundation                     ( Handler
 import           Handler.Types.Marketplace
 import           Lib.Error                      ( S9Error(..)
                                                 )
-import           Lib.PkgRepository              ( getManifest )
+import           Lib.PkgRepository              ( getManifest, getIcon, PkgRepo )
 import           Lib.Types.AppIndex             ( PkgId(PkgId)
                                                 )
 import           Lib.Types.AppIndex             ( )
@@ -325,14 +327,15 @@ getPackageListR = do
             let compatiblePkgDepInfo = fmap (filterDependencyOsCompatible osPredicate) pkgDepInfoWithVersions
             res <- catMaybes <$> traverse filterDependencyBestVersion compatiblePkgDepInfo
             pure $ (pkgId, pkgCategories', pkgVersions', pkgVersion, res)
-        constructPackageListApiRes :: (MonadResource m, MonadReader r m, Has AppSettings r) => (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)]) -> m PackageRes
+        constructPackageListApiRes :: (MonadResource m, MonadReader r m, Has AppSettings r, Has PkgRepo r) => (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)]) -> m PackageRes
         constructPackageListApiRes (pkgKey, pkgCategories, pkgVersions, pkgVersion, dependencies) = do
             settings <- ask @_ @_ @AppSettings
             let pkgId = unPkgRecordKey pkgKey
             manifest <- flip runReaderT settings $ (snd <$> getManifest pkgId pkgVersion) >>= \bs ->
                 runConduit $ bs .| CL.foldMap BS.fromStrict
+            icon <- loadIcon pkgVersion pkgId
             pure $ PackageRes
-                        { packageResIcon         = basicRender $ IconsR pkgId
+                        { packageResIcon         = encodeBase64 icon
                         -- pass through raw JSON Value, we have checked its correct parsing above
                         , packageResManifest     = unsafeFromJust . decode $ manifest
                         , packageResCategories   = categoryName <$> pkgCategories
@@ -346,6 +349,10 @@ getPackageListR = do
         constructDependenciesApiRes deps = fmap (\(depKey, depTitle, depVersion) -> do
                 let depId = unPkgRecordKey depKey
                 (depId, DependencyRes { dependencyResTitle = depTitle, dependencyResIcon  = (basicRender $ IconsR depId) <> [i|?spec==#{depVersion}|]})) deps
+        loadIcon :: (Monad m, MonadResource m, MonadReader r m, Has PkgRepo r) => Version -> PkgId -> m ByteString
+        loadIcon version pkg = do
+            (_, _, src) <- getIcon pkg version
+            runConduit $ src .| CL.foldMap id
 
 basicRender :: RenderRoute a => Route a -> Text
 basicRender = TL.toStrict
