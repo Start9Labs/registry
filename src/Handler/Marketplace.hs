@@ -360,7 +360,7 @@ getPackageListR = do
             let pkgId = unPkgRecordKey pkgKey
             manifest <- flip runReaderT settings $ (snd <$> getManifest pkgId pkgVersion) >>= \bs ->
                 runConduit $ bs .| CL.foldMap LBS.fromStrict
-            icon <- loadIcon pkgVersion pkgId
+            icon <- loadIcon pkgId pkgVersion
             deps <- constructDependenciesApiRes dependencies
             pure $ PackageRes { packageResIcon         = encodeBase64 icon
                         -- pass through raw JSON Value, we have checked its correct parsing above
@@ -377,12 +377,12 @@ getPackageListR = do
         constructDependenciesApiRes deps = traverse
             (\(depKey, depTitle, depVersion) -> do
                 let depId = unPkgRecordKey depKey
-                icon <- loadIcon depVersion depId
+                icon <- loadIcon depId depVersion
                 pure (depId, DependencyRes { dependencyResTitle = depTitle, dependencyResIcon = encodeBase64 icon })
             )
             deps
-        loadIcon :: (Monad m, MonadResource m, MonadReader r m, Has PkgRepo r) => Version -> PkgId -> m ByteString
-        loadIcon version pkg = do
+        loadIcon :: (Monad m, MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m ByteString
+        loadIcon pkg version = do
             (_, _, src) <- getIcon pkg version
             runConduit $ src .| CL.foldMap id
 
