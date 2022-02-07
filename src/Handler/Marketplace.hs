@@ -381,7 +381,7 @@ getPackageListR = do
                 pure (depId, DependencyRes { dependencyResTitle = depTitle, dependencyResIcon = encodeBase64 icon })
             )
             deps
-        loadIcon :: (Monad m, MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m ByteString
+        loadIcon :: (MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m ByteString
         loadIcon pkg version = do
             (_, _, src) <- getIcon pkg version
             runConduit $ src .| CL.foldMap id
