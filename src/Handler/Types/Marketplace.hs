@@ -68,7 +68,7 @@ instance FromJSON PackageRes where
         packageResDependencies <- o .: "dependency-metadata"
         pure PackageRes { .. }
 data DependencyRes = DependencyRes
-    { dependencyResTitle :: Text -- TODO switch to `Text` to display actual title in Marketplace. Confirm with FE that this will not break loading. Perhaps return title and id?
+    { dependencyResTitle :: Text
     , dependencyResIcon  :: Text
     }
     deriving (Eq, Show)
