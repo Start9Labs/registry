@@ -69,7 +69,7 @@ instance FromJSON PackageRes where
         pure PackageRes { .. }
 data DependencyRes = DependencyRes
     { dependencyResTitle :: Text -- TODO switch to `Text` to display actual title in Marketplace. Confirm with FE that this will not break loading. Perhaps return title and id?
-    , dependencyResIcon  :: URL
+    , dependencyResIcon  :: Text
     }
     deriving (Eq, Show)
 instance ToJSON DependencyRes where

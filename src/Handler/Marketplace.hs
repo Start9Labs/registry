@@ -25,7 +25,9 @@ import           Conduit                        ( (.|)
                                                 , sourceFile
                                                 , takeC
                                                 )
-import           Control.Monad.Logger           ( MonadLogger, logWarn )
+import           Control.Monad.Logger           ( MonadLogger
+                                                , logWarn
+                                                )
 import           Control.Monad.Reader.Has       ( Has
                                                 , ask
                                                 )
@@ -36,10 +38,12 @@ import           Data.Aeson                     ( decode
                                                 , eitherDecodeStrict
                                                 )
 import qualified Data.Attoparsec.Text          as Atto
-import           Data.ByteArray.Encoding        ( Base(Base16)
+
+import           Data.ByteArray.Encoding        ( Base(..)
                                                 , convertToBase
                                                 )
-import qualified Data.ByteString.Lazy          as BS
+import           Data.ByteString.Base64
+import qualified Data.ByteString.Lazy          as LBS
 import qualified Data.Conduit.List             as CL
 import qualified Data.HashMap.Strict           as HM
 import           Data.List                      ( head
@@ -61,31 +65,36 @@ import           Database.Esqueleto.Experimental
                                                 , select
                                                 , table
                                                 )
-import           Database.Marketplace           ( getPkgData
-                                                , searchServices
-                                                , zipVersions
-                                                , fetchAllAppVersions
+import           Database.Marketplace           ( fetchAllAppVersions
                                                 , fetchLatestApp
-                                                , getPkgDependencyData, zipDependencyVersions, zipCategories
+                                                , getPkgData
+                                                , getPkgDependencyData
+                                                , searchServices
+                                                , zipCategories
+                                                , zipDependencyVersions
+                                                , zipVersions
                                                 )
 import           Database.Persist               ( PersistUniqueRead(getBy)
                                                 , insertUnique
                                                 )
 import           Foundation                     ( Handler
-                                                , RegistryCtx(appSettings, appConnPool), Route (IconsR, InstructionsR, LicenseR)
+                                                , RegistryCtx(appConnPool, appSettings)
+                                                , Route(InstructionsR, LicenseR)
                                                 )
 import           Handler.Types.Marketplace
-import           Lib.Error                      ( S9Error(..)
+import           Lib.Error                      ( S9Error(..) )
+import           Lib.PkgRepository              ( PkgRepo
+                                                , getIcon
+                                                , getManifest
                                                 )
-import           Lib.PkgRepository              ( getManifest )
-import           Lib.Types.AppIndex             ( PkgId(PkgId)
-                                                )
+import           Lib.Types.AppIndex             ( PkgId(PkgId) )
 import           Lib.Types.AppIndex             ( )
 import           Lib.Types.Category             ( CategoryTitle(..) )
 import           Lib.Types.Emver                ( Version
+                                                , VersionRange
                                                 , parseRange
                                                 , parseVersion
-                                                , satisfies, VersionRange
+                                                , satisfies
                                                 )
 import           Model                          ( Category(..)
                                                 , EntityField(..)
@@ -107,31 +116,32 @@ import           UnliftIO.Async                 ( concurrently
                                                 , mapConcurrently
                                                 )
 import           UnliftIO.Directory             ( listDirectory )
-import           Util.Shared                    ( getVersionSpecFromQuery
+import           Util.Shared                    ( filterDependencyBestVersion
+                                                , filterDependencyOsCompatible
                                                 , filterLatestVersionFromSpec
                                                 , filterPkgOsCompatible
-                                                , filterDependencyOsCompatible
-                                                , filterDependencyBestVersion
+                                                , getVersionSpecFromQuery
                                                 )
 import           Yesod.Core                     ( MonadResource
+                                                , RenderRoute(renderRoute)
                                                 , TypedContent
                                                 , YesodRequest(..)
                                                 , addHeader
                                                 , getRequest
+                                                , getYesod
                                                 , getsYesod
                                                 , lookupGetParam
                                                 , respondSource
                                                 , sendChunkBS
                                                 , sendResponseStatus
                                                 , typeOctet
-                                                , getYesod, RenderRoute (renderRoute)
                                                 )
 import           Yesod.Persist                  ( YesodDB )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
 getInfoR :: Handler InfoRes
 getInfoR = do
-    name <- getsYesod $ marketplaceName . appSettings
+    name          <- getsYesod $ marketplaceName . appSettings
     allCategories <- runDB $ select $ do
         cats <- from $ table @Category
         orderBy [desc (cats ^. CategoryPriority)]
@@ -163,8 +173,8 @@ getReleaseNotesR = do
     case lookup "id" getParameters of
         Nothing      -> sendResponseStatus status400 (InvalidParamsE "get:id" "<MISSING>")
         Just package -> do
-            appConnPool <- appConnPool <$> getYesod
-            versionRecords  <- runDB $ fetchAllAppVersions appConnPool (PkgId package)
+            appConnPool    <- appConnPool <$> getYesod
+            versionRecords <- runDB $ fetchAllAppVersions appConnPool (PkgId package)
             pure $ constructReleaseNotesApiRes versionRecords
     where
         constructReleaseNotesApiRes :: [VersionRecord] -> ReleaseNotes
@@ -205,7 +215,7 @@ getVersionLatestR = do
     getParameters <- reqGetParams <$> getRequest
     case lookup "ids" getParameters of
         Nothing       -> sendResponseStatus status400 (InvalidParamsE "get:ids" "<MISSING>")
-        Just packages -> case eitherDecode $ BS.fromStrict $ encodeUtf8 packages of
+        Just packages -> case eitherDecode $ LBS.fromStrict $ encodeUtf8 packages of
             Left  _ -> sendResponseStatus status400 (InvalidParamsE "get:ids" packages)
             Right p -> do
                 let packageList = (, Nothing) <$> p
@@ -315,42 +325,66 @@ getPackageListR = do
                     $logWarn (show e)
                     sendResponseStatus status400 e
                 Right v -> pure $ Just v
-        getPackageDependencies :: (MonadIO m, MonadLogger m) => (Version -> Bool) -> PackageMetadata -> ReaderT SqlBackend m (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)])
-        getPackageDependencies osPredicate PackageMetadata { packageMetadataPkgRecord = pkg, packageMetadataPkgVersionRecords = pkgVersions, packageMetadataPkgCategories = pkgCategories, packageMetadataPkgVersion = pkgVersion} = do
-            let pkgId = entityKey pkg
-            let pkgVersions' = versionRecordNumber . entityVal <$> pkgVersions
-            let pkgCategories' = entityVal <$> pkgCategories
-            pkgDepInfo <- getPkgDependencyData pkgId pkgVersion
-            pkgDepInfoWithVersions <- traverse zipDependencyVersions pkgDepInfo
-            let compatiblePkgDepInfo = fmap (filterDependencyOsCompatible osPredicate) pkgDepInfoWithVersions
-            res <- catMaybes <$> traverse filterDependencyBestVersion compatiblePkgDepInfo
-            pure $ (pkgId, pkgCategories', pkgVersions', pkgVersion, res)
-        constructPackageListApiRes :: (MonadResource m, MonadReader r m, Has AppSettings r) => (Key PkgRecord, [Category], [Version], Version, [(Key PkgRecord, Text, Version)]) -> m PackageRes
+        getPackageDependencies :: (MonadIO m, MonadLogger m)
+                               => (Version -> Bool)
+                               -> PackageMetadata
+                               -> ReaderT
+                                      SqlBackend
+                                      m
+                                      ( Key PkgRecord
+                                      , [Category]
+                                      , [Version]
+                                      , Version
+                                      , [(Key PkgRecord, Text, Version)]
+                                      )
+        getPackageDependencies osPredicate PackageMetadata { packageMetadataPkgRecord = pkg, packageMetadataPkgVersionRecords = pkgVersions, packageMetadataPkgCategories = pkgCategories, packageMetadataPkgVersion = pkgVersion }
+            = do
+                let pkgId          = entityKey pkg
+                let pkgVersions' = versionRecordNumber . entityVal <$> pkgVersions
+                let pkgCategories' = entityVal <$> pkgCategories
+                pkgDepInfo             <- getPkgDependencyData pkgId pkgVersion
+                pkgDepInfoWithVersions <- traverse zipDependencyVersions pkgDepInfo
+                let compatiblePkgDepInfo = fmap (filterDependencyOsCompatible osPredicate) pkgDepInfoWithVersions
+                res <- catMaybes <$> traverse filterDependencyBestVersion compatiblePkgDepInfo
+                pure $ (pkgId, pkgCategories', pkgVersions', pkgVersion, res)
+        constructPackageListApiRes :: (MonadResource m, MonadReader r m, Has AppSettings r, Has PkgRepo r)
+                                   => ( Key PkgRecord
+                                      , [Category]
+                                      , [Version]
+                                      , Version
+                                      , [(Key PkgRecord, Text, Version)]
+                                      )
+                                   -> m PackageRes
         constructPackageListApiRes (pkgKey, pkgCategories, pkgVersions, pkgVersion, dependencies) = do
             settings <- ask @_ @_ @AppSettings
             let pkgId = unPkgRecordKey pkgKey
             manifest <- flip runReaderT settings $ (snd <$> getManifest pkgId pkgVersion) >>= \bs ->
-                runConduit $ bs .| CL.foldMap BS.fromStrict
-            pure $ PackageRes
-                        { packageResIcon         = basicRender $ IconsR pkgId
+                runConduit $ bs .| CL.foldMap LBS.fromStrict
+            icon <- loadIcon pkgId pkgVersion
+            deps <- constructDependenciesApiRes dependencies
+            pure $ PackageRes { packageResIcon         = encodeBase64 icon
                         -- pass through raw JSON Value, we have checked its correct parsing above
-                        , packageResManifest     = unsafeFromJust . decode $ manifest
-                        , packageResCategories   = categoryName <$> pkgCategories
-                        , packageResInstructions = basicRender $ InstructionsR pkgId
-                        , packageResLicense      = basicRender $ LicenseR pkgId
-                        , packageResVersions     = pkgVersions
-                        , packageResDependencies = HM.fromList $ constructDependenciesApiRes dependencies
-                        }
-        constructDependenciesApiRes :: [(Key PkgRecord, Text, Version)]
-                            -> [(PkgId, DependencyRes)]
-        constructDependenciesApiRes deps = fmap (\(depKey, depTitle, depVersion) -> do
+                              , packageResManifest     = unsafeFromJust . decode $ manifest
+                              , packageResCategories   = categoryName <$> pkgCategories
+                              , packageResInstructions = basicRender $ InstructionsR pkgId
+                              , packageResLicense      = basicRender $ LicenseR pkgId
+                              , packageResVersions     = pkgVersions
+                              , packageResDependencies = HM.fromList deps
+                              }
+        constructDependenciesApiRes :: (MonadResource m, MonadReader r m, Has PkgRepo r)
+                                    => [(Key PkgRecord, Text, Version)]
+                                    -> m [(PkgId, DependencyRes)]
+        constructDependenciesApiRes deps = traverse
+            (\(depKey, depTitle, depVersion) -> do
                 let depId = unPkgRecordKey depKey
-                (depId, DependencyRes { dependencyResTitle = depTitle, dependencyResIcon  = (basicRender $ IconsR depId) <> [i|?spec==#{depVersion}|]})) deps
+                icon <- loadIcon depId depVersion
+                pure (depId, DependencyRes { dependencyResTitle = depTitle, dependencyResIcon = encodeBase64 icon })
+            )
+            deps
+        loadIcon :: (MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m ByteString
+        loadIcon pkg version = do
+            (_, _, src) <- getIcon pkg version
+            runConduit $ src .| CL.foldMap id
 
 basicRender :: RenderRoute a => Route a -> Text
-basicRender = TL.toStrict
-    . TB.toLazyText
-    . fold
-    . fmap (mappend (TB.singleton '/') . TB.fromText)
-    . fst
-    . renderRoute
+basicRender = TL.toStrict . TB.toLazyText . fold . fmap (mappend (TB.singleton '/') . TB.fromText) . fst . renderRoute
