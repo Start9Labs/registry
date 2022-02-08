@@ -1,14 +1,18 @@
-/eos/latest                             EosVersionR        GET -- get eos information
-/eos/eos.img                            EosR               GET -- get eos.img
-/latest-version                         VersionLatestR     GET -- get latest version of apps in query param id
-!/package/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec={semver-spec}
-/package/data                           InfoR              GET -- get all marketplace categories
-/package/index                          PackageListR       GET -- filter marketplace services by various query params
-/package/manifest/#PkgId                AppManifestR       GET -- get app manifest from appmgr -- ?version={semver-spec}
-/package/release-notes                  ReleaseNotesR      GET -- get release notes for package - expects query param of id=<pacakge-id>
-/package/icon/#PkgId                    IconsR             GET -- get icons - can specify version with ?spec=<emver>
-/package/license/#PkgId                 LicenseR           GET -- get icons - can specify version with ?spec=<emver>
-/package/instructions/#PkgId            InstructionsR      GET -- get icons - can specify version with ?spec=<emver>
-/package/version/#PkgId                 PkgVersionR        GET -- get most recent appId version
+-- EOS API V0
+/eos/v0/latest                             EosVersionR        GET -- get eos information
+/eos/v0/eos.img                            EosR               GET -- get eos.img
 
-/support/error-logs                     ErrorLogsR         POST
+-- PACKAGE API V0
+/package/v0/info                           InfoR              GET -- get all marketplace categories
+/package/v0/index                          PackageListR       GET -- filter marketplace services by various query params
+/package/v0/latest                         VersionLatestR     GET -- get latest version of apps in query param id
+!/package/v0/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec=<emver>
+/package/v0/manifest/#PkgId                AppManifestR       GET -- get app manifest from appmgr -- ?spec=<emver>
+/package/v0/release-notes/#PkgId           ReleaseNotesR      GET -- get release notes for all versions of a package
+/package/v0/icon/#PkgId                    IconsR             GET -- get icons - can specify version with ?spec=<emver>
+/package/v0/license/#PkgId                 LicenseR           GET -- get license - can specify version with ?spec=<emver>
+/package/v0/instructions/#PkgId            InstructionsR      GET -- get instructions - can specify version with ?spec=<emver>
+/package/v0/version/#PkgId                 PkgVersionR        GET -- get most recent appId version
+
+-- SUPPORT API V0
+/support/v0/error-logs                     ErrorLogsR         POST
