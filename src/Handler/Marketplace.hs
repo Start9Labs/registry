@@ -87,8 +87,7 @@ import           Lib.PkgRepository              ( PkgRepo
                                                 , getIcon
                                                 , getManifest
                                                 )
-import           Lib.Types.AppIndex             ( PkgId(PkgId) )
-import           Lib.Types.AppIndex             ( )
+import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Category             ( CategoryTitle(..) )
 import           Lib.Types.Emver                ( Version
                                                 , VersionRange
@@ -167,19 +166,19 @@ getEosVersionR = do
                   , eosResReleaseNotes = mappedVersions
                   }
 
-getReleaseNotesR :: Handler ReleaseNotes
-getReleaseNotesR = do
-    getParameters <- reqGetParams <$> getRequest
-    case lookup "id" getParameters of
-        Nothing      -> sendResponseStatus status400 (InvalidParamsE "get:id" "<MISSING>")
-        Just package -> do
-            appConnPool    <- appConnPool <$> getYesod
-            versionRecords <- runDB $ fetchAllAppVersions appConnPool (PkgId package)
-            pure $ constructReleaseNotesApiRes versionRecords
+getReleaseNotesR :: PkgId -> Handler ReleaseNotes
+getReleaseNotesR pkg = do
+    appConnPool    <- appConnPool <$> getYesod
+    versionRecords <- runDB $ fetchAllAppVersions appConnPool pkg
+    pure $ constructReleaseNotesApiRes versionRecords
     where
         constructReleaseNotesApiRes :: [VersionRecord] -> ReleaseNotes
         constructReleaseNotesApiRes vers = do
-            ReleaseNotes $ HM.fromList $ sortOn Down $ (versionRecordNumber &&& versionRecordReleaseNotes) <$> vers
+            ReleaseNotes
+                $   HM.fromList
+                $   sortOn (Down . fst)
+                $   (versionRecordNumber &&& versionRecordReleaseNotes)
+                <$> vers
 
 getEosR :: Handler TypedContent
 getEosR = do
