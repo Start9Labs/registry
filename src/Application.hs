@@ -93,6 +93,11 @@ import           Lib.PkgRepository              ( watchPkgRepoRoot )
 import           Lib.Ssl
 import           Model
 import           Network.HTTP.Types.Header      ( hOrigin )
+import           Network.Wai.Middleware.Gzip    ( GzipFiles(GzipCompress)
+                                                , GzipSettings(gzipCheckMime, gzipFiles)
+                                                , defaultCheckMime
+                                                , gzip
+                                                )
 import           Network.Wai.Middleware.RequestLogger.JSON
 import           Settings
 import           System.Directory               ( createDirectoryIfMissing )
@@ -153,7 +158,20 @@ makeApplication foundation = do
     let authWare = makeAuthWare foundation
     -- Create the WAI application and apply middlewares
     appPlain <- toWaiAppPlain foundation
-    pure . logWare . cors dynamicCorsResourcePolicy . authWare . acceptOverride . autohead . methodOverride $ appPlain
+    let gzipSettings =
+            -- TODO: change this to the cached version when we have better release processes
+            -- since caches aren't invalidated, publishing a new package/eos won't take effect
+            -- because the cached file will be downloaded.
+            def { gzipFiles = GzipCompress, gzipCheckMime = defaultCheckMime <||> (== typeOctet) }
+    pure
+        . logWare
+        . cors dynamicCorsResourcePolicy
+        . authWare
+        . acceptOverride
+        . autohead
+        . methodOverride
+        . gzip gzipSettings
+        $ appPlain
 
 dynamicCorsResourcePolicy :: Request -> Maybe CorsResourcePolicy
 dynamicCorsResourcePolicy req = Just . policy . lookup hOrigin $ requestHeaders req
