@@ -298,16 +298,9 @@ getHash pkg version = do
     let hashPath = root </> show pkg </> show version </> "hash.bin"
     liftIO $ readFile hashPath
 
-getPackage :: (MonadResource m, MonadReader r m, Has PkgRepo r)
-           => PkgId
-           -> Version
-           -> m (Maybe (Integer, ConduitT () ByteString m ()))
+getPackage :: (MonadResource m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m (Maybe FilePath)
 getPackage pkg version = do
     root <- asks pkgRepoFileRoot
     let pkgPath = root </> show pkg </> show version </> show pkg <.> "s9pk"
     found <- doesPathExist pkgPath
-    if found
-        then do
-            n <- getFileSize pkgPath
-            pure . Just $ (n, sourceFile pkgPath)
-        else pure Nothing
+    pure $ if found then Just pkgPath else Nothing
