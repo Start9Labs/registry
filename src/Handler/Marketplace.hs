@@ -1,10 +1,10 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TemplateHaskell  #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Handler.Marketplace where
 
@@ -18,11 +18,9 @@ import           Startlude               hiding ( Any
                                                 )
 
 import           Conduit                        ( (.|)
-                                                , awaitForever
                                                 , dropC
                                                 , runConduit
                                                 , sinkList
-                                                , sourceFile
                                                 , takeC
                                                 )
 import           Control.Monad.Logger           ( MonadLogger
@@ -109,11 +107,8 @@ import           Network.HTTP.Types             ( status400
                                                 )
 import           Protolude.Unsafe               ( unsafeFromJust )
 import           Settings
-import           System.Directory               ( getFileSize )
 import           System.FilePath                ( (</>) )
-import           UnliftIO.Async                 ( concurrently
-                                                , mapConcurrently
-                                                )
+import           UnliftIO.Async                 ( mapConcurrently )
 import           UnliftIO.Directory             ( listDirectory )
 import           Util.Shared                    ( filterDependencyBestVersion
                                                 , filterDependencyOsCompatible
@@ -121,7 +116,8 @@ import           Util.Shared                    ( filterDependencyBestVersion
                                                 , filterPkgOsCompatible
                                                 , getVersionSpecFromQuery
                                                 )
-import           Yesod.Core                     ( MonadResource
+import           Yesod.Core                     ( Content(ContentFile)
+                                                , MonadResource
                                                 , RenderRoute(renderRoute)
                                                 , TypedContent
                                                 , YesodRequest(..)
@@ -130,8 +126,7 @@ import           Yesod.Core                     ( MonadResource
                                                 , getYesod
                                                 , getsYesod
                                                 , lookupGetParam
-                                                , respondSource
-                                                , sendChunkBS
+                                                , respond
                                                 , sendResponseStatus
                                                 , typeOctet
                                                 )
@@ -192,10 +187,9 @@ getEosR = do
         Nothing      -> sendResponseStatus status404 (NotFoundE [i|EOS version satisfying #{spec}|])
         Just version -> do
             let imgPath = root </> show version </> "eos.img"
-            (sz, h) <- runDB $ concurrently (liftIO $ getFileSize imgPath) (retrieveHash version imgPath)
-            addHeader "Content-Length" $ show sz
+            h <- runDB $ retrieveHash version imgPath
             addHeader "x-eos-hash" h
-            respondSource typeOctet (sourceFile imgPath .| awaitForever sendChunkBS)
+            respond typeOctet $ ContentFile imgPath Nothing
     where
         retrieveHash :: Version -> FilePath -> YesodDB RegistryCtx Text
         retrieveHash v fp = do
@@ -269,7 +263,6 @@ getPackageListR = do
     -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
     pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
     PackageListRes <$> mapConcurrently constructPackageListApiRes pkgsWithDependencies
-
     where
         defaults = PackageListDefaults { packageListOrder      = DESC
                                        , packageListPageLimit  = 20

@@ -18,9 +18,11 @@ import           Network.HTTP.Types             ( status404 )
 import           System.FilePath                ( (<.>)
                                                 , takeBaseName
                                                 )
-import           Yesod.Core                     ( TypedContent
+import           Yesod.Core                     ( Content(ContentFile)
+                                                , TypedContent
                                                 , addHeader
                                                 , notFound
+                                                , respond
                                                 , respondSource
                                                 , sendChunkBS
                                                 , sendResponseStatus
@@ -78,11 +80,10 @@ getAppR file = do
         `orThrow` sendResponseStatus status404 (NotFoundE [i|#{pkg} satisfying #{versionSpec}|])
     addPackageHeader pkg version
     void $ recordMetrics pkg version
-    (len, src) <- getPackage pkg version >>= \case
+    pkgPath <- getPackage pkg version >>= \case
         Nothing -> sendResponseStatus status404 (NotFoundE [i|#{pkg}@#{version}|])
         Just a  -> pure a
-    addHeader "Content-Length" (show len)
-    respondSource typeOctet $ src .| awaitForever sendChunkBS
+    respond typeOctet $ ContentFile pkgPath Nothing
 
 
 recordMetrics :: PkgId -> Version -> Handler ()
