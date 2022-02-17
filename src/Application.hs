@@ -51,6 +51,7 @@ import           Network.Wai.Handler.Warp       ( Settings
                                                 , setHost
                                                 , setOnException
                                                 , setPort
+                                                , setTimeout
                                                 )
 import           Network.Wai.Handler.WarpTLS
 import           Network.Wai.Middleware.AcceptOverride
@@ -255,7 +256,8 @@ makeAuthWare _ app req res = next
 -- | Warp settings for the given foundation value.
 warpSettings :: AppPort -> RegistryCtx -> Settings
 warpSettings port foundation =
-      setPort (fromIntegral port)
+    setTimeout 60
+    $ setPort (fromIntegral port)
     $ setHost (appHost $ appSettings foundation)
     $ setOnException (\_req e ->
         when (defaultShouldDisplayException e) $ messageLoggerSource
