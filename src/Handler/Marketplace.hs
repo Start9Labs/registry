@@ -44,8 +44,7 @@ import           Data.ByteString.Base64
 import qualified Data.ByteString.Lazy          as LBS
 import qualified Data.Conduit.List             as CL
 import qualified Data.HashMap.Strict           as HM
-import           Data.List                      ( head
-                                                , lookup
+import           Data.List                      ( lookup
                                                 , sortOn
                                                 )
 import           Data.String.Interpolate.IsString
@@ -130,6 +129,7 @@ import           Yesod.Core                     ( Content(ContentFile)
                                                 , sendResponseStatus
                                                 , typeOctet
                                                 )
+import           Yesod.Core.Types               ( JSONResponse(..) )
 import           Yesod.Persist                  ( YesodDB )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
@@ -142,24 +142,24 @@ getInfoR = do
         pure cats
     pure $ InfoRes name $ categoryName . entityVal <$> allCategories
 
-getEosVersionR :: Handler EosRes
+getEosVersionR :: Handler (JSONResponse (Maybe EosRes))
 getEosVersionR = do
     allEosVersions <- runDB $ select $ do
         vers <- from $ table @OsVersion
         orderBy [desc (vers ^. OsVersionCreatedAt)]
         pure vers
-    let osV    = entityVal <$> allEosVersions
-    let latest = Data.List.head osV
+    let osV     = entityVal <$> allEosVersions
+    let mLatest = head osV
     let mappedVersions =
             ReleaseNotes
                 $   HM.fromList
                 $   sortOn (Down . fst)
                 $   (\v -> (osVersionNumber v, osVersionReleaseNotes v))
                 <$> osV
-    pure $ EosRes { eosResVersion      = osVersionNumber latest
-                  , eosResHeadline     = osVersionHeadline latest
-                  , eosResReleaseNotes = mappedVersions
-                  }
+    pure . JSONResponse $ mLatest <&> \latest -> EosRes { eosResVersion      = osVersionNumber latest
+                                                        , eosResHeadline     = osVersionHeadline latest
+                                                        , eosResReleaseNotes = mappedVersions
+                                                        }
 
 getReleaseNotesR :: PkgId -> Handler ReleaseNotes
 getReleaseNotesR pkg = do
