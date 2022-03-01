@@ -13,7 +13,6 @@ module Model where
 
 import           Database.Persist.TH
 import           Lib.Types.AppIndex
-import           Lib.Types.Category
 import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 import           Startlude
@@ -60,7 +59,7 @@ Metric
 
 Category
     createdAt UTCTime
-    name CategoryTitle
+    name Text
     parent CategoryId Maybe
     description Text
     priority Int default=0

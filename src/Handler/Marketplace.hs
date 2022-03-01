@@ -85,7 +85,6 @@ import           Lib.PkgRepository              ( PkgRepo
                                                 , getManifest
                                                 )
 import           Lib.Types.AppIndex             ( PkgId )
-import           Lib.Types.Category             ( CategoryTitle(..) )
 import           Lib.Types.Emver                ( Version
                                                 , VersionRange
                                                 , parseRange

@@ -39,10 +39,8 @@ import           Database.Persist.Postgresql
                                                 , selectSource
                                                 , (||.)
                                                 )
-import           Handler.Types.Marketplace      ( PackageDependencyMetadata(..)
-                                                )
+import           Handler.Types.Marketplace      ( PackageDependencyMetadata(..) )
 import           Lib.Types.AppIndex             ( PkgId )
-import           Lib.Types.Category
 import           Lib.Types.Emver                ( Version )
 import           Model
 import           Startlude               hiding ( (%)
@@ -50,6 +48,8 @@ import           Startlude               hiding ( (%)
                                                 , on
                                                 , yield
                                                 )
+
+type CategoryTitle = Text
 
 searchServices :: (MonadResource m, MonadIO m)
                => Maybe CategoryTitle
