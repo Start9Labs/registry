@@ -6,6 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# LANGUAGE GADTs #-}
 
 module Lib.PkgRepository where
 
@@ -27,8 +28,14 @@ import           Control.Monad.Reader.Has       ( Has
                                                 , ask
                                                 , asks
                                                 )
+import           Crypto.Hash                    ( SHA256 )
+import           Crypto.Hash.Conduit            ( hashFile )
 import           Data.Aeson                     ( eitherDecodeFileStrict' )
 import qualified Data.Attoparsec.Text          as Atto
+import           Data.Attoparsec.Text           ( parseOnly )
+import           Data.ByteArray.Encoding        ( Base(Base16)
+                                                , convertToBase
+                                                )
 import           Data.ByteString                ( readFile
                                                 , writeFile
                                                 )
@@ -42,6 +49,8 @@ import           Database.Esqueleto.Experimental
                                                 , insertUnique
                                                 , runSqlPool
                                                 )
+import           Database.Persist               ( (=.) )
+import           Database.Persist.Class         ( upsert )
 import           Lib.Error                      ( S9Error(NotFoundE) )
 import qualified Lib.External.AppMgr           as AppMgr
 import           Lib.Types.AppIndex             ( PackageManifest(..)
@@ -74,9 +83,11 @@ import           Startlude                      ( ($)
                                                 , Ord(compare)
                                                 , Show
                                                 , SomeException(..)
+                                                , decodeUtf8
                                                 , filter
                                                 , find
                                                 , first
+                                                , flip
                                                 , for_
                                                 , fst
                                                 , headMay
@@ -101,6 +112,7 @@ import           System.FilePath                ( (<.>)
                                                 , takeBaseName
                                                 , takeDirectory
                                                 , takeExtension
+                                                , takeFileName
                                                 )
 import           UnliftIO                       ( MonadUnliftIO
                                                 , askRunInIO
@@ -135,6 +147,10 @@ instance Exception ManifestParseException
 data PkgRepo = PkgRepo
     { pkgRepoFileRoot  :: FilePath
     , pkgRepoAppMgrBin :: FilePath
+    }
+
+data EosRepo = EosRepo
+    { eosRepoFileRoot :: FilePath
     }
 
 getVersionsFor :: (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m) => PkgId -> m [Version]
@@ -222,7 +238,7 @@ extractPkg pool fp = handle @_ @SomeException cleanup $ do
 
 watchPkgRepoRoot :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => ConnectionPool -> m (IO Bool)
 watchPkgRepoRoot pool = do
-    $logInfo "Starting FSNotify Watch Manager"
+    $logInfo "Starting FSNotify Watch Manager: PKG"
     root    <- asks pkgRepoFileRoot
     runInIO <- askRunInIO
     box     <- newEmptyMVar @_ @()
@@ -240,6 +256,36 @@ watchPkgRepoRoot pool = do
         onlyAdded (Added    path _ isDir) = not isDir && takeExtension path == ".s9pk"
         onlyAdded (Modified path _ isDir) = not isDir && takeExtension path == ".s9pk"
         onlyAdded _                       = False
+
+watchEosRepoRoot :: (MonadUnliftIO m, MonadReader r m, Has EosRepo r, MonadLoggerIO m) => ConnectionPool -> m (IO Bool)
+watchEosRepoRoot pool = do
+    $logInfo "Starting FSNotify Watch Manager: EOS"
+    root    <- asks eosRepoFileRoot
+    runInIO <- askRunInIO
+    box     <- newEmptyMVar @_ @()
+    _       <- forkIO $ liftIO $ withManager $ \watchManager -> do
+        stop <- watchTree watchManager root shouldIndex $ \evt -> do
+            let os = eventPath evt
+            void . forkIO $ runInIO $ do
+                indexOs pool os
+        takeMVar box
+        stop
+    pure $ tryPutMVar box ()
+    where
+        shouldIndex :: ActionPredicate
+        shouldIndex (Added    path _ isDir) = not isDir && takeExtension path == ".img"
+        shouldIndex (Modified path _ isDir) = not isDir && takeExtension path == ".img"
+        shouldIndex _                       = False
+        indexOs :: (MonadUnliftIO m, MonadLoggerIO m) => ConnectionPool -> FilePath -> m ()
+        indexOs pool path = do
+            hash <- hashFile @_ @SHA256 path
+            let hashText = decodeUtf8 $ convertToBase Base16 hash
+            let vText    = takeFileName (takeDirectory path)
+            let eVersion = parseOnly parseVersion . T.pack $ vText
+            case eVersion of
+                Left e -> $logError [i|Invalid Version Number (#{vText}): #{e}|]
+                Right version ->
+                    void $ flip runSqlPool pool $ upsert (EosHash version hashText) [EosHashHash =. hashText]
 
 getManifest :: (MonadResource m, MonadReader r m, Has PkgRepo r)
             => PkgId
