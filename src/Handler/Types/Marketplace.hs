@@ -5,7 +5,6 @@ module Handler.Types.Marketplace where
 import           Data.Aeson
 import qualified Data.HashMap.Internal.Strict  as HM
 import           Lib.Types.AppIndex             ( PkgId )
-import           Lib.Types.Category             ( CategoryTitle )
 import           Lib.Types.Emver                ( Version
                                                 , VersionRange
                                                 )
@@ -19,6 +18,7 @@ import           Yesod
 
 
 type URL = Text
+type CategoryTitle = Text
 data InfoRes = InfoRes
     { name       :: Text
     , categories :: [CategoryTitle]

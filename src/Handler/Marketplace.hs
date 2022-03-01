@@ -56,6 +56,7 @@ import           Database.Esqueleto.Experimental
                                                 ( Entity(entityKey, entityVal)
                                                 , SqlBackend
                                                 , (^.)
+                                                , asc
                                                 , desc
                                                 , from
                                                 , orderBy
@@ -85,7 +86,6 @@ import           Lib.PkgRepository              ( PkgRepo
                                                 , getManifest
                                                 )
 import           Lib.Types.AppIndex             ( PkgId )
-import           Lib.Types.Category             ( CategoryTitle(..) )
 import           Lib.Types.Emver                ( Version
                                                 , VersionRange
                                                 , parseRange
@@ -138,7 +138,7 @@ getInfoR = do
     name          <- getsYesod $ marketplaceName . appSettings
     allCategories <- runDB $ select $ do
         cats <- from $ table @Category
-        orderBy [desc (cats ^. CategoryPriority)]
+        orderBy [asc (cats ^. CategoryPriority)]
         pure cats
     pure $ InfoRes name $ categoryName . entityVal <$> allCategories
 

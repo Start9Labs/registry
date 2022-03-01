@@ -95,7 +95,7 @@ instance FromJSON AppSettings where
         let sslCertLocation = sslPath </> "certificate.pem"
         let registryVersion = fromJust . parseMaybe parseJSON . String . toS . showVersion $ version
 
-        marketplaceName <- o .:? "marketplace-name" .!= "Start9 Embassy Marketplace"
+        marketplaceName <- o .: "marketplace-name"
 
         return AppSettings { .. }
 
