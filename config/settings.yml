@@ -35,6 +35,7 @@ registry-hostname: "_env:REGISTRY_HOSTNAME:alpha-registry.start9labs.com"
 tor-port: "_env:TOR_PORT:447"
 static-bin-dir: "_env:STATIC_BIN:/usr/local/bin/"
 error-log-root: "_env:ERROR_LOG_ROOT:/var/log/embassy-os/"
+marketplace-name: "_env:MARKETPLACE_NAME:CHANGE ME"
 
 database:
   database: "_env:PG_DATABASE:start9_registry"
