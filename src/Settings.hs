@@ -21,11 +21,15 @@ import           Data.Yaml                      ( decodeEither' )
 import           Data.Yaml.Config
 import           Database.Persist.Postgresql    ( PostgresConf )
 import           Network.Wai.Handler.Warp       ( HostPreference )
-import           System.FilePath                ( (</>) )
+import           System.FilePath                ( (</>)
+                                                , takeDirectory
+                                                )
 import           Yesod.Default.Config2          ( configSettingsYml )
 
 import           Control.Monad.Reader.Has       ( Has(extract, update) )
-import           Lib.PkgRepository              ( PkgRepo(..) )
+import           Lib.PkgRepository              ( EosRepo(EosRepo, eosRepoFileRoot)
+                                                , PkgRepo(..)
+                                                )
 import           Lib.Types.Emver
 import           Orphans.Emver                  ( )
 -- | Runtime settings to configure this application. These settings can be
@@ -62,6 +66,12 @@ instance Has PkgRepo AppSettings where
     extract = liftA2 PkgRepo ((</> "apps") . resourcesDir) staticBinDir
     update f r =
         let repo = f $ extract r in r { resourcesDir = pkgRepoFileRoot repo, staticBinDir = pkgRepoAppMgrBin repo }
+instance Has EosRepo AppSettings where
+    extract = EosRepo . (</> "eos") . resourcesDir
+    update f ctx =
+        let repo     = f $ extract ctx
+            settings = ctx { resourcesDir = takeDirectory (eosRepoFileRoot repo) }
+        in  settings
 
 
 instance FromJSON AppSettings where

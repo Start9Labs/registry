@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes          #-}
 {-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
@@ -5,8 +6,10 @@
 {-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE ViewPatterns          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Foundation where
 
@@ -42,7 +45,6 @@ import           System.Console.ANSI.Codes      ( Color(..)
                                                 , ConsoleLayer(Foreground)
                                                 , SGR(SetColor)
                                                 )
-import           System.FilePath                ( (</>) )
 import           Yesod.Persist.Core
 
 -- | The foundation datatype for your application. This can be a good place to
@@ -57,15 +59,12 @@ data RegistryCtx = RegistryCtx
     , appWebServerThreadId :: MVar (ThreadId, ThreadId)
     , appShouldRestartWeb  :: MVar Bool
     , appConnPool          :: ConnectionPool
-    , appStopFsNotify      :: IO Bool
+    , appStopFsNotifyPkg   :: IO Bool
+    , appStopFsNotifyEos   :: IO Bool
     }
 instance Has PkgRepo RegistryCtx where
-    extract = do
-        liftA2 PkgRepo ((</> "apps") . resourcesDir . appSettings) (staticBinDir . appSettings)
-    update f ctx =
-        let repo     = f $ extract ctx
-            settings = (appSettings ctx) { resourcesDir = pkgRepoFileRoot repo, staticBinDir = pkgRepoAppMgrBin repo }
-        in  ctx { appSettings = settings }
+    extract = transitiveExtract @AppSettings
+    update  = transitiveUpdate @AppSettings
 instance Has a r => Has a (HandlerData r r) where
     extract = extract . rheSite . handlerEnv
     update f r =
@@ -75,6 +74,15 @@ instance Has a r => Has a (HandlerData r r) where
 instance Has AppSettings RegistryCtx where
     extract = appSettings
     update f ctx = ctx { appSettings = f (appSettings ctx) }
+instance Has EosRepo RegistryCtx where
+    extract = transitiveExtract @AppSettings
+    update  = transitiveUpdate @AppSettings
+
+transitiveExtract :: forall b a c . (Has a b, Has b c) => c -> a
+transitiveExtract = extract @a . extract @b
+transitiveUpdate :: forall b a c . (Has a b, Has b c) => (a -> a) -> (c -> c)
+transitiveUpdate f = update (update @a @b f)
+
 
 setWebProcessThreadId :: (ThreadId, ThreadId) -> RegistryCtx -> IO ()
 setWebProcessThreadId tid a = putMVar (appWebServerThreadId a) $ tid

@@ -242,17 +242,17 @@ getPackageListR = do
                 $  searchServices category query
                 .| zipVersions
                 .| zipCategories
-                -- empty list since there are no requested packages in this case
+                        -- empty list since there are no requested packages in this case
                 .| filterLatestVersionFromSpec []
                 .| filterPkgOsCompatible osPredicate
-                -- pages start at 1 for some reason. TODO: make pages start at 0
+                        -- pages start at 1 for some reason. TODO: make pages start at 0
                 .| (dropC (limit' * (page - 1)) *> takeC limit')
                 .| sinkList
         Just packages' -> do
             -- for each item in list get best available from version range
             let vMap = (packageReqId &&& packageReqVersion) <$> packages'
             runDB
-            -- TODO could probably be better with sequenceConduits
+                -- TODO could probably be better with sequenceConduits
                 .  runConduit
                 $  getPkgData (packageReqId <$> packages')
                 .| zipVersions
@@ -354,8 +354,7 @@ getPackageListR = do
                 runConduit $ bs .| CL.foldMap LBS.fromStrict
             icon <- loadIcon pkgId pkgVersion
             deps <- constructDependenciesApiRes dependencies
-            pure $ PackageRes { packageResIcon         = encodeBase64 icon
-                        -- pass through raw JSON Value, we have checked its correct parsing above
+            pure $ PackageRes { packageResIcon         = encodeBase64 icon -- pass through raw JSON Value, we have checked its correct parsing above
                               , packageResManifest     = unsafeFromJust . decode $ manifest
                               , packageResCategories   = categoryName <$> pkgCategories
                               , packageResInstructions = basicRender $ InstructionsR pkgId
