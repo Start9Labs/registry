@@ -133,14 +133,14 @@ import           Yesod.Core.Types               ( JSONResponse(..) )
 import           Yesod.Persist                  ( YesodDB )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
-getInfoR :: Handler InfoRes
+getInfoR :: Handler (JSONResponse InfoRes)
 getInfoR = do
     name          <- getsYesod $ marketplaceName . appSettings
     allCategories <- runDB $ select $ do
         cats <- from $ table @Category
         orderBy [asc (cats ^. CategoryPriority)]
         pure cats
-    pure $ InfoRes name $ categoryName . entityVal <$> allCategories
+    pure $ JSONResponse $ InfoRes name $ categoryName . entityVal <$> allCategories
 
 getEosVersionR :: Handler (JSONResponse (Maybe EosRes))
 getEosVersionR = do
