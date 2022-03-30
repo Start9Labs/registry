@@ -37,6 +37,9 @@ import           Data.Aeson                     ( decode
                                                 )
 import qualified Data.Attoparsec.Text          as Atto
 
+import           Data.Attoparsec.Text           ( Parser
+                                                , parseOnly
+                                                )
 import           Data.ByteArray.Encoding        ( Base(..)
                                                 , convertToBase
                                                 )
@@ -116,6 +119,7 @@ import           Util.Shared                    ( filterDependencyBestVersion
                                                 , getVersionSpecFromQuery
                                                 )
 import           Yesod.Core                     ( Content(ContentFile)
+                                                , MonadHandler
                                                 , MonadResource
                                                 , RenderRoute(renderRoute)
                                                 , TypedContent
@@ -133,6 +137,14 @@ import           Yesod.Core.Types               ( JSONResponse(..) )
 import           Yesod.Persist                  ( YesodDB )
 import           Yesod.Persist.Core             ( YesodPersist(runDB) )
 
+queryParamAs :: MonadHandler m => Text -> Parser a -> m (Maybe a)
+queryParamAs k p = lookupGetParam k >>= \case
+    Nothing -> pure Nothing
+    Just x  -> case parseOnly p x of
+        Left e ->
+            sendResponseStatus @_ @Text status400 [i|Invalid Request! The query parameter '#{k}' failed to parse: #{e}|]
+        Right a -> pure (Just a)
+
 getInfoR :: Handler (JSONResponse InfoRes)
 getInfoR = do
     name          <- getsYesod $ marketplaceName . appSettings
@@ -144,6 +156,7 @@ getInfoR = do
 
 getEosVersionR :: Handler (JSONResponse (Maybe EosRes))
 getEosVersionR = do
+    eosVersion     <- queryParamAs "eos-version" parseVersion
     allEosVersions <- runDB $ select $ do
         vers <- from $ table @OsVersion
         orderBy [desc (vers ^. OsVersionCreatedAt)]
@@ -154,6 +167,7 @@ getEosVersionR = do
             ReleaseNotes
                 $   HM.fromList
                 $   sortOn (Down . fst)
+                $   filter (maybe (const True) (<) eosVersion . fst)
                 $   (\v -> (osVersionNumber v, osVersionReleaseNotes v))
                 <$> osV
     pure . JSONResponse $ mLatest <&> \latest -> EosRes { eosResVersion      = osVersionNumber latest
