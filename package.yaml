@@ -64,6 +64,8 @@ dependencies:
   - warp-tls
   - yaml
   - yesod
+  - yesod-auth
+  - yesod-auth-basic
   - yesod-core
   - yesod-persistent
 

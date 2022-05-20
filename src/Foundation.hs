@@ -33,17 +33,42 @@ import qualified Yesod.Core.Unsafe             as Unsafe
 
 import           Control.Monad.Logger.Extras    ( wrapSGRCode )
 import           Control.Monad.Reader.Has       ( Has(extract, update) )
+import           Crypto.Hash                    ( SHA256(SHA256)
+                                                , hashWith
+                                                )
 import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
 import           Language.Haskell.TH            ( Loc(..) )
 import           Lib.PkgRepository
 import           Lib.Types.AppIndex
+import           Model                          ( Admin
+                                                , EntityField(AdminName, AdminPassHash)
+                                                , Unique(UniqueAdmin)
+                                                )
 import           Settings
 import           System.Console.ANSI.Codes      ( Color(..)
                                                 , ColorIntensity(..)
                                                 , ConsoleLayer(Foreground)
                                                 , SGR(SetColor)
+                                                )
+import           Yesod                          ( FormMessage
+                                                , defaultFormMessage
+                                                )
+import           Yesod.Auth                     ( AuthEntity
+                                                , Creds(credsIdent)
+                                                , YesodAuth
+                                                    ( AuthId
+                                                    , authPlugins
+                                                    , getAuthId
+                                                    , loginDest
+                                                    , logoutDest
+                                                    , maybeAuthId
+                                                    )
+                                                , YesodAuthPersist(getAuthEntity)
+                                                )
+import           Yesod.Auth.Http.Basic          ( defaultAuthSettings
+                                                , defaultMaybeBasicAuthId
                                                 )
 import           Yesod.Persist.Core
 
@@ -174,6 +199,27 @@ instance YesodPersist RegistryCtx where
 instance YesodPersistRunner RegistryCtx where
     getDBRunner :: Handler (DBRunner RegistryCtx, Handler ())
     getDBRunner = defaultGetDBRunner appConnPool
+
+instance RenderMessage RegistryCtx FormMessage where
+    renderMessage _ _ = defaultFormMessage
+instance YesodAuth RegistryCtx where
+    type AuthId RegistryCtx = Text
+    getAuthId   = pure . Just . credsIdent
+    maybeAuthId = do
+        pool <- getsYesod appConnPool
+        let checkCreds k s = flip runSqlPool pool $ do
+                let passHash = hashWith SHA256 . encodeUtf8 . ("start9_admin:" <>) $ decodeUtf8 s
+                ls <- selectList [AdminName ==. decodeUtf8 k, AdminPassHash ==. passHash] []
+                pure . not . null $ ls
+        defaultMaybeBasicAuthId checkCreds defaultAuthSettings
+    loginDest _ = PackageListR
+    logoutDest _ = PackageListR
+    authPlugins _ = []
+
+instance YesodAuthPersist RegistryCtx where
+    type AuthEntity RegistryCtx = Admin
+    getAuthEntity = (entityVal <<$>>) . liftHandler . runDB . getBy . UniqueAdmin
+
 
 
 unsafeHandler :: RegistryCtx -> Handler a -> IO a
