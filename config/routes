@@ -16,3 +16,8 @@
 
 -- SUPPORT API V0
 /support/v0/error-logs                     ErrorLogsR         POST
+
+-- ADMIN API V0
+/admin/v0/upload                           PkgUploadR         POST !admin
+/admin/v0/index                            PkgIndexR          POST !admin
+/admin/v0/deindex                          PkgDeindexR        POST !admin

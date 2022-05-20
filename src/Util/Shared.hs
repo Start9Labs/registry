@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Util.Shared where
 
@@ -79,11 +80,11 @@ filterPkgOsCompatible p =
         $ \PackageMetadata { packageMetadataPkgRecord = pkg, packageMetadataPkgVersionRecords = versions, packageMetadataPkgCategories = cats, packageMetadataPkgVersion = requestedVersion } ->
               do
                   let compatible = filter (p . versionRecordOsVersion . entityVal) versions
-                  when (not $ null compatible) $ yield PackageMetadata { packageMetadataPkgRecord         = pkg
-                                                                       , packageMetadataPkgVersionRecords = compatible
-                                                                       , packageMetadataPkgCategories     = cats
-                                                                       , packageMetadataPkgVersion = requestedVersion
-                                                                       }
+                  unless (null compatible) $ yield PackageMetadata { packageMetadataPkgRecord         = pkg
+                                                                   , packageMetadataPkgVersionRecords = compatible
+                                                                   , packageMetadataPkgCategories     = cats
+                                                                   , packageMetadataPkgVersion        = requestedVersion
+                                                                   }
 
 filterDependencyOsCompatible :: (Version -> Bool) -> PackageDependencyMetadata -> PackageDependencyMetadata
 filterDependencyOsCompatible p PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDeps, packageDependencyMetadataDepPkgRecord = pkg, packageDependencyMetadataDepVersions = depVersions }
@@ -130,3 +131,6 @@ filterDependencyBestVersion PackageDependencyMetadata { packageDependencyMetadat
                 -- TODO it would be better if we could return the requirements for display
                 $logInfo [i|No satisfactory version of #{depId} for dependent package #{pkgId}|]
                 pure Nothing
+
+sendResponseText :: MonadHandler m => Status -> Text -> m a
+sendResponseText = sendResponseStatus @_ @Text
