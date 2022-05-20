@@ -11,9 +11,11 @@
 
 module Model where
 
+import           Crypto.Hash
 import           Database.Persist.TH
 import           Lib.Types.AppIndex
 import           Lib.Types.Emver
+import           Orphans.Cryptonite             ( )
 import           Orphans.Emver                  ( )
 import           Startlude
 
@@ -100,4 +102,16 @@ PkgDependency
     UniquePkgDepVersion pkgId pkgVersion depId
     deriving Eq
     deriving Show
+
+Admin
+    createdAt UTCTime
+    name Text
+    passHash (Digest SHA256)
+    UniqueAdmin name
+
+Upload
+    uploader AdminId
+    pkgId PkgRecordId
+    pkgVersion Version
+    createdAt UTCTime
 |]
