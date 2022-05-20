@@ -23,6 +23,7 @@ dependencies:
   - can-i-haz
   - conduit
   - conduit-extra
+  - containers
   - cryptonite
   - cryptonite-conduit
   - data-default

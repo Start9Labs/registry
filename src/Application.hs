@@ -85,6 +85,7 @@ import           Data.String.Interpolate.IsString
                                                 ( i )
 import           Database.Persist.Sql           ( SqlBackend )
 import           Foundation
+import           Handler.Admin
 import           Handler.Apps
 import           Handler.ErrorLogs
 import           Handler.Icons

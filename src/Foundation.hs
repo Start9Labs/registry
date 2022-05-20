@@ -36,6 +36,7 @@ import           Control.Monad.Reader.Has       ( Has(extract, update) )
 import           Crypto.Hash                    ( SHA256(SHA256)
                                                 , hashWith
                                                 )
+import           Data.Set                       ( member )
 import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
@@ -188,6 +189,13 @@ instance Yesod RegistryCtx where
                 LevelWarn    -> Yellow
                 LevelError   -> Red
                 LevelOther _ -> White
+
+    isAuthorized :: Route RegistryCtx -> Bool -> Handler AuthResult
+    isAuthorized route _
+        | "admin" `member` routeAttrs route = do
+            hasAuthId <- isJust <$> maybeAuthId
+            pure $ if hasAuthId then Authorized else Unauthorized "This feature is for admins only"
+        | otherwise = pure Authorized
 
 
 -- How to run database actions.
