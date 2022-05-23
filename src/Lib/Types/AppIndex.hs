@@ -100,6 +100,7 @@ data PackageManifest = PackageManifest
     , packageManifestIcon             :: !(Maybe Text)
     , packageManifestAlerts           :: !(HM.HashMap ServiceAlert (Maybe Text))
     , packageManifestDependencies     :: !(HM.HashMap PkgId PackageDependency)
+    , packageManifestEosVersion       :: !Version
     }
     deriving Show
 instance FromJSON PackageManifest where
@@ -120,6 +121,7 @@ instance FromJSON PackageManifest where
             pure (alertType, alertDesc)
         let packageManifestAlerts = HM.fromList a
         packageManifestDependencies <- o .: "dependencies"
+        packageManifestEosVersion   <- o .: "eos-version"
         pure PackageManifest { .. }
 
 -- >>> eitherDecode testManifest :: Either String PackageManifest

@@ -24,10 +24,10 @@ PkgRecord
     Id PkgId sql=pkg_id
     createdAt UTCTime
     updatedAt UTCTime Maybe
-    title Text
-    descShort Text
-    descLong Text
-    iconType Text
+    -- title Text
+    -- descShort Text
+    -- descLong Text
+    -- iconType Text
     deriving Eq
     deriving Show
 
@@ -36,6 +36,10 @@ VersionRecord sql=version
     updatedAt UTCTime Maybe
     pkgId PkgRecordId
     number Version
+    title Text
+    descShort Text
+    descLong Text
+    iconType Text
     releaseNotes Text
     osVersion Version
     arch Text Maybe
