@@ -67,6 +67,7 @@ import           Model
 import           Startlude                      ( ($)
                                                 , (&&)
                                                 , (.)
+                                                , (/=)
                                                 , (<$>)
                                                 , Bool(..)
                                                 , ByteString
@@ -140,7 +141,7 @@ import           Yesod.Core.Content             ( typeGif
                                                 )
 import           Yesod.Core.Types               ( ContentType )
 
-data ManifestParseException = ManifestParseException FilePath
+newtype ManifestParseException = ManifestParseException FilePath
     deriving Show
 instance Exception ManifestParseException
 
@@ -149,7 +150,7 @@ data PkgRepo = PkgRepo
     , pkgRepoAppMgrBin :: FilePath
     }
 
-data EosRepo = EosRepo
+newtype EosRepo = EosRepo
     { eosRepoFileRoot :: FilePath
     }
 
@@ -161,7 +162,7 @@ getVersionsFor pkg = do
     if exists
         then do
             subdirs <- listDirectory pkgDir
-            let (failures, successes) = partitionEithers $ (Atto.parseOnly parseVersion . T.pack) <$> subdirs
+            let (failures, successes) = partitionEithers $ Atto.parseOnly parseVersion . T.pack <$> subdirs
             for_ failures $ \f -> $logWarn [i|Emver Parse Failure for #{pkg}: #{f}|]
             pure successes
         else pure []
@@ -186,13 +187,11 @@ loadPkgDependencies appConnPool manifest = do
     let deps' = first PkgRecordKey <$> HM.toList deps
     for_
         deps'
-        (\d ->
-            (runSqlPool
-                ( insertUnique
-                $ PkgDependency time (PkgRecordKey pkgId) pkgVersion (fst d) (packageDependencyVersion . snd $ d)
-                )
-                appConnPool
+        (\d -> runSqlPool
+            ( insertUnique
+            $ PkgDependency time (PkgRecordKey pkgId) pkgVersion (fst d) (packageDependencyVersion . snd $ d)
             )
+            appConnPool
         )
 
 -- extract all package assets into their own respective files
@@ -232,7 +231,7 @@ extractPkg pool fp = handle @_ @SomeException cleanup $ do
             $logError $ show e
             let pkgRoot = takeDirectory fp
             fs <- listDirectory pkgRoot
-            let toRemove = filter (not . (== ".s9pk") . takeExtension) fs
+            let toRemove = filter ((/=) ".s9pk" . takeExtension) fs
             mapConcurrently_ (removeFile . (pkgRoot </>)) toRemove
             throwIO e
 
@@ -295,7 +294,7 @@ getManifest pkg version = do
     root <- asks pkgRepoFileRoot
     let manifestPath = root </> show pkg </> show version </> "manifest.json"
     n <- getFileSize manifestPath
-    pure $ (n, sourceFile manifestPath)
+    pure (n, sourceFile manifestPath)
 
 getInstructions :: (MonadResource m, MonadReader r m, Has PkgRepo r)
                 => PkgId
@@ -305,7 +304,7 @@ getInstructions pkg version = do
     root <- asks pkgRepoFileRoot
     let instructionsPath = root </> show pkg </> show version </> "instructions.md"
     n <- getFileSize instructionsPath
-    pure $ (n, sourceFile instructionsPath)
+    pure (n, sourceFile instructionsPath)
 
 getLicense :: (MonadResource m, MonadReader r m, Has PkgRepo r)
            => PkgId
@@ -315,7 +314,7 @@ getLicense pkg version = do
     root <- asks pkgRepoFileRoot
     let licensePath = root </> show pkg </> show version </> "license.md"
     n <- getFileSize licensePath
-    pure $ (n, sourceFile licensePath)
+    pure (n, sourceFile licensePath)
 
 getIcon :: (MonadResource m, MonadReader r m, Has PkgRepo r)
         => PkgId
@@ -326,7 +325,7 @@ getIcon pkg version = do
     let pkgRoot = root </> show pkg </> show version
     mIconFile <- find ((== "icon") . takeBaseName) <$> listDirectory pkgRoot
     case mIconFile of
-        Nothing -> throwIO $ NotFoundE $ [i|#{pkg}: Icon|]
+        Nothing -> throwIO $ NotFoundE [i|#{pkg}: Icon|]
         Just x  -> do
             let ct = case takeExtension x of
                     ".png"  -> typePng
@@ -336,7 +335,7 @@ getIcon pkg version = do
                     ".gif"  -> typeGif
                     _       -> typePlain
             n <- getFileSize (pkgRoot </> x)
-            pure $ (ct, n, sourceFile (pkgRoot </> x))
+            pure (ct, n, sourceFile (pkgRoot </> x))
 
 getHash :: (MonadIO m, MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m ByteString
 getHash pkg version = do

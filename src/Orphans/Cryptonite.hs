@@ -17,10 +17,10 @@ import           Database.Persist               ( PersistField(..)
 import           Database.Persist.Sql           ( PersistFieldSql(..) )
 import           Startlude                      ( ($)
                                                 , (.)
-                                                , Bifunctor(bimap, first)
                                                 , ByteString
                                                 , Either(Left)
                                                 , Semigroup((<>))
+                                                , bimap
                                                 , decodeUtf8
                                                 , encodeUtf8
                                                 , join
