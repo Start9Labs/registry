@@ -9,16 +9,33 @@ import           Conduit                        ( (.|)
                                                 )
 import           Control.Monad.Reader.Has       ( ask )
 import           Control.Monad.Trans.Maybe      ( MaybeT(..) )
-import           Data.Aeson                     ( decodeFileStrict )
+import           Data.Aeson                     ( (.:)
+                                                , FromJSON(parseJSON)
+                                                , decodeFileStrict
+                                                , withObject
+                                                )
+import           Data.String.Interpolate.IsString
+                                                ( i )
+import           Database.Queries               ( upsertPackageVersion )
 import           Foundation
 import           Lib.PkgRepository              ( PkgRepo(PkgRepo, pkgRepoFileRoot)
                                                 , extractPkg
+                                                , getManifestLocation
                                                 )
-import           Lib.Types.AppIndex             ( PackageManifest(..) )
-import           Network.HTTP.Types             ( status500 )
+import           Lib.Types.AppIndex             ( PackageManifest(..)
+                                                , PkgId
+                                                )
+import           Lib.Types.Emver                ( Version(..) )
+import           Model                          ( Key(PkgRecordKey, VersionRecordKey) )
+import           Network.HTTP.Types             ( status404
+                                                , status500
+                                                )
 import           Startlude                      ( ($)
                                                 , (.)
                                                 , (<$>)
+                                                , Applicative(pure)
+                                                , Eq
+                                                , Show
                                                 , SomeException(..)
                                                 , asum
                                                 , hush
@@ -38,9 +55,12 @@ import           UnliftIO.Directory             ( renameDirectory )
 import           Util.Shared                    ( orThrow
                                                 , sendResponseText
                                                 )
-import           Yesod                          ( getsYesod
+import           Yesod                          ( delete
+                                                , getsYesod
                                                 , logError
                                                 , rawRequestBody
+                                                , requireCheckJsonBody
+                                                , runDB
                                                 )
 
 postPkgUploadR :: Handler ()
@@ -58,8 +78,28 @@ postPkgUploadR = do
         renameDirectory path (pkgRepoFileRoot </> show packageManifestId </> show packageManifestVersion)
     where retry m = runMaybeT . asum $ replicate 3 (MaybeT $ hush <$> try @_ @SomeException m)
 
+
+data IndexPkgReq = IndexPkgReq
+    { indexPkgReqId      :: !PkgId
+    , indexPkgReqVersion :: !Version
+    }
+    deriving (Eq, Show)
+instance FromJSON IndexPkgReq where
+    parseJSON = withObject "Index Package Request" $ \o -> do
+        indexPkgReqId      <- o .: "id"
+        indexPkgReqVersion <- o .: "version"
+        pure IndexPkgReq { .. }
+
 postPkgIndexR :: Handler ()
-postPkgIndexR = _
+postPkgIndexR = do
+    IndexPkgReq {..} <- requireCheckJsonBody
+    manifest         <- getManifestLocation indexPkgReqId indexPkgReqVersion
+    man              <- liftIO (decodeFileStrict manifest) `orThrow` sendResponseText
+        status404
+        [i|Could not locate manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
+    runDB $ upsertPackageVersion man
 
 postPkgDeindexR :: Handler ()
-postPkgDeindexR = _
+postPkgDeindexR = do
+    IndexPkgReq {..} <- requireCheckJsonBody
+    runDB $ delete (VersionRecordKey (PkgRecordKey indexPkgReqId) indexPkgReqVersion)

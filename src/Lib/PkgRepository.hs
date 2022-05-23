@@ -286,14 +286,18 @@ watchEosRepoRoot pool = do
                 Right version ->
                     void $ flip runSqlPool pool $ upsert (EosHash version hashText) [EosHashHash =. hashText]
 
+getManifestLocation :: (MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m FilePath
+getManifestLocation pkg version = do
+    root <- asks pkgRepoFileRoot
+    pure $ root </> show pkg </> show version </> "manifest.json"
+
 getManifest :: (MonadResource m, MonadReader r m, Has PkgRepo r)
             => PkgId
             -> Version
             -> m (Integer, ConduitT () ByteString m ())
 getManifest pkg version = do
-    root <- asks pkgRepoFileRoot
-    let manifestPath = root </> show pkg </> show version </> "manifest.json"
-    n <- getFileSize manifestPath
+    manifestPath <- getManifestLocation pkg version
+    n            <- getFileSize manifestPath
     pure (n, sourceFile manifestPath)
 
 getInstructions :: (MonadResource m, MonadReader r m, Has PkgRepo r)

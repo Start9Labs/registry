@@ -1,6 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Fuse on/on" #-}
 
 module Database.Marketplace where
 
@@ -54,24 +55,24 @@ type CategoryTitle = Text
 searchServices :: (MonadResource m, MonadIO m)
                => Maybe CategoryTitle
                -> Text
-               -> ConduitT () (Entity PkgRecord) (ReaderT SqlBackend m) ()
+               -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
 searchServices Nothing query = selectSource $ do
-    service <- from $ table @PkgRecord
+    service <- from $ table @VersionRecord
     where_
-        (   (service ^. PkgRecordDescShort `ilike` (%) ++. val query ++. (%))
-        ||. (service ^. PkgRecordDescLong `ilike` (%) ++. val query ++. (%))
-        ||. (service ^. PkgRecordTitle `ilike` (%) ++. val query ++. (%))
+        (   (service ^. VersionRecordDescShort `ilike` (%) ++. val query ++. (%))
+        ||. (service ^. VersionRecordDescLong `ilike` (%) ++. val query ++. (%))
+        ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
         )
-    orderBy [desc (service ^. PkgRecordUpdatedAt)]
+    orderBy [desc (service ^. VersionRecordUpdatedAt)]
     pure service
 searchServices (Just category) query = selectSource $ do
     services <- from
         (do
             (service :& _ :& cat) <-
                 from
-                $           table @PkgRecord
+                $           table @VersionRecord
                 `innerJoin` table @PkgCategory
-                `on`        (\(s :& sc) -> sc ^. PkgCategoryPkgId ==. s ^. PkgRecordId)
+                `on`        (\(s :& sc) -> sc ^. PkgCategoryPkgId ==. s ^. VersionRecordPkgId)
                 `innerJoin` table @Category
                 `on`        (\(_ :& sc :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
             -- if there is a cateogry, only search in category
@@ -80,13 +81,13 @@ searchServices (Just category) query = selectSource $ do
                 $   cat
                 ^.  CategoryName
                 ==. val category
-                &&. (   (service ^. PkgRecordDescShort `ilike` (%) ++. val query ++. (%))
-                    ||. (service ^. PkgRecordDescLong `ilike` (%) ++. val query ++. (%))
-                    ||. (service ^. PkgRecordTitle `ilike` (%) ++. val query ++. (%))
+                &&. (   (service ^. VersionRecordDescShort `ilike` (%) ++. val query ++. (%))
+                    ||. (service ^. VersionRecordDescLong `ilike` (%) ++. val query ++. (%))
+                    ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
                     )
             pure service
         )
-    orderBy [desc (services ^. PkgRecordUpdatedAt)]
+    orderBy [desc (services ^. VersionRecordUpdatedAt)]
     pure services
 
 getPkgData :: (MonadResource m, MonadIO m) => [PkgId] -> ConduitT () (Entity PkgRecord) (ReaderT SqlBackend m) ()
@@ -98,20 +99,19 @@ getPkgData pkgs = selectSource $ do
 getPkgDependencyData :: MonadIO m
                      => Key PkgRecord
                      -> Version
-                     -> ReaderT SqlBackend m ([(Entity PkgDependency, Entity PkgRecord)])
+                     -> ReaderT SqlBackend m [(Entity PkgDependency, Entity PkgRecord)]
 getPkgDependencyData pkgId pkgVersion = select $ do
-    pd <- from
+    from
         (do
             (pkgDepRecord :& depPkgRecord) <-
                 from
                 $           table @PkgDependency
                 `innerJoin` table @PkgRecord
                 `on`        (\(pdr :& dpr) -> dpr ^. PkgRecordId ==. pdr ^. PkgDependencyDepId)
-            where_ (pkgDepRecord ^. PkgDependencyPkgId ==. (val pkgId))
+            where_ (pkgDepRecord ^. PkgDependencyPkgId ==. val pkgId)
             where_ (pkgDepRecord ^. PkgDependencyPkgVersion ==. val pkgVersion)
             pure (pkgDepRecord, depPkgRecord)
         )
-    pure pd
 
 zipCategories :: MonadUnliftIO m
               => ConduitT
@@ -147,7 +147,7 @@ zipDependencyVersions :: (Monad m, MonadIO m)
                       => (Entity PkgDependency, Entity PkgRecord)
                       -> ReaderT SqlBackend m PackageDependencyMetadata
 zipDependencyVersions (pkgDepRecord, depRecord) = do
-    let pkgDbId = entityKey $ depRecord
+    let pkgDbId = entityKey depRecord
     depVers <- select $ do
         v <- from $ table @VersionRecord
         where_ $ v ^. VersionRecordPkgId ==. val pkgDbId

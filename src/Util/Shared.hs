@@ -1,14 +1,13 @@
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Util.Shared where
 
-import           Startlude               hiding ( Any
-                                                , Handler
-                                                , yield
-                                                )
 
 import qualified Data.Text                     as T
 import           Network.HTTP.Types
@@ -18,10 +17,10 @@ import           Conduit                        ( ConduitT
                                                 , awaitForever
                                                 , yield
                                                 )
-import           Control.Monad.Reader.Has       ( Has )
-import           Data.Semigroup                 ( Max(Max)
-                                                , getMax
+import           Control.Monad.Reader.Has       ( Has
+                                                , MonadReader
                                                 )
+import           Data.Semigroup                 ( (<>) )
 import           Data.String.Interpolate.IsString
                                                 ( i )
 import           Database.Esqueleto.Experimental
@@ -43,9 +42,32 @@ import           Lib.Types.Emver
 import           Model                          ( Category
                                                 , Key(unPkgRecordKey)
                                                 , PkgDependency(pkgDependencyDepId, pkgDependencyDepVersionRange)
-                                                , PkgRecord(pkgRecordTitle)
-                                                , VersionRecord(versionRecordNumber, versionRecordOsVersion)
+                                                , PkgRecord
+                                                , VersionRecord(..)
                                                 , pkgDependencyPkgId
+                                                )
+import           Startlude                      ( ($)
+                                                , (.)
+                                                , (<$>)
+                                                , Alternative((<|>))
+                                                , Applicative(pure)
+                                                , Bool(..)
+                                                , Down(Down)
+                                                , Foldable(foldr, null)
+                                                , Functor(fmap)
+                                                , Maybe(..)
+                                                , Monad((>>=))
+                                                , Ord((>))
+                                                , Text
+                                                , decodeUtf8
+                                                , filter
+                                                , fromMaybe
+                                                , headMay
+                                                , isSpace
+                                                , not
+                                                , readMaybe
+                                                , sortOn
+                                                , unless
                                                 )
 
 getVersionSpecFromQuery :: Handler VersionRange
@@ -116,17 +138,17 @@ filterLatestVersionFromSpec versionMap = awaitForever $ \(a, vs, cats) -> do
 
 -- get best version of the dependency based on what is specified in the db (ie. what is specified in the manifest for the package)
 filterDependencyBestVersion :: MonadLogger m => PackageDependencyMetadata -> m (Maybe (Key PkgRecord, Text, Version))
-filterDependencyBestVersion PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDepRecord, packageDependencyMetadataDepPkgRecord = depRecord, packageDependencyMetadataDepVersions = depVersions }
+filterDependencyBestVersion PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDepRecord, packageDependencyMetadataDepVersions = depVersions }
     = do
         -- get best version from VersionRange of dependency
-        let pkgId    = pkgDependencyPkgId $ entityVal pkgDepRecord
-        let depId    = pkgDependencyDepId $ entityVal pkgDepRecord
-        let depTitle = pkgRecordTitle $ entityVal depRecord
-        let satisfactory = filter (<|| (pkgDependencyDepVersionRange $ entityVal pkgDepRecord))
-                                  (versionRecordNumber . entityVal <$> depVersions)
-        case getMax <$> foldMap (Just . Max) satisfactory of
+        let pkgId = pkgDependencyPkgId $ entityVal pkgDepRecord
+        let depId = pkgDependencyDepId $ entityVal pkgDepRecord
+        let satisfactory = filter
+                ((<|| (pkgDependencyDepVersionRange $ entityVal pkgDepRecord)) . versionRecordNumber)
+                (entityVal <$> depVersions)
+        case maximumOn versionRecordNumber satisfactory of
             -- QUESTION is this an acceptable transformation here? These are the only values that we care about after this filter.
-            Just bestVersion -> pure $ Just (depId, depTitle, bestVersion)
+            Just bestVersion -> pure $ Just (depId, versionRecordTitle bestVersion, versionRecordNumber bestVersion)
             Nothing          -> do
                 -- TODO it would be better if we could return the requirements for display
                 $logInfo [i|No satisfactory version of #{depId} for dependent package #{pkgId}|]
@@ -134,3 +156,9 @@ filterDependencyBestVersion PackageDependencyMetadata { packageDependencyMetadat
 
 sendResponseText :: MonadHandler m => Status -> Text -> m a
 sendResponseText = sendResponseStatus @_ @Text
+
+maximumOn :: forall a b t . (Ord b, Foldable t) => (a -> b) -> t a -> Maybe a
+maximumOn f = foldr (\x y -> maxOn f x <$> y <|> Just x) Nothing
+
+maxOn :: Ord b => (a -> b) -> a -> a -> a
+maxOn f x y = if f x > f y then x else y

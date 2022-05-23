@@ -303,7 +303,7 @@ startApp foundation = do
         -- certbot renew loop
         void . forkIO $ forever $ flip runReaderT foundation $ do
             shouldRenew <- doesSslNeedRenew
-            runLog $ $logInfo $ [i|Checking if SSL Certs should be renewed: #{shouldRenew}|]
+            runLog $ $logInfo [i|Checking if SSL Certs should be renewed: #{shouldRenew}|]
             when shouldRenew $ do
                 runLog $ $logInfo "Renewing SSL Certs."
                 renewSslCerts
@@ -322,9 +322,9 @@ startWeb foundation = do
     where
         startWeb' app = (`onException` (appStopFsNotifyPkg foundation *> appStopFsNotifyEos foundation)) $ do
             let AppSettings {..} = appSettings foundation
-            runLog $ $logInfo $ [i|Launching Tor Web Server on port #{torPort}|]
+            runLog $ $logInfo [i|Launching Tor Web Server on port #{torPort}|]
             torAction <- async $ runSettings (warpSettings torPort foundation) app
-            runLog $ $logInfo $ [i|Launching Web Server on port #{appPort}|]
+            runLog $ $logInfo [i|Launching Web Server on port #{appPort}|]
             action <- async $ if sslAuto
                 then runTLS (tlsSettings sslCertLocation sslKeyLocation) (warpSettings appPort foundation) app
                 else runSettings (warpSettings appPort foundation) app
