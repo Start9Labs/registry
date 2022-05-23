@@ -26,7 +26,6 @@ import           Data.String.Interpolate.IsString
 import           Database.Esqueleto.Experimental
                                                 ( Entity
                                                 , Key
-                                                , entityKey
                                                 , entityVal
                                                 )
 import           Foundation
@@ -40,7 +39,6 @@ import           Lib.PkgRepository              ( PkgRepo
 import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Emver
 import           Model                          ( Category
-                                                , Key(unPkgRecordKey)
                                                 , PkgDependency(pkgDependencyDepId, pkgDependencyDepVersionRange)
                                                 , PkgRecord
                                                 , VersionRecord(..)
@@ -99,10 +97,10 @@ orThrow action other = action >>= \case
 filterPkgOsCompatible :: Monad m => (Version -> Bool) -> ConduitT PackageMetadata PackageMetadata m ()
 filterPkgOsCompatible p =
     awaitForever
-        $ \PackageMetadata { packageMetadataPkgRecord = pkg, packageMetadataPkgVersionRecords = versions, packageMetadataPkgCategories = cats, packageMetadataPkgVersion = requestedVersion } ->
+        $ \PackageMetadata { packageMetadataPkgId = pkg, packageMetadataPkgVersionRecords = versions, packageMetadataPkgCategories = cats, packageMetadataPkgVersion = requestedVersion } ->
               do
                   let compatible = filter (p . versionRecordOsVersion . entityVal) versions
-                  unless (null compatible) $ yield PackageMetadata { packageMetadataPkgRecord         = pkg
+                  unless (null compatible) $ yield PackageMetadata { packageMetadataPkgId             = pkg
                                                                    , packageMetadataPkgVersionRecords = compatible
                                                                    , packageMetadataPkgCategories     = cats
                                                                    , packageMetadataPkgVersion        = requestedVersion
@@ -119,18 +117,13 @@ filterDependencyOsCompatible p PackageDependencyMetadata { packageDependencyMeta
 
 filterLatestVersionFromSpec :: (Monad m, MonadLogger m)
                             => [(PkgId, VersionRange)]
-                            -> ConduitT
-                                   (Entity PkgRecord, [Entity VersionRecord], [Entity Category])
-                                   PackageMetadata
-                                   m
-                                   ()
-filterLatestVersionFromSpec versionMap = awaitForever $ \(a, vs, cats) -> do
-    let pkgId = entityKey a
+                            -> ConduitT (PkgId, [Entity VersionRecord], [Entity Category]) PackageMetadata m ()
+filterLatestVersionFromSpec versionMap = awaitForever $ \(pkgId, vs, cats) -> do
     -- if no packages are specified, the VersionRange is implicitly `*`
-    let spec = fromMaybe Any $ lookup (unPkgRecordKey $ entityKey a) versionMap
+    let spec = fromMaybe Any $ lookup pkgId versionMap
     case headMay . sortOn Down $ filter (`satisfies` spec) $ fmap (versionRecordNumber . entityVal) vs of
         Nothing -> $logInfo [i|No version for #{pkgId} satisfying #{spec}|]
-        Just v  -> yield $ PackageMetadata { packageMetadataPkgRecord         = a
+        Just v  -> yield $ PackageMetadata { packageMetadataPkgId             = pkgId
                                            , packageMetadataPkgVersionRecords = vs
                                            , packageMetadataPkgCategories     = cats
                                            , packageMetadataPkgVersion        = v

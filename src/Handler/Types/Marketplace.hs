@@ -129,7 +129,7 @@ instance FromJSON PackageReq where
         packageReqVersion <- o .: "version"
         pure PackageReq { .. }
 data PackageMetadata = PackageMetadata
-    { packageMetadataPkgRecord         :: Entity PkgRecord
+    { packageMetadataPkgId             :: PkgId
     , packageMetadataPkgVersionRecords :: [Entity VersionRecord]
     , packageMetadataPkgCategories     :: [Entity Category]
     , packageMetadataPkgVersion        :: Version

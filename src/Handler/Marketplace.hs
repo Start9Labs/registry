@@ -5,6 +5,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant <$>" #-}
 
 module Handler.Marketplace where
 
@@ -66,14 +68,14 @@ import           Database.Esqueleto.Experimental
                                                 , select
                                                 , table
                                                 )
-import           Database.Marketplace           ( fetchAllAppVersions
+import           Database.Marketplace           ( collateVersions
+                                                , fetchAllAppVersions
                                                 , fetchLatestApp
                                                 , getPkgData
                                                 , getPkgDependencyData
                                                 , searchServices
                                                 , zipCategories
                                                 , zipDependencyVersions
-                                                , zipVersions
                                                 )
 import           Database.Persist               ( PersistUniqueRead(getBy)
                                                 , insertUnique
@@ -98,7 +100,7 @@ import           Lib.Types.Emver                ( Version
 import           Model                          ( Category(..)
                                                 , EntityField(..)
                                                 , EosHash(EosHash, eosHashHash)
-                                                , Key(unPkgRecordKey)
+                                                , Key(PkgRecordKey, unPkgRecordKey)
                                                 , OsVersion(..)
                                                 , PkgRecord(..)
                                                 , Unique(UniqueVersion)
@@ -194,7 +196,7 @@ getEosR = do
     spec    <- getVersionSpecFromQuery
     root    <- getsYesod $ (</> "eos") . resourcesDir . appSettings
     subdirs <- listDirectory root
-    let (failures, successes) = partitionEithers $ (Atto.parseOnly parseVersion . T.pack) <$> subdirs
+    let (failures, successes) = partitionEithers $ Atto.parseOnly parseVersion . T.pack <$> subdirs
     for_ failures $ \f -> $logWarn [i|Emver Parse Failure for EOS: #{f}|]
     let mVersion = headMay . sortOn Down . filter (`satisfies` spec) $ successes
     case mVersion of
@@ -254,7 +256,7 @@ getPackageListR = do
             runDB
                 $  runConduit
                 $  searchServices category query
-                .| zipVersions
+                .| collateVersions
                 .| zipCategories
                         -- empty list since there are no requested packages in this case
                 .| filterLatestVersionFromSpec []
@@ -269,7 +271,7 @@ getPackageListR = do
                 -- TODO could probably be better with sequenceConduits
                 .  runConduit
                 $  getPkgData (packageReqId <$> packages')
-                .| zipVersions
+                .| collateVersions
                 .| zipCategories
                 .| filterLatestVersionFromSpec vMap
                 .| filterPkgOsCompatible osPredicate
@@ -343,16 +345,16 @@ getPackageListR = do
                                       , Version
                                       , [(Key PkgRecord, Text, Version)]
                                       )
-        getPackageDependencies osPredicate PackageMetadata { packageMetadataPkgRecord = pkg, packageMetadataPkgVersionRecords = pkgVersions, packageMetadataPkgCategories = pkgCategories, packageMetadataPkgVersion = pkgVersion }
+        getPackageDependencies osPredicate PackageMetadata { packageMetadataPkgId = pkg, packageMetadataPkgVersionRecords = pkgVersions, packageMetadataPkgCategories = pkgCategories, packageMetadataPkgVersion = pkgVersion }
             = do
-                let pkgId          = entityKey pkg
+                let pkgId          = PkgRecordKey pkg
                 let pkgVersions' = versionRecordNumber . entityVal <$> pkgVersions
                 let pkgCategories' = entityVal <$> pkgCategories
                 pkgDepInfo             <- getPkgDependencyData pkgId pkgVersion
                 pkgDepInfoWithVersions <- traverse zipDependencyVersions pkgDepInfo
                 let compatiblePkgDepInfo = fmap (filterDependencyOsCompatible osPredicate) pkgDepInfoWithVersions
                 res <- catMaybes <$> traverse filterDependencyBestVersion compatiblePkgDepInfo
-                pure $ (pkgId, pkgCategories', pkgVersions', pkgVersion, res)
+                pure (pkgId, pkgCategories', pkgVersions', pkgVersion, res)
         constructPackageListApiRes :: (MonadResource m, MonadReader r m, Has AppSettings r, Has PkgRepo r)
                                    => ( Key PkgRecord
                                       , [Category]
@@ -392,4 +394,4 @@ getPackageListR = do
             runConduit $ src .| CL.foldMap id
 
 basicRender :: RenderRoute a => Route a -> Text
-basicRender = TL.toStrict . TB.toLazyText . fold . fmap (mappend (TB.singleton '/') . TB.fromText) . fst . renderRoute
+basicRender = TL.toStrict . TB.toLazyText . foldMap (mappend (TB.singleton '/') . TB.fromText) . fst . renderRoute
