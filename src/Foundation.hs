@@ -111,7 +111,7 @@ transitiveUpdate f = update (update @a @b f)
 
 
 setWebProcessThreadId :: (ThreadId, ThreadId) -> RegistryCtx -> IO ()
-setWebProcessThreadId tid a = putMVar (appWebServerThreadId a) $ tid
+setWebProcessThreadId tid a = putMVar (appWebServerThreadId a) tid
 
 -- This is where we define all of the routes in our application. For a full
 -- explanation of the syntax, please see:
@@ -173,11 +173,10 @@ instance Yesod RegistryCtx where
                                  <> str
                                  )
                            )
-                        <> (toLogStr
+                        <> toLogStr
                                (wrapSGRCode [SetColor Foreground Dull White]
                                             [i| @ #{loc_filename loc}:#{fst $ loc_start loc}\n|]
                                )
-                           )
             loggerPutStr logger formatted
         where
             renderLvl lvl = case lvl of
@@ -242,4 +241,4 @@ unsafeHandler = Unsafe.fakeHandlerGetLogger appLogger
 -- https://github.com/yesodweb/yesod/wiki/i18n-messages-in-the-scaffolding
 
 appLogFunc :: RegistryCtx -> LogFunc
-appLogFunc = appLogger >>= flip messageLoggerSource
+appLogFunc = appLogger <**> messageLoggerSource
