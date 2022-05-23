@@ -43,6 +43,7 @@ dependencies:
   - memory
   - monad-logger
   - monad-logger-extras
+  - monad-loops
   - parallel
   - persistent
   - persistent-postgresql
@@ -102,7 +103,19 @@ executables:
     when:
       - condition: flag(library-only)
         buildable: false
-
+  embassy-publish:
+    source-dirs: cli
+    main: Main.hs
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+      - -fdefer-typed-holes
+    dependencies:
+      - start9-registry
+    when:
+      - condition: flag(library-only)
+        buildable: false
 tests:
   start9-registry-test:
     source-dirs: test

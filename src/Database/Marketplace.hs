@@ -9,8 +9,11 @@ import           Conduit                        ( ConduitT
                                                 , MonadResource
                                                 , MonadUnliftIO
                                                 , awaitForever
+                                                , leftover
                                                 , yield
                                                 )
+import           Control.Monad.Loops            ( unfoldM )
+import           Data.Conduit                   ( await )
 import           Database.Esqueleto.Experimental
                                                 ( (%)
                                                 , (&&.)
@@ -90,10 +93,10 @@ searchServices (Just category) query = selectSource $ do
     orderBy [desc (services ^. VersionRecordUpdatedAt)]
     pure services
 
-getPkgData :: (MonadResource m, MonadIO m) => [PkgId] -> ConduitT () (Entity PkgRecord) (ReaderT SqlBackend m) ()
+getPkgData :: (MonadResource m, MonadIO m) => [PkgId] -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
 getPkgData pkgs = selectSource $ do
-    pkgData <- from $ table @PkgRecord
-    where_ (pkgData ^. PkgRecordId `in_` valList (PkgRecordKey <$> pkgs))
+    pkgData <- from $ table @VersionRecord
+    where_ (pkgData ^. VersionRecordPkgId `in_` valList (PkgRecordKey <$> pkgs))
     pure pkgData
 
 getPkgDependencyData :: MonadIO m
@@ -115,33 +118,34 @@ getPkgDependencyData pkgId pkgVersion = select $ do
 
 zipCategories :: MonadUnliftIO m
               => ConduitT
-                     (Entity PkgRecord, [Entity VersionRecord])
-                     (Entity PkgRecord, [Entity VersionRecord], [Entity Category])
+                     (PkgId, [Entity VersionRecord])
+                     (PkgId, [Entity VersionRecord], [Entity Category])
                      (ReaderT SqlBackend m)
                      ()
 zipCategories = awaitForever $ \(pkg, vers) -> do
-    let pkgDbId = entityKey pkg
     raw <- lift $ select $ do
         (sc :& cat) <-
             from
             $           table @PkgCategory
             `innerJoin` table @Category
             `on`        (\(sc :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
-        where_ (sc ^. PkgCategoryPkgId ==. val pkgDbId)
+        where_ (sc ^. PkgCategoryPkgId ==. val (PkgRecordKey pkg))
         pure cat
     yield (pkg, vers, raw)
 
-zipVersions :: MonadUnliftIO m
-            => ConduitT (Entity PkgRecord) (Entity PkgRecord, [Entity VersionRecord]) (ReaderT SqlBackend m) ()
-zipVersions = awaitForever $ \pkg -> do
-    let appDbId = entityKey pkg
-    res <- lift $ select $ do
-        v <- from $ table @VersionRecord
-        where_ $ v ^. VersionRecordPkgId ==. val appDbId
-        -- first value in list will be latest version
-        orderBy [desc (v ^. VersionRecordNumber)]
-        pure v
-    yield (pkg, res)
+collateVersions :: MonadUnliftIO m
+                => ConduitT (Entity VersionRecord) (PkgId, [Entity VersionRecord]) (ReaderT SqlBackend m) ()
+collateVersions = awaitForever $ \v0 -> do
+    let pkg = unPkgRecordKey . versionRecordPkgId $ entityVal v0
+    let pull = do
+            mvn <- await
+            case mvn of
+                Nothing -> pure Nothing
+                Just vn -> do
+                    let pkg' = unPkgRecordKey . versionRecordPkgId $ entityVal vn
+                    if pkg == pkg' then pure (Just vn) else leftover vn $> Nothing
+    ls <- unfoldM pull
+    yield (pkg, v0 : ls)
 
 zipDependencyVersions :: (Monad m, MonadIO m)
                       => (Entity PkgDependency, Entity PkgRecord)
