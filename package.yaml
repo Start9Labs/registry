@@ -27,6 +27,7 @@ dependencies:
   - cryptonite
   - cryptonite-conduit
   - data-default
+  - dhall
   - directory
   - errors
   - esqueleto
@@ -44,6 +45,8 @@ dependencies:
   - monad-logger
   - monad-logger-extras
   - monad-loops
+  - network-uri
+  - optparse-applicative
   - parallel
   - persistent
   - persistent-migration
@@ -51,6 +54,7 @@ dependencies:
   - persistent-template
   - process
   - protolude
+  - rainbow
   - shakespeare
   - template-haskell
   - text

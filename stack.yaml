@@ -44,6 +44,7 @@ extra-deps:
   - esqueleto-3.5.1.0
   - monad-logger-extras-0.1.1.1
   - persistent-migration-0.3.0
+  - rainbow-0.34.2.2
   - wai-request-spec-0.10.2.4
   - warp-3.3.19
   - yesod-auth-basic-0.1.0.3

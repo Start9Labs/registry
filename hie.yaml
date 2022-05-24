@@ -1,8 +1,10 @@
 cradle:
   stack:
-  - path: "./"
-    component: "start9-registry:lib"
-  - path: "./app"
-    component: "start9-registry:exe:start9-registry"
-  - path: "./test"
-    component: "start9-registry:test:start9-registry-test"
+    - path: "./"
+      component: "start9-registry:lib"
+    - path: "./app"
+      component: "start9-registry:exe:start9-registry"
+    - path: "./test"
+      component: "start9-registry:test:start9-registry-test"
+    - path: "./cli"
+      component: "start9-registry:exe:embassy-publish"
