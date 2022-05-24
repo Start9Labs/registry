@@ -1,7 +1,4 @@
 module Main where
-import           Startlude                      ( IO
-                                                , pure
-                                                )
+import Cli.Cli (cliMain)
 
-main :: IO ()
-main = pure ()
+main = cliMain
