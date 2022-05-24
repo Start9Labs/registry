@@ -83,6 +83,8 @@ import           Control.Lens
 import           Data.List                      ( lookup )
 import           Data.String.Interpolate.IsString
                                                 ( i )
+import qualified Database.Persist.Migration
+import qualified Database.Persist.Migration.Postgres
 import           Database.Persist.Sql           ( SqlBackend )
 import           Foundation
 import           Handler.Admin
@@ -95,6 +97,7 @@ import           Lib.PkgRepository              ( watchEosRepoRoot
                                                 , watchPkgRepoRoot
                                                 )
 import           Lib.Ssl
+import           Migration                      ( manualMigration )
 import           Model
 import           Network.HTTP.Types.Header      ( hOrigin )
 import           Network.Wai.Middleware.Gzip    ( GzipFiles(GzipCompress)
@@ -107,6 +110,7 @@ import           Settings
 import           System.Directory               ( createDirectoryIfMissing )
 import           System.Posix.Process
 import           System.Time.Extra
+import qualified UnliftIO
 import           Yesod
 
 -- This line actually creates our YesodDispatch instance. It is the second half
@@ -152,6 +156,16 @@ makeFoundation appSettings = do
 
     -- Preform database migration using application logging settings
     runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
+        `UnliftIO.catch` (\(e :: SomeException) -> do
+                             print e
+                             runSqlPool
+                                 (Database.Persist.Migration.Postgres.runMigration
+                                     Database.Persist.Migration.defaultSettings
+                                     manualMigration
+                                 )
+                                 pool
+                             runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
+                         )
 
     -- Return the foundation
     return $ mkFoundation pool stopPkgWatch stopEosWatch
