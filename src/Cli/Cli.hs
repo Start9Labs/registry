@@ -177,10 +177,12 @@ cfgLocation :: IO FilePath
 cfgLocation = getHomeDirectory <&> \d -> d </> ".embassy/publish.dhall"
 
 parseInit :: Parser ()
-parseInit = subparser $ command "init" (info (pure ()) $ progDesc "Initializes embassy-publish config")
+parseInit =
+    subparser $ command "init" (info (pure ()) $ progDesc "Initializes embassy-publish config") <> metavar "init"
 
 parsePublish :: Parser Upload
-parsePublish = subparser $ command "upload" (info go $ progDesc "Publishes a .s9pk to a remote registry")
+parsePublish = subparser $ command "upload" (info go $ progDesc "Publishes a .s9pk to a remote registry") <> metavar
+    "upload"
     where
         go = liftA3
             Upload
@@ -231,7 +233,7 @@ parseIndex =
 parseDeindex :: Parser Command
 parseDeindex =
     subparser
-        $  command "deindex" (info (parseIndexHelper False) $ progDesc "Indexes an existing package version")
+        $  command "deindex" (info (parseIndexHelper False) $ progDesc "Deindexes an existing package version")
         <> metavar "deindex"
 
 parseIndexHelper :: Bool -> Parser Command
@@ -246,7 +248,7 @@ parseCommand :: Parser Command
 parseCommand =
     (parseInit $> CmdInit)
         <|> (CmdUpload <$> parsePublish)
-        <|> subparser (command "reg" (info reg $ progDesc "Manage configured registries"))
+        <|> subparser (command "reg" (info reg $ progDesc "Manage configured registries") <> metavar "reg")
         <|> parseIndex
         <|> parseDeindex
     where reg = parseRepoAdd <|> (CmdRegDel <$> parseRepoDel) <|> (parseRepoList $> CmdRegList)
