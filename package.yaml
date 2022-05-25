@@ -38,6 +38,8 @@ dependencies:
   - foreign-store
   - fsnotify
   - http-api-data
+  - http-client-tls
+  - http-conduit
   - http-types
   - interpolate
   - lens
@@ -52,11 +54,13 @@ dependencies:
   - persistent-migration
   - persistent-postgresql
   - persistent-template
+  - postgresql-simple
   - process
   - protolude
   - rainbow
   - shakespeare
   - template-haskell
+  - terminal-progress-bar
   - text
   - time
   - transformers

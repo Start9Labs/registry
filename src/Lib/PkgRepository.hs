@@ -49,8 +49,15 @@ import           Database.Esqueleto.Experimental
                                                 , insertUnique
                                                 , runSqlPool
                                                 )
-import           Database.Persist               ( (=.) )
-import           Database.Persist.Class         ( upsert )
+import           Database.Persist               ( (=.)
+                                                , insertKey
+                                                , update
+                                                , upsert
+                                                )
+import           Database.Persist.Sql           ( SqlPersistT
+                                                , runSqlPoolNoTransaction
+                                                )
+import           Database.PostgreSQL.Simple     ( SqlError(sqlState) )
 import           Lib.Error                      ( S9Error(NotFoundE) )
 import qualified Lib.External.AppMgr           as AppMgr
 import           Lib.Types.AppIndex             ( PackageManifest(..)
@@ -118,6 +125,7 @@ import           System.FilePath                ( (<.>)
 import           UnliftIO                       ( MonadUnliftIO
                                                 , askRunInIO
                                                 , async
+                                                , catch
                                                 , mapConcurrently_
                                                 , newEmptyMVar
                                                 , takeMVar
@@ -184,15 +192,18 @@ loadPkgDependencies appConnPool manifest = do
     let pkgVersion = packageManifestVersion manifest
     let deps       = packageManifestDependencies manifest
     time <- liftIO getCurrentTime
+    _    <- runWith appConnPool $ insertKey (PkgRecordKey pkgId) (PkgRecord time Nothing) `catch` \(e :: SqlError) ->
+        if sqlState e == "23505" then update (PkgRecordKey pkgId) [PkgRecordUpdatedAt =. Just time] else throwIO e
     let deps' = first PkgRecordKey <$> HM.toList deps
     for_
         deps'
-        (\d -> runSqlPool
-            ( insertUnique
-            $ PkgDependency time (PkgRecordKey pkgId) pkgVersion (fst d) (packageDependencyVersion . snd $ d)
-            )
-            appConnPool
+        (\d -> flip runSqlPool appConnPool $ do
+            insertUnique
+                $ PkgDependency time (PkgRecordKey pkgId) pkgVersion (fst d) (packageDependencyVersion . snd $ d)
         )
+    where
+        runWith :: MonadUnliftIO m => ConnectionPool -> SqlPersistT m a -> m a
+        runWith pool action = runSqlPoolNoTransaction action pool Nothing
 
 -- extract all package assets into their own respective files
 extractPkg :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => ConnectionPool -> FilePath -> m ()
@@ -234,27 +245,6 @@ extractPkg pool fp = handle @_ @SomeException cleanup $ do
             let toRemove = filter ((/=) ".s9pk" . takeExtension) fs
             mapConcurrently_ (removeFile . (pkgRoot </>)) toRemove
             throwIO e
-
-watchPkgRepoRoot :: (MonadUnliftIO m, MonadReader r m, Has PkgRepo r, MonadLoggerIO m) => ConnectionPool -> m (IO Bool)
-watchPkgRepoRoot pool = do
-    $logInfo "Starting FSNotify Watch Manager: PKG"
-    root    <- asks pkgRepoFileRoot
-    runInIO <- askRunInIO
-    box     <- newEmptyMVar @_ @()
-    _       <- forkIO $ liftIO $ withManager $ \watchManager -> do
-        stop <- watchTree watchManager root onlyAdded $ \evt -> do
-            let pkg = eventPath evt
-            -- TODO: validate that package path is an actual s9pk and is in a correctly conforming path.
-            void . forkIO $ runInIO $ do
-                extractPkg pool pkg
-        takeMVar box
-        stop
-    pure $ tryPutMVar box ()
-    where
-        onlyAdded :: ActionPredicate
-        onlyAdded (Added    path _ isDir) = not isDir && takeExtension path == ".s9pk"
-        onlyAdded (Modified path _ isDir) = not isDir && takeExtension path == ".s9pk"
-        onlyAdded _                       = False
 
 watchEosRepoRoot :: (MonadUnliftIO m, MonadReader r m, Has EosRepo r, MonadLoggerIO m) => ConnectionPool -> m (IO Bool)
 watchEosRepoRoot pool = do
