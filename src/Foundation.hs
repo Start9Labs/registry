@@ -13,7 +13,9 @@
 
 module Foundation where
 
-import           Startlude               hiding ( Handler )
+import           Startlude               hiding ( Handler
+                                                , get
+                                                )
 
 import           Control.Monad.Logger           ( Loc
                                                 , LogSource
@@ -43,9 +45,8 @@ import qualified Data.Text                     as T
 import           Language.Haskell.TH            ( Loc(..) )
 import           Lib.PkgRepository
 import           Lib.Types.AppIndex
-import           Model                          ( Admin
-                                                , EntityField(AdminName, AdminPassHash)
-                                                , Unique(UniqueAdmin)
+import           Model                          ( Admin(..)
+                                                , Key(AdminKey)
                                                 )
 import           Settings
 import           System.Console.ANSI.Codes      ( Color(..)
@@ -218,8 +219,10 @@ instance YesodAuth RegistryCtx where
         pool <- getsYesod appConnPool
         let checkCreds k s = flip runSqlPool pool $ do
                 let passHash = hashWith SHA256 . encodeUtf8 . ("start9_admin:" <>) $ decodeUtf8 s
-                ls <- selectList [AdminName ==. decodeUtf8 k, AdminPassHash ==. passHash] []
-                pure . not . null $ ls
+                get (AdminKey $ decodeUtf8 k) <&> \case
+                    Nothing                      -> False
+                    Just Admin { adminPassHash } -> adminPassHash == passHash
+
         defaultMaybeBasicAuthId checkCreds defaultAuthSettings
     loginDest _ = PackageListR
     logoutDest _ = PackageListR
@@ -227,7 +230,7 @@ instance YesodAuth RegistryCtx where
 
 instance YesodAuthPersist RegistryCtx where
     type AuthEntity RegistryCtx = Admin
-    getAuthEntity = (entityVal <<$>>) . liftHandler . runDB . getBy . UniqueAdmin
+    getAuthEntity = liftHandler . runDB . get . AdminKey
 
 
 

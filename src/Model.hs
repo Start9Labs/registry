@@ -24,10 +24,6 @@ PkgRecord
     Id PkgId sql=pkg_id
     createdAt UTCTime
     updatedAt UTCTime Maybe
-    -- title Text
-    -- descShort Text
-    -- descLong Text
-    -- iconType Text
     deriving Eq
     deriving Show
 
@@ -108,10 +104,9 @@ PkgDependency
     deriving Show
 
 Admin
+    Id Text
     createdAt UTCTime
-    name Text
     passHash (Digest SHA256)
-    UniqueAdmin name
 
 Upload
     uploader AdminId

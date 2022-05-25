@@ -8,6 +8,7 @@ import           Conduit                        ( (.|)
                                                 , runConduit
                                                 , sinkFile
                                                 )
+import           Control.Exception              ( ErrorCall(ErrorCall) )
 import           Control.Monad.Reader.Has       ( ask )
 import           Control.Monad.Trans.Maybe      ( MaybeT(..) )
 import           Data.Aeson                     ( (.:)
@@ -20,6 +21,7 @@ import           Data.Aeson                     ( (.:)
                                                 )
 import           Data.String.Interpolate.IsString
                                                 ( i )
+import           Database.Persist               ( insert_ )
 import           Database.Persist.Postgresql    ( runSqlPoolNoTransaction )
 import           Database.Queries               ( upsertPackageVersion )
 import           Foundation
@@ -31,7 +33,9 @@ import           Lib.Types.AppIndex             ( PackageManifest(..)
                                                 , PkgId(unPkgId)
                                                 )
 import           Lib.Types.Emver                ( Version(..) )
-import           Model                          ( Key(PkgRecordKey, VersionRecordKey) )
+import           Model                          ( Key(AdminKey, PkgRecordKey, VersionRecordKey)
+                                                , Upload(..)
+                                                )
 import           Network.HTTP.Types             ( status404
                                                 , status500
                                                 )
@@ -42,14 +46,17 @@ import           Startlude                      ( ($)
                                                 , Bool(..)
                                                 , Eq
                                                 , Maybe(..)
+                                                , Monad((>>=))
                                                 , Show
                                                 , SomeException(..)
                                                 , asum
+                                                , getCurrentTime
                                                 , hush
                                                 , isNothing
                                                 , liftIO
                                                 , replicate
                                                 , show
+                                                , throwIO
                                                 , toS
                                                 , when
                                                 )
@@ -75,6 +82,7 @@ import           Yesod                          ( ToJSON(..)
                                                 , requireCheckJsonBody
                                                 , runDB
                                                 )
+import           Yesod.Auth                     ( YesodAuth(maybeAuthId) )
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
@@ -94,6 +102,14 @@ postPkgUploadR = do
         removePathForcibly targetPath
         createDirectoryIfMissing True targetPath
         renameDirectory dir targetPath
+        maybeAuthId >>= \case
+            Nothing -> do
+                $logError
+                    "The Impossible has happened, an unauthenticated user has managed to upload a pacakge to this registry"
+                throwIO $ ErrorCall "Unauthenticated user has uploaded package to registry!!!"
+            Just name -> do
+                now <- liftIO getCurrentTime
+                runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
     where retry m = runMaybeT . asum $ replicate 3 (MaybeT $ hush <$> try @_ @SomeException m)
 
 
