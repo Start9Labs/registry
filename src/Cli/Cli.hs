@@ -1,5 +1,6 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -8,62 +9,124 @@ module Cli.Cli
     ( cliMain
     ) where
 
+import           Conduit                        ( (.|)
+                                                , foldC
+                                                , runConduit
+                                                )
+import           Control.Monad.Logger           ( LogLevel(..)
+                                                , MonadLogger(monadLoggerLog)
+                                                , MonadLoggerIO(askLoggerIO)
+                                                , ToLogStr
+                                                , fromLogStr
+                                                , toLogStr
+                                                )
+import           Data.Aeson                     ( eitherDecodeStrict )
+import qualified Data.ByteString.Char8         as B8
+import qualified Data.ByteString.Lazy          as LB
 import           Data.Default
 import           Data.Functor.Contravariant     ( contramap )
 import           Data.HashMap.Internal.Strict   ( HashMap
                                                 , delete
                                                 , empty
                                                 , insert
+                                                , lookup
                                                 , traverseWithKey
                                                 )
-import           Data.String                    ( IsString(fromString) )
 import           Dhall                   hiding ( void )
 import           Dhall.Core                     ( pretty )
+import           Handler.Admin                  ( IndexPkgReq(IndexPkgReq) )
+import           Lib.External.AppMgr            ( sourceManifest )
+import           Lib.Types.AppIndex             ( PackageManifest
+                                                    ( PackageManifest
+                                                    , packageManifestId
+                                                    , packageManifestVersion
+                                                    )
+                                                , PkgId(..)
+                                                )
+import           Lib.Types.Emver                ( Version(..) )
+import           Network.HTTP.Client.Conduit    ( StreamFileStatus(StreamFileStatus, fileSize, readSoFar)
+                                                , applyBasicAuth
+                                                , httpLbs
+                                                , observedStreamFile
+                                                , parseRequest
+                                                )
+import           Network.HTTP.Client.TLS        ( newTlsManager )
+import           Network.HTTP.Simple            ( getResponseBody
+                                                , httpLBS
+                                                , setRequestBody
+                                                , setRequestBodyJSON
+                                                , setRequestHeaders
+                                                )
 import           Network.URI                    ( URI
                                                 , parseURI
                                                 )
 import           Options.Applicative     hiding ( auto
                                                 , empty
                                                 )
-import           Rainbow                        ( fore
+import           Rainbow                        ( Chunk
+                                                , Radiant
+                                                , blue
+                                                , chunk
+                                                , fore
+                                                , green
                                                 , magenta
                                                 , putChunk
                                                 , putChunkLn
+                                                , red
+                                                , white
                                                 , yellow
                                                 )
 import           Startlude                      ( ($)
                                                 , ($>)
                                                 , (&)
                                                 , (.)
-                                                , (<$>)
                                                 , (<&>)
-                                                , (>>=)
                                                 , Bool(..)
+                                                , ConvertText(toS)
+                                                , Either(..)
+                                                , Eq(..)
+                                                , ExitCode(..)
                                                 , FilePath
                                                 , IO
-                                                , IsString
-                                                , Maybe
-                                                , Monad(return)
+                                                , IsString(..)
+                                                , Maybe(..)
+                                                , Monad((>>=))
+                                                , ReaderT(runReaderT)
                                                 , Semigroup((<>))
                                                 , Show
                                                 , String
+                                                , const
+                                                , decodeUtf8
+                                                , exitWith
+                                                , filter
+                                                , for_
+                                                , fromIntegral
                                                 , fromMaybe
                                                 , panic
-                                                , print
-                                                , pure
                                                 , show
                                                 , unlessM
                                                 , void
+                                                , when
                                                 , writeFile
                                                 )
-import           System.Directory               ( createDirectory
-                                                , createDirectoryIfMissing
+import           System.Directory               ( createDirectoryIfMissing
                                                 , doesPathExist
+                                                , getCurrentDirectory
+                                                , getFileSize
                                                 , getHomeDirectory
+                                                , listDirectory
                                                 )
 import           System.FilePath                ( (</>)
-                                                , takeBaseName
                                                 , takeDirectory
+                                                , takeExtension
+                                                )
+import           System.ProgressBar             ( Progress(..)
+                                                , defStyle
+                                                , newProgressBar
+                                                , updateProgress
+                                                )
+import           Yesod                          ( logError
+                                                , logWarn
                                                 )
 
 data Upload = Upload
@@ -73,7 +136,7 @@ data Upload = Upload
     }
     deriving Show
 
-data PublishCfg = PublishCfg
+newtype PublishCfg = PublishCfg
     { publishCfgRepos :: HashMap String PublishCfgRepo
     }
     deriving Generic
@@ -101,17 +164,13 @@ instance ToDhall URI where
 instance IsString URI where
     fromString = fromMaybe (panic "Invalid URI for publish target") . parseURI
 
-data RegAdd = RegAdd
-    deriving Show
-data RegDel = RegDel
-    deriving Show
-
 data Command
     = CmdInit
     | CmdRegAdd String PublishCfgRepo
     | CmdRegDel String
     | CmdRegList
     | CmdUpload Upload
+    | CmdIndex String String Version Bool
     deriving Show
 
 cfgLocation :: IO FilePath
@@ -163,9 +222,33 @@ parseRepoDel = subparser $ command "rm" (info go $ progDesc "Remove a registry f
 parseRepoList :: Parser ()
 parseRepoList = subparser $ command "ls" (info (pure ()) $ progDesc "List registries in your config") <> metavar "ls"
 
+parseIndex :: Parser Command
+parseIndex =
+    subparser
+        $  command "index" (info (parseIndexHelper True) $ progDesc "Indexes an existing package version")
+        <> metavar "index"
+
+parseDeindex :: Parser Command
+parseDeindex =
+    subparser
+        $  command "deindex" (info (parseIndexHelper False) $ progDesc "Indexes an existing package version")
+        <> metavar "deindex"
+
+parseIndexHelper :: Bool -> Parser Command
+parseIndexHelper b =
+    CmdIndex
+        <$> strOption (short 't' <> long "target" <> metavar "REGISTRY_NAME")
+        <*> strArgument (metavar "PKG")
+        <*> strArgument (metavar "VERSION")
+        <*> pure b
+
 parseCommand :: Parser Command
-parseCommand = (parseInit $> CmdInit) <|> (CmdUpload <$> parsePublish) <|> subparser
-    (command "reg" (info reg $ progDesc "Manage configured registries"))
+parseCommand =
+    (parseInit $> CmdInit)
+        <|> (CmdUpload <$> parsePublish)
+        <|> subparser (command "reg" (info reg $ progDesc "Manage configured registries"))
+        <|> parseIndex
+        <|> parseDeindex
     where reg = parseRepoAdd <|> (CmdRegDel <$> parseRepoDel) <|> (parseRepoList $> CmdRegList)
 
 opts :: ParserInfo Command
@@ -175,11 +258,12 @@ cliMain :: IO ()
 cliMain =
     execParser opts
         >>= (\case
-                CmdInit         -> init
-                CmdRegAdd s pcr -> regAdd s pcr
-                CmdRegDel s     -> regRm s
-                CmdRegList      -> regLs
-                CmdUpload up    -> regUpload up
+                CmdInit                         -> init
+                CmdRegAdd s pcr                 -> regAdd s pcr
+                CmdRegDel s                     -> regRm s
+                CmdRegList                      -> regLs
+                CmdUpload up                    -> upload up
+                CmdIndex name pkg v shouldIndex -> if shouldIndex then index name pkg v else deindex name pkg v
             )
 
 init :: IO ()
@@ -212,5 +296,97 @@ regLs = do
             putChunk $ fromString (k <> ": ") & fore yellow
             putChunkLn $ fromString (show $ publishCfgRepoLocation v) & fore magenta
 
-regUpload :: Upload -> IO ()
-regUpload = panic "unimplemented"
+upload :: Upload -> IO ()
+upload (Upload name mpkg shouldIndex) = do
+    PublishCfgRepo {..} <- findNameInCfg name
+    pkg                 <- case mpkg of
+        Nothing -> do
+            cwd   <- getCurrentDirectory
+            files <- listDirectory cwd
+            let pkgs = filter (\n -> takeExtension n == "s9pk") files
+            case pkgs of
+                [] -> do
+                    $logError "No package specified, and could not find one in this directory"
+                    exitWith $ ExitFailure 1
+                [p        ] -> pure (cwd </> p)
+                (_ : _ : _) -> do
+                    $logWarn "Ambiguous package upload request, found multiple candidates:"
+                    for_ pkgs $ \f -> $logWarn (fromString f)
+                    exitWith $ ExitFailure 1
+        Just s -> pure s
+    noBody <-
+        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/upload")
+        <&> setRequestHeaders [("accept", "text/plain")]
+        <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
+    size <- getFileSize pkg
+    bar  <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
+    body <- observedStreamFile (updateProgress bar . const . sfs2prog) pkg
+    let withBody = setRequestBody body noBody
+    manager <- newTlsManager
+    res     <- getResponseBody <$> runReaderT (httpLbs withBody) manager
+    if LB.null res
+        then pure ()
+        else do
+            $logError (decodeUtf8 $ LB.toStrict res)
+            exitWith $ ExitFailure 1
+    putChunkLn $ fromString ("Successfully uploaded " <> pkg) & fore green
+    when shouldIndex $ do
+        home          <- getHomeDirectory
+        manifestBytes <- sourceManifest (home </> ".cargo/bin") pkg $ \c -> runConduit (c .| foldC)
+        PackageManifest { packageManifestId, packageManifestVersion } <- case eitherDecodeStrict manifestBytes of
+            Left s -> do
+                $logError $ "Could not parse the manifest of the package: " <> toS s
+                exitWith $ ExitFailure 1
+            Right a -> pure a
+        let pkgId = toS $ unPkgId packageManifestId
+        index name pkgId packageManifestVersion
+        putChunkLn $ fromString ("Successfully indexed " <> pkgId <> "@" <> show packageManifestVersion) & fore green
+
+    where
+        sfs2prog :: StreamFileStatus -> Progress ()
+        sfs2prog StreamFileStatus {..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
+
+index :: String -> String -> Version -> IO ()
+index name pkg v = do
+    PublishCfgRepo {..} <- findNameInCfg name
+    noBody              <-
+        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/index")
+        <&> setRequestHeaders [("accept", "text/plain")]
+        <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
+    let withBody = setRequestBodyJSON (IndexPkgReq (PkgId $ toS pkg) v) noBody
+    res <- getResponseBody <$> httpLBS withBody
+    if LB.null res then pure () else $logError (decodeUtf8 $ LB.toStrict res) *> exitWith (ExitFailure 1)
+
+
+deindex :: String -> String -> Version -> IO ()
+deindex name pkg v = do
+    PublishCfgRepo {..} <- findNameInCfg name
+    noBody              <-
+        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/deindex")
+        <&> setRequestHeaders [("accept", "text/plain")]
+        <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
+    let withBody = setRequestBodyJSON (IndexPkgReq (PkgId $ toS pkg) v) noBody
+    res <- getResponseBody <$> httpLBS withBody
+    if LB.null res then pure () else $logError (decodeUtf8 $ LB.toStrict res) *> exitWith (ExitFailure 1)
+
+findNameInCfg :: String -> IO PublishCfgRepo
+findNameInCfg name = do
+    loc            <- cfgLocation
+    PublishCfg cfg <- inputFile auto loc
+    case lookup name cfg of
+        Nothing -> do
+            $logError "Registry name not found!"
+            exitWith $ ExitFailure 1
+        Just pcr -> pure pcr
+
+instance MonadLogger IO where
+    monadLoggerLog _ _ LevelDebug     = putChunkLn . colorLog white
+    monadLoggerLog _ _ LevelInfo      = putChunkLn . colorLog blue
+    monadLoggerLog _ _ LevelWarn      = putChunkLn . colorLog yellow
+    monadLoggerLog _ _ LevelError     = putChunkLn . colorLog red
+    monadLoggerLog _ _ (LevelOther _) = putChunkLn . colorLog magenta
+
+colorLog :: ToLogStr msg => Radiant -> msg -> Chunk
+colorLog c m = fore c $ chunk . decodeUtf8 . fromLogStr . toLogStr $ m
+instance MonadLoggerIO IO where
+    askLoggerIO = pure monadLoggerLog

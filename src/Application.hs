@@ -93,9 +93,7 @@ import           Handler.ErrorLogs
 import           Handler.Icons
 import           Handler.Marketplace
 import           Handler.Version
-import           Lib.PkgRepository              ( watchEosRepoRoot
-                                                , watchPkgRepoRoot
-                                                )
+import           Lib.PkgRepository              ( watchEosRepoRoot )
 import           Lib.Ssl
 import           Migration                      ( manualMigration )
 import           Model
@@ -136,13 +134,12 @@ makeFoundation appSettings = do
     -- logging function. To get out of this loop, we initially create a
     -- temporary foundation without a real connection pool, get a log function
     -- from there, and then create the real foundation.
-    let mkFoundation appConnPool appStopFsNotifyPkg appStopFsNotifyEos = RegistryCtx { .. }
+    let mkFoundation appConnPool appStopFsNotifyEos = RegistryCtx { .. }
 -- The RegistryCtx {..} syntax is an example of record wild cards. For more
 -- information, see:
 -- https://ocharles.org.uk/blog/posts/2014-12-04-record-wildcards.html
-        tempFoundation = mkFoundation (panic "connPool forced in tempFoundation")
-                                      (panic "stopFsNotify forced in tempFoundation")
-                                      (panic "stopFsNotify forced in tempFoundation")
+        tempFoundation =
+            mkFoundation (panic "connPool forced in tempFoundation") (panic "stopFsNotify forced in tempFoundation")
         logFunc = messageLoggerSource tempFoundation appLogger
 
     createDirectoryIfMissing True (errorLogRoot appSettings)
@@ -151,7 +148,6 @@ makeFoundation appSettings = do
     pool <- flip runLoggingT logFunc
         $ createPostgresqlPool (pgConnStr $ appDatabaseConf appSettings) (pgPoolSize . appDatabaseConf $ appSettings)
 
-    stopPkgWatch <- runLoggingT (runReaderT (watchPkgRepoRoot pool) appSettings) logFunc
     stopEosWatch <- runLoggingT (runReaderT (watchEosRepoRoot pool) appSettings) logFunc
 
     -- Preform database migration using application logging settings
@@ -168,7 +164,7 @@ makeFoundation appSettings = do
                          )
 
     -- Return the foundation
-    return $ mkFoundation pool stopPkgWatch stopEosWatch
+    return $ mkFoundation pool stopEosWatch
 
 -- | Convert our foundation to a WAI Application by calling @toWaiAppPlain@ and
 -- applying some additional middlewares.
@@ -334,7 +330,7 @@ startWeb foundation = do
     app <- makeApplication foundation
     startWeb' app
     where
-        startWeb' app = (`onException` (appStopFsNotifyPkg foundation *> appStopFsNotifyEos foundation)) $ do
+        startWeb' app = (`onException` appStopFsNotifyEos foundation) $ do
             let AppSettings {..} = appSettings foundation
             runLog $ $logInfo [i|Launching Tor Web Server on port #{torPort}|]
             torAction <- async $ runSettings (warpSettings torPort foundation) app

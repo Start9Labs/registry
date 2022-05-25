@@ -148,7 +148,7 @@ filterDependencyBestVersion PackageDependencyMetadata { packageDependencyMetadat
                 pure Nothing
 
 sendResponseText :: MonadHandler m => Status -> Text -> m a
-sendResponseText = sendResponseStatus @_ @Text
+sendResponseText s = sendResponseStatus s . TypedContent typePlain . toContent
 
 maximumOn :: forall a b t . (Ord b, Foldable t) => (a -> b) -> t a -> Maybe a
 maximumOn f = foldr (\x y -> maxOn f x <$> y <|> Just x) Nothing

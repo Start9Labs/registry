@@ -36,9 +36,9 @@ import           GHC.IO.Exception               ( IOErrorType(NoSuchThing)
 import           Lib.Error
 import           System.FilePath                ( (</>) )
 import           UnliftIO                       ( MonadUnliftIO
+                                                , bracket
                                                 , catch
                                                 )
-import           UnliftIO                       ( bracket )
 
 readProcessWithExitCode' :: MonadIO m => String -> [String] -> ByteString -> m (ExitCode, ByteString, ByteString)
 readProcessWithExitCode' a b c = liftIO $ do

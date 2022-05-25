@@ -85,7 +85,6 @@ data RegistryCtx = RegistryCtx
     , appWebServerThreadId :: MVar (ThreadId, ThreadId)
     , appShouldRestartWeb  :: MVar Bool
     , appConnPool          :: ConnectionPool
-    , appStopFsNotifyPkg   :: IO Bool
     , appStopFsNotifyEos   :: IO Bool
     }
 instance Has PkgRepo RegistryCtx where
@@ -196,6 +195,9 @@ instance Yesod RegistryCtx where
             pure $ if hasAuthId then Authorized else Unauthorized "This feature is for admins only"
         | otherwise = pure Authorized
 
+    maximumContentLengthIO :: RegistryCtx -> Maybe (Route RegistryCtx) -> IO (Maybe Word64)
+    maximumContentLengthIO _ (Just PkgUploadR) = pure Nothing
+    maximumContentLengthIO _ _                 = pure $ Just 2097152 -- the original default
 
 -- How to run database actions.
 instance YesodPersist RegistryCtx where
