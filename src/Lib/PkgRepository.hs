@@ -60,7 +60,8 @@ import           Database.Persist.Sql           ( SqlPersistT
 import           Database.PostgreSQL.Simple     ( SqlError(sqlState) )
 import           Lib.Error                      ( S9Error(NotFoundE) )
 import qualified Lib.External.AppMgr           as AppMgr
-import           Lib.Types.AppIndex             ( PackageManifest(..)
+import           Lib.Types.AppIndex             ( PackageDependency(..)
+                                                , PackageManifest(..)
                                                 , PkgId(..)
                                                 , packageDependencyVersion
                                                 , packageManifestDependencies
@@ -198,6 +199,8 @@ loadPkgDependencies appConnPool manifest = do
     for_
         deps'
         (\d -> flip runSqlPool appConnPool $ do
+            _ <- runWith appConnPool $ insertKey (fst d) (PkgRecord time Nothing) `catch` \(e :: SqlError) ->
+                if sqlState e == "23505" then update (fst d) [PkgRecordUpdatedAt =. Just time] else throwIO e
             insertUnique
                 $ PkgDependency time (PkgRecordKey pkgId) pkgVersion (fst d) (packageDependencyVersion . snd $ d)
         )
