@@ -104,6 +104,7 @@ postPkgUploadR = do
         renameDirectory dir targetPath
         maybeAuthId >>= \case
             Nothing -> do
+                -- TODO: Send this to Matrix
                 $logError
                     "The Impossible has happened, an unauthenticated user has managed to upload a pacakge to this registry"
                 throwIO $ ErrorCall "Unauthenticated user has uploaded package to registry!!!"
