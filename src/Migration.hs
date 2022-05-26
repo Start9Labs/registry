@@ -26,9 +26,9 @@ migration_0_2_0 =
 populateMetadata :: Operation
 populateMetadata =
     RawOperation "Populating Metadata"
-        $     migrateTitles
+        $     migrateMetadata
         <<$>> rawSql "SELECT pkg_id, title, desc_short, desc_long, icon_type FROM pkg_record" []
     where
-        migrateTitles (Single id', Single title', Single descShort', Single descLong', Single iconType') = MigrateSql
+        migrateMetadata (Single id', Single title', Single descShort', Single descLong', Single iconType') = MigrateSql
             "UPDATE version SET title = ?, desc_short = ?, desc_long = ?, icon_type = ? where pkg_id = ?"
             [PersistText title', PersistText descShort', PersistText descLong', PersistText iconType', PersistText id']
