@@ -4,6 +4,8 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Cli.Cli
     ( cliMain
@@ -23,7 +25,9 @@ import           Control.Monad.Logger           ( LogLevel(..)
 import           Crypto.Hash                    ( SHA256(SHA256)
                                                 , hashWith
                                                 )
-import           Data.Aeson                     ( eitherDecodeStrict )
+import           Data.Aeson                     ( FromJSON
+                                                , eitherDecodeStrict
+                                                )
 import           Data.ByteArray.Encoding        ( Base(..)
                                                 , convertToBase
                                                 )
@@ -40,7 +44,9 @@ import           Data.HashMap.Internal.Strict   ( HashMap
                                                 )
 import           Dhall                   hiding ( void )
 import           Dhall.Core                     ( pretty )
-import           Handler.Admin                  ( IndexPkgReq(IndexPkgReq) )
+import           Handler.Admin                  ( IndexPkgReq(IndexPkgReq)
+                                                , PackageList(..)
+                                                )
 import           Lib.External.AppMgr            ( sourceManifest )
 import           Lib.Types.AppIndex             ( PackageManifest
                                                     ( PackageManifest
@@ -58,6 +64,7 @@ import           Network.HTTP.Client.Conduit    ( StreamFileStatus(StreamFileSta
                                                 )
 import           Network.HTTP.Client.TLS        ( newTlsManager )
 import           Network.HTTP.Simple            ( getResponseBody
+                                                , httpJSON
                                                 , httpLBS
                                                 , setRequestBody
                                                 , setRequestBodyJSON
@@ -105,6 +112,8 @@ import           Startlude                      ( ($)
                                                 , decodeUtf8
                                                 , exitWith
                                                 , filter
+                                                , flip
+                                                , fmap
                                                 , for_
                                                 , fromIntegral
                                                 , fromMaybe
@@ -135,6 +144,7 @@ import           System.ProgressBar             ( Progress(..)
 import           Yesod                          ( logError
                                                 , logWarn
                                                 )
+import           Yesod.Core                     ( FromJSON(parseJSON) )
 
 data Upload = Upload
     { publishRepoName :: String
@@ -178,6 +188,7 @@ data Command
     | CmdRegList
     | CmdUpload Upload
     | CmdIndex String String Version Bool
+    | CmdListUnindexed String
     deriving Show
 
 cfgLocation :: IO FilePath
@@ -251,6 +262,13 @@ parseIndexHelper b =
         <*> strArgument (metavar "VERSION")
         <*> pure b
 
+parseListUnindexed :: Parser String
+parseListUnindexed = subparser $ command
+    "list-unindexed"
+    ( info (strOption (short 't' <> long "target" <> metavar "REGISTRY_NAME"))
+    $ progDesc "Lists unindexed package versions on target registry"
+    )
+
 parseCommand :: Parser Command
 parseCommand =
     (parseInit $> CmdInit)
@@ -258,6 +276,7 @@ parseCommand =
         <|> subparser (command "reg" (info reg $ progDesc "Manage configured registries") <> metavar "reg")
         <|> parseIndex
         <|> parseDeindex
+        <|> (CmdListUnindexed <$> parseListUnindexed)
     where reg = parseRepoAdd <|> (CmdRegDel <$> parseRepoDel) <|> (parseRepoList $> CmdRegList)
 
 opts :: ParserInfo Command
@@ -273,6 +292,7 @@ cliMain =
                 CmdRegList                      -> regLs
                 CmdUpload up                    -> upload up
                 CmdIndex name pkg v shouldIndex -> if shouldIndex then index name pkg v else deindex name pkg v
+                CmdListUnindexed name           -> listUnindexed name
             )
 
 init :: IO ()
@@ -387,6 +407,19 @@ deindex name pkg v = do
     let withBody = setRequestBodyJSON (IndexPkgReq (PkgId $ toS pkg) v) noBody
     res <- getResponseBody <$> httpLBS withBody
     if LB.null res then pure () else $logError (decodeUtf8 $ LB.toStrict res) *> exitWith (ExitFailure 1)
+
+
+listUnindexed :: String -> IO ()
+listUnindexed name = do
+    PublishCfgRepo {..} <- findNameInCfg name
+    noBody              <-
+        parseRequest (show publishCfgRepoLocation <> "/admin/v0/deindex")
+        <&> setRequestHeaders [("accept", "application/json")]
+        <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
+    PackageList {..} <- getResponseBody <$> httpJSON noBody
+    void $ flip traverseWithKey unPackageList $ \k v -> do
+        putChunk (chunk (unPkgId k <> ": ") & fore blue)
+        putChunkLn $ chunk (show v) & fore yellow
 
 findNameInCfg :: String -> IO PublishCfgRepo
 findNameInCfg name = do

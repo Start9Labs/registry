@@ -19,15 +19,29 @@ import           Data.Aeson                     ( (.:)
                                                 , object
                                                 , withObject
                                                 )
+import           Data.HashMap.Internal.Strict   ( HashMap
+                                                , differenceWith
+                                                , filter
+                                                , fromListWith
+                                                )
+import           Data.List                      ( (\\)
+                                                , null
+                                                )
 import           Data.String.Interpolate.IsString
                                                 ( i )
-import           Database.Persist               ( insert_ )
+import           Database.Persist               ( entityKey
+                                                , entityVal
+                                                , insert_
+                                                , selectList
+                                                )
 import           Database.Persist.Postgresql    ( runSqlPoolNoTransaction )
 import           Database.Queries               ( upsertPackageVersion )
 import           Foundation
 import           Lib.PkgRepository              ( PkgRepo(PkgRepo, pkgRepoFileRoot)
                                                 , extractPkg
                                                 , getManifestLocation
+                                                , getPackages
+                                                , getVersionsFor
                                                 )
 import           Lib.Types.AppIndex             ( PackageManifest(..)
                                                 , PkgId(unPkgId)
@@ -35,13 +49,18 @@ import           Lib.Types.AppIndex             ( PackageManifest(..)
 import           Lib.Types.Emver                ( Version(..) )
 import           Model                          ( Key(AdminKey, PkgRecordKey, VersionRecordKey)
                                                 , Upload(..)
+                                                , VersionRecord(versionRecordNumber, versionRecordPkgId)
+                                                , unPkgRecordKey
                                                 )
 import           Network.HTTP.Types             ( status404
                                                 , status500
                                                 )
 import           Startlude                      ( ($)
+                                                , (&&&)
                                                 , (.)
                                                 , (<$>)
+                                                , (<<$>>)
+                                                , (<>)
                                                 , Applicative(pure)
                                                 , Bool(..)
                                                 , Eq
@@ -50,15 +69,22 @@ import           Startlude                      ( ($)
                                                 , Show
                                                 , SomeException(..)
                                                 , asum
+                                                , fmap
                                                 , getCurrentTime
+                                                , guard
+                                                , guarded
                                                 , hush
                                                 , isNothing
                                                 , liftIO
+                                                , not
+                                                , panic
                                                 , replicate
                                                 , show
                                                 , throwIO
                                                 , toS
+                                                , traverse
                                                 , when
+                                                , zip
                                                 )
 import           System.FilePath                ( (<.>)
                                                 , (</>)
@@ -83,6 +109,7 @@ import           Yesod                          ( ToJSON(..)
                                                 , runDB
                                                 )
 import           Yesod.Auth                     ( YesodAuth(maybeAuthId) )
+import           Yesod.Core.Types               ( JSONResponse(JSONResponse) )
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
@@ -141,3 +168,24 @@ postPkgDeindexR :: Handler ()
 postPkgDeindexR = do
     IndexPkgReq {..} <- requireCheckJsonBody
     runDB $ delete (VersionRecordKey (PkgRecordKey indexPkgReqId) indexPkgReqVersion)
+
+newtype PackageList = PackageList { unPackageList :: HashMap PkgId [Version] }
+instance FromJSON PackageList where
+    parseJSON = fmap PackageList . parseJSON
+instance ToJSON PackageList where
+    toJSON = toJSON . unPackageList
+
+getPkgDeindexR :: Handler (JSONResponse PackageList)
+getPkgDeindexR = do
+    dbList <-
+        runDB
+        $     (unPkgRecordKey . versionRecordPkgId &&& (: []) . versionRecordNumber)
+        .     entityVal
+        <<$>> selectList [] []
+    let inDb = fromListWith (<>) dbList
+    pkgsOnDisk <- getPackages
+    onDisk     <- fromListWith (<>) . zip pkgsOnDisk <$> traverse getVersionsFor pkgsOnDisk
+    pure . JSONResponse . PackageList $ filter (not . null) $ differenceWith (guarded null .* (\\)) onDisk inDb
+
+(.*) :: (b -> c) -> (a1 -> a2 -> b) -> a1 -> a2 -> c
+(.*) = (.) . (.)
