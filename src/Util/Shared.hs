@@ -134,17 +134,15 @@ filterDependencyBestVersion :: MonadLogger m => PackageDependencyMetadata -> m (
 filterDependencyBestVersion PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDepRecord, packageDependencyMetadataDepVersions = depVersions }
     = do
         -- get best version from VersionRange of dependency
-        let pkgId = pkgDependencyPkgId $ entityVal pkgDepRecord
-        let depId = pkgDependencyDepId $ entityVal pkgDepRecord
-        let satisfactory = filter
-                ((<|| (pkgDependencyDepVersionRange $ entityVal pkgDepRecord)) . versionRecordNumber)
-                (entityVal <$> depVersions)
+        let pkgId              = pkgDependencyPkgId $ entityVal pkgDepRecord
+        let depId              = pkgDependencyDepId $ entityVal pkgDepRecord
+        let versionRequirement = pkgDependencyDepVersionRange $ entityVal pkgDepRecord
+        let satisfactory = filter ((<|| versionRequirement) . versionRecordNumber) (entityVal <$> depVersions)
         case maximumOn versionRecordNumber satisfactory of
-            -- QUESTION is this an acceptable transformation here? These are the only values that we care about after this filter.
             Just bestVersion -> pure $ Just (depId, versionRecordTitle bestVersion, versionRecordNumber bestVersion)
             Nothing          -> do
-                -- TODO it would be better if we could return the requirements for display
-                $logInfo [i|No satisfactory version of #{depId} for dependent package #{pkgId}|]
+                $logInfo
+                    [i|No satisfactory version of #{depId} for dependent package #{pkgId}, needs #{versionRequirement}|]
                 pure Nothing
 
 sendResponseText :: MonadHandler m => Status -> Text -> m a
