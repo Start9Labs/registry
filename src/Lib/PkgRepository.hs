@@ -194,12 +194,14 @@ loadPkgDependencies appConnPool manifest = do
     let deps       = packageManifestDependencies manifest
     time <- liftIO getCurrentTime
     _    <- runWith appConnPool $ insertKey (PkgRecordKey pkgId) (PkgRecord time Nothing) `catch` \(e :: SqlError) ->
+        -- 23505 is "already exists"
         if sqlState e == "23505" then update (PkgRecordKey pkgId) [PkgRecordUpdatedAt =. Just time] else throwIO e
     let deps' = first PkgRecordKey <$> HM.toList deps
     for_
         deps'
         (\d -> flip runSqlPool appConnPool $ do
             _ <- runWith appConnPool $ insertKey (fst d) (PkgRecord time Nothing) `catch` \(e :: SqlError) ->
+                -- 23505 is "already exists"
                 if sqlState e == "23505" then update (fst d) [PkgRecordUpdatedAt =. Just time] else throwIO e
             insertUnique
                 $ PkgDependency time (PkgRecordKey pkgId) pkgVersion (fst d) (packageDependencyVersion . snd $ d)
