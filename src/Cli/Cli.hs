@@ -305,7 +305,7 @@ upload (Upload name mpkg shouldIndex) = do
         Nothing -> do
             cwd   <- getCurrentDirectory
             files <- listDirectory cwd
-            let pkgs = filter (\n -> takeExtension n == "s9pk") files
+            let pkgs = filter (\n -> takeExtension n == ".s9pk") files
             case pkgs of
                 [] -> do
                     $logError "No package specified, and could not find one in this directory"
