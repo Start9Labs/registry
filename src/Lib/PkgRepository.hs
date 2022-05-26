@@ -108,6 +108,7 @@ import           Startlude                      ( ($)
                                                 , snd
                                                 , sortBy
                                                 , throwIO
+                                                , toS
                                                 , void
                                                 )
 import           System.FSNotify                ( ActionPredicate
@@ -162,6 +163,12 @@ data PkgRepo = PkgRepo
 newtype EosRepo = EosRepo
     { eosRepoFileRoot :: FilePath
     }
+
+getPackages :: (MonadIO m, MonadReader r m, Has PkgRepo r) => m [PkgId]
+getPackages = do
+    root  <- asks pkgRepoFileRoot
+    paths <- listDirectory root
+    pure $ PkgId . toS <$> paths
 
 getVersionsFor :: (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m) => PkgId -> m [Version]
 getVersionsFor pkg = do
