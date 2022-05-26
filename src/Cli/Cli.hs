@@ -364,6 +364,7 @@ upload (Upload name mpkg shouldIndex) = do
     manager <- newTlsManager
     res     <- getResponseBody <$> runReaderT (httpLbs withBody) manager
     if LB.null res
+        -- no output is successful
         then pure ()
         else do
             $logError (decodeUtf8 $ LB.toStrict res)
@@ -394,6 +395,7 @@ index name pkg v = do
         <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     let withBody = setRequestBodyJSON (IndexPkgReq (PkgId $ toS pkg) v) noBody
     res <- getResponseBody <$> httpLBS withBody
+    -- no output is successful
     if LB.null res then pure () else $logError (decodeUtf8 $ LB.toStrict res) *> exitWith (ExitFailure 1)
 
 
@@ -406,6 +408,7 @@ deindex name pkg v = do
         <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     let withBody = setRequestBodyJSON (IndexPkgReq (PkgId $ toS pkg) v) noBody
     res <- getResponseBody <$> httpLBS withBody
+    -- no output is successful
     if LB.null res then pure () else $logError (decodeUtf8 $ LB.toStrict res) *> exitWith (ExitFailure 1)
 
 
