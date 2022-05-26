@@ -150,18 +150,11 @@ makeFoundation appSettings = do
 
     stopEosWatch <- runLoggingT (runReaderT (watchEosRepoRoot pool) appSettings) logFunc
 
+    runSqlPool
+        (Database.Persist.Migration.Postgres.runMigration Database.Persist.Migration.defaultSettings manualMigration)
+        pool
     -- Preform database migration using application logging settings
     runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
-        `UnliftIO.catch` (\(e :: SomeException) -> do
-                             print e
-                             runSqlPool
-                                 (Database.Persist.Migration.Postgres.runMigration
-                                     Database.Persist.Migration.defaultSettings
-                                     manualMigration
-                                 )
-                                 pool
-                             runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
-                         )
 
     -- Return the foundation
     return $ mkFoundation pool stopEosWatch
