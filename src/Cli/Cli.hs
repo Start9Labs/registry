@@ -20,7 +20,13 @@ import           Control.Monad.Logger           ( LogLevel(..)
                                                 , fromLogStr
                                                 , toLogStr
                                                 )
+import           Crypto.Hash                    ( SHA256(SHA256)
+                                                , hashWith
+                                                )
 import           Data.Aeson                     ( eitherDecodeStrict )
+import           Data.ByteArray.Encoding        ( Base(..)
+                                                , convertToBase
+                                                )
 import qualified Data.ByteString.Char8         as B8
 import qualified Data.ByteString.Lazy          as LB
 import           Data.Default
@@ -103,6 +109,7 @@ import           Startlude                      ( ($)
                                                 , fromIntegral
                                                 , fromMaybe
                                                 , panic
+                                                , putStrLn
                                                 , show
                                                 , unlessM
                                                 , void
@@ -280,6 +287,16 @@ regAdd name val = do
     PublishCfg cfg <- inputFile auto loc
     let cfg' = insert name val cfg
     writeFile loc (pretty $ embed inject $ PublishCfg cfg')
+    putChunkLn $ "Below is the hash to provide to the server operator for your admin credentials" & fore yellow
+    putChunkLn
+        . fore yellow
+        . chunk
+        . decodeUtf8
+        . convertToBase Base16
+        . hashWith SHA256
+        . B8.pack
+        . mappend "start9_admin:"
+        $ publishCfgRepoPass val
 
 regRm :: String -> IO ()
 regRm name = do

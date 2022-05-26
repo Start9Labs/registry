@@ -23,6 +23,7 @@ import           Database.Esqueleto.Experimental
                                                 , (^.)
                                                 , desc
                                                 , from
+                                                , groupBy
                                                 , ilike
                                                 , in_
                                                 , innerJoin
@@ -49,6 +50,7 @@ import           Lib.Types.Emver                ( Version )
 import           Model
 import           Startlude               hiding ( (%)
                                                 , from
+                                                , groupBy
                                                 , on
                                                 , yield
                                                 )
@@ -90,6 +92,7 @@ searchServices (Just category) query = selectSource $ do
                     )
             pure service
         )
+    groupBy (services ^. VersionRecordPkgId)
     orderBy [desc (services ^. VersionRecordUpdatedAt)]
     pure services
 
