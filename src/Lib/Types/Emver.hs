@@ -36,10 +36,41 @@ module Lib.Types.Emver
     , parseRange
     ) where
 
-import           Startlude               hiding ( Any )
+import           Startlude                      ( ($)
+                                                , ($>)
+                                                , (&&)
+                                                , (.)
+                                                , (<$>)
+                                                , (<&>)
+                                                , (<<$>>)
+                                                , Alternative((<|>))
+                                                , Applicative((*>), (<*), liftA2, pure)
+                                                , Bool(..)
+                                                , Either(..)
+                                                , Eq(..)
+                                                , Foldable(foldMap, length)
+                                                , Hashable
+                                                , IsString(..)
+                                                , Monad((>>=))
+                                                , Monoid(mappend, mempty)
+                                                , Num((+))
+                                                , Ord(compare)
+                                                , Ordering(..)
+                                                , Read
+                                                , Semigroup((<>))
+                                                , Show
+                                                , String
+                                                , Word
+                                                , either
+                                                , flip
+                                                , id
+                                                , on
+                                                , show
+                                                , (||)
+                                                )
 
 import           Control.Monad.Fail             ( fail )
-import           Data.Aeson
+import           Data.Aeson                     ( ToJSONKey )
 import qualified Data.Attoparsec.Text          as Atto
 import qualified Data.Text                     as T
 import           GHC.Base                       ( error )
@@ -205,7 +236,7 @@ parseVersion = do
 -- >>> Atto.parseOnly parseRange ">=2.14.1.1 <3.0.0"
 -- Right >=2.14.1.1 <3.0.0
 parseRange :: Atto.Parser VersionRange
-parseRange = s <|> (Atto.char '*' *> pure Any) <|> (Anchor (Right EQ) <$> parseVersion)
+parseRange = s <|> (Atto.char '*' $> Any) <|> (Anchor (Right EQ) <$> parseVersion)
     where
         sub = Atto.char '(' *> Atto.skipSpace *> parseRange <* Atto.skipSpace <* Atto.char ')'
         s =

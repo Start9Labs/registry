@@ -4,15 +4,34 @@
 -- aeson, persistent, and yesod are not. So we put those here as they will not be extracted into a separate library.
 module Orphans.Emver where
 
-import           Startlude
+import           Startlude                      ( ($)
+                                                , (.)
+                                                , (<=<)
+                                                , Applicative(pure)
+                                                , Bifunctor(first)
+                                                , either
+                                                , show
+                                                )
 
-import           Data.Aeson
+import           Data.Aeson                     ( FromJSON(parseJSON)
+                                                , ToJSON(toJSON)
+                                                , Value(String)
+                                                , withText
+                                                )
 import qualified Data.Attoparsec.Text          as Atto
 
 import           Control.Monad.Fail             ( MonadFail(fail) )
 import qualified Data.Text                     as T
-import           Database.Persist.Sql
-import           Lib.Types.Emver
+import           Database.Persist.Sql           ( PersistField(..)
+                                                , PersistFieldSql(..)
+                                                , PersistValue(PersistText)
+                                                , SqlType(SqlString)
+                                                )
+import           Lib.Types.Emver                ( Version
+                                                , VersionRange
+                                                , parseRange
+                                                , parseVersion
+                                                )
 
 instance FromJSON Version where
     parseJSON = withText "Emver Version" $ either fail pure . Atto.parseOnly parseVersion

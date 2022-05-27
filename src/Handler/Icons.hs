@@ -8,24 +8,41 @@
 
 module Handler.Icons where
 
-import           Startlude               hiding ( Handler )
+import           Startlude                      ( ($)
+                                                , Eq
+                                                , Generic
+                                                , Read
+                                                , Show
+                                                , show
+                                                )
 
 import           Data.Conduit                   ( (.|)
                                                 , awaitForever
                                                 )
 import           Data.String.Interpolate.IsString
                                                 ( i )
-import           Foundation
+import           Foundation                     ( Handler )
 import           Lib.Error                      ( S9Error(NotFoundE) )
 import           Lib.PkgRepository              ( getBestVersion
                                                 , getIcon
                                                 , getInstructions
                                                 , getLicense
                                                 )
-import           Lib.Types.AppIndex
-import           Network.HTTP.Types
-import           Util.Shared
-import           Yesod.Core
+import           Lib.Types.AppIndex             ( PkgId )
+import           Network.HTTP.Types             ( status400 )
+import           Util.Shared                    ( getVersionSpecFromQuery
+                                                , orThrow
+                                                , versionPriorityFromQueryIsMin
+                                                )
+import           Yesod.Core                     ( FromJSON
+                                                , ToJSON
+                                                , TypedContent
+                                                , addHeader
+                                                , respondSource
+                                                , sendChunkBS
+                                                , sendResponseStatus
+                                                , typePlain
+                                                )
 
 data IconType = PNG | JPG | JPEG | SVG
     deriving (Eq, Show, Generic, Read)

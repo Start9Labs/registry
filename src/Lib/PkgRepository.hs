@@ -71,7 +71,12 @@ import           Lib.Types.Emver                ( Version
                                                 , parseVersion
                                                 , satisfies
                                                 )
-import           Model
+import           Model                          ( EntityField(EosHashHash, PkgRecordUpdatedAt)
+                                                , EosHash(EosHash)
+                                                , Key(PkgRecordKey)
+                                                , PkgDependency(PkgDependency)
+                                                , PkgRecord(PkgRecord)
+                                                )
 import           Startlude                      ( ($)
                                                 , (&&)
                                                 , (.)

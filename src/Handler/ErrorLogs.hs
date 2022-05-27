@@ -6,11 +6,20 @@ import           Data.Aeson                     ( (.:)
                                                 , FromJSON(parseJSON)
                                                 , withObject
                                                 )
-import           Foundation
+import           Foundation                     ( Handler )
 import           Model                          ( EntityField(ErrorLogRecordIncidents)
                                                 , ErrorLogRecord(ErrorLogRecord)
                                                 )
-import           Startlude               hiding ( Handler )
+import           Startlude                      ( ($)
+                                                , Applicative(pure)
+                                                , Eq
+                                                , MonadIO(liftIO)
+                                                , Show
+                                                , Text
+                                                , Word32
+                                                , getCurrentTime
+                                                , void
+                                                )
 import           Yesod.Core                     ( requireCheckJsonBody )
 import           Yesod.Persist                  ( (+=.)
                                                 , runDB

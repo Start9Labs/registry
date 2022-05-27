@@ -13,8 +13,36 @@
 
 module Foundation where
 
-import           Startlude               hiding ( Handler
-                                                , get
+import           Startlude                      ( ($)
+                                                , (.)
+                                                , (<$>)
+                                                , (<&>)
+                                                , (<**>)
+                                                , (=<<)
+                                                , Applicative(pure)
+                                                , Bool(False)
+                                                , Eq((==))
+                                                , IO
+                                                , MVar
+                                                , Maybe(..)
+                                                , Monad(return)
+                                                , Monoid(mempty)
+                                                , Semigroup((<>))
+                                                , String
+                                                , Text
+                                                , ThreadId
+                                                , Word64
+                                                , decodeUtf8
+                                                , drop
+                                                , encodeUtf8
+                                                , flip
+                                                , fst
+                                                , isJust
+                                                , otherwise
+                                                , putMVar
+                                                , show
+                                                , when
+                                                , (||)
                                                 )
 
 import           Control.Monad.Logger           ( Loc
@@ -23,9 +51,37 @@ import           Control.Monad.Logger           ( Loc
                                                 , ToLogStr(toLogStr)
                                                 , fromLogStr
                                                 )
-import           Database.Persist.Sql    hiding ( update )
-import           Lib.Registry
-import           Yesod.Core
+import           Database.Persist.Sql           ( ConnectionPool
+                                                , LogFunc
+                                                , PersistStoreRead(get)
+                                                , SqlBackend
+                                                , SqlPersistT
+                                                , runSqlPool
+                                                )
+import           Lib.Registry                   ( S9PK )
+import           Yesod.Core                     ( AuthResult(Authorized, Unauthorized)
+                                                , LogLevel(..)
+                                                , MonadHandler(liftHandler)
+                                                , RenderMessage(..)
+                                                , RenderRoute(Route, renderRoute)
+                                                , RouteAttrs(routeAttrs)
+                                                , SessionBackend
+                                                , ToTypedContent
+                                                , Yesod
+                                                    ( isAuthorized
+                                                    , makeLogger
+                                                    , makeSessionBackend
+                                                    , maximumContentLengthIO
+                                                    , messageLoggerSource
+                                                    , shouldLogIO
+                                                    , yesodMiddleware
+                                                    )
+                                                , defaultYesodMiddleware
+                                                , getYesod
+                                                , getsYesod
+                                                , mkYesodData
+                                                , parseRoutesFile
+                                                )
 import           Yesod.Core.Types               ( HandlerData(handlerEnv)
                                                 , Logger(loggerDate)
                                                 , RunHandlerEnv(rheChild, rheSite)
@@ -43,12 +99,14 @@ import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Data.Text                     as T
 import           Language.Haskell.TH            ( Loc(..) )
-import           Lib.PkgRepository
-import           Lib.Types.AppIndex
+import           Lib.PkgRepository              ( EosRepo
+                                                , PkgRepo
+                                                )
+import           Lib.Types.AppIndex             ( PkgId )
 import           Model                          ( Admin(..)
                                                 , Key(AdminKey)
                                                 )
-import           Settings
+import           Settings                       ( AppSettings(appShouldLogAll) )
 import           System.Console.ANSI.Codes      ( Color(..)
                                                 , ColorIntensity(..)
                                                 , ConsoleLayer(Foreground)
@@ -72,7 +130,11 @@ import           Yesod.Auth                     ( AuthEntity
 import           Yesod.Auth.Http.Basic          ( defaultAuthSettings
                                                 , defaultMaybeBasicAuthId
                                                 )
-import           Yesod.Persist.Core
+import           Yesod.Persist.Core             ( DBRunner
+                                                , YesodPersist(..)
+                                                , YesodPersistRunner(..)
+                                                , defaultGetDBRunner
+                                                )
 
 -- | The foundation datatype for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application

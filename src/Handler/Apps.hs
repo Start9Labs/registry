@@ -9,7 +9,17 @@
 
 module Handler.Apps where
 
-import           Startlude               hiding ( Handler )
+import           Startlude                      ( ($)
+                                                , (.)
+                                                , Applicative(pure)
+                                                , FilePath
+                                                , Maybe(..)
+                                                , Monad((>>=))
+                                                , Show
+                                                , String
+                                                , show
+                                                , void
+                                                )
 
 import           Control.Monad.Logger           ( logError )
 import qualified Data.Text                     as T
@@ -88,16 +98,16 @@ getAppR file = do
 
 recordMetrics :: PkgId -> Version -> Handler ()
 recordMetrics pkg appVersion = do
-    sa <- runDB $ fetchApp $ pkg
+    sa <- runDB $ fetchApp pkg
     case sa of
         Nothing -> do
-            $logError $ [i|#{pkg} not found in database|]
+            $logError [i|#{pkg} not found in database|]
             notFound
         Just _ -> do
             existingVersion <- runDB $ fetchAppVersion pkg appVersion
             case existingVersion of
                 Nothing -> do
-                    $logError $ [i|#{pkg}@#{appVersion} not found in database|]
+                    $logError [i|#{pkg}@#{appVersion} not found in database|]
                     notFound
                 Just _ -> runDB $ createMetric pkg appVersion
 

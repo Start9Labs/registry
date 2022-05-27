@@ -25,15 +25,12 @@ import           Control.Monad.Logger           ( LogLevel(..)
 import           Crypto.Hash                    ( SHA256(SHA256)
                                                 , hashWith
                                                 )
-import           Data.Aeson                     ( FromJSON
-                                                , eitherDecodeStrict
-                                                )
+import           Data.Aeson                     ( eitherDecodeStrict )
 import           Data.ByteArray.Encoding        ( Base(..)
                                                 , convertToBase
                                                 )
 import qualified Data.ByteString.Char8         as B8
 import qualified Data.ByteString.Lazy          as LB
-import           Data.Conduit.Process           ( system )
 import           Data.Default
 import           Data.Functor.Contravariant     ( contramap )
 import           Data.HashMap.Internal.Strict   ( HashMap
@@ -44,7 +41,14 @@ import           Data.HashMap.Internal.Strict   ( HashMap
                                                 , traverseWithKey
                                                 )
 import           Data.Text                      ( toLower )
-import           Dhall                   hiding ( void )
+import           Dhall                          ( Encoder(embed)
+                                                , FromDhall(..)
+                                                , Generic
+                                                , ToDhall(..)
+                                                , auto
+                                                , inject
+                                                , inputFile
+                                                )
 import           Dhall.Core                     ( pretty )
 import           Handler.Admin                  ( IndexPkgReq(IndexPkgReq)
                                                 , PackageList(..)
@@ -75,8 +79,29 @@ import           Network.HTTP.Simple            ( getResponseBody
 import           Network.URI                    ( URI
                                                 , parseURI
                                                 )
-import           Options.Applicative     hiding ( auto
-                                                , empty
+import           Options.Applicative            ( (<$>)
+                                                , (<**>)
+                                                , Alternative((<|>))
+                                                , Applicative((*>), (<*>), liftA2, pure)
+                                                , Parser
+                                                , ParserInfo
+                                                , command
+                                                , execParser
+                                                , fullDesc
+                                                , help
+                                                , helper
+                                                , info
+                                                , liftA3
+                                                , long
+                                                , mappend
+                                                , metavar
+                                                , optional
+                                                , progDesc
+                                                , short
+                                                , strArgument
+                                                , strOption
+                                                , subparser
+                                                , switch
                                                 )
 import           Rainbow                        ( Chunk
                                                 , Radiant
@@ -111,7 +136,6 @@ import           Startlude                      ( ($)
                                                 , Show
                                                 , String
                                                 , appendFile
-                                                , asum
                                                 , const
                                                 , decodeUtf8
                                                 , exitWith
@@ -125,7 +149,6 @@ import           Startlude                      ( ($)
                                                 , fst
                                                 , headMay
                                                 , panic
-                                                , putStrLn
                                                 , show
                                                 , snd
                                                 , unlessM
@@ -145,7 +168,6 @@ import           System.FilePath                ( (</>)
                                                 , takeDirectory
                                                 , takeExtension
                                                 )
-import           System.Process                 ( callCommand )
 import           System.ProgressBar             ( Progress(..)
                                                 , defStyle
                                                 , newProgressBar
@@ -154,7 +176,6 @@ import           System.ProgressBar             ( Progress(..)
 import           Yesod                          ( logError
                                                 , logWarn
                                                 )
-import           Yesod.Core                     ( FromJSON(parseJSON) )
 
 data Upload = Upload
     { publishRepoName :: String
