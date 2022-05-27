@@ -21,6 +21,7 @@ import           Database.Esqueleto.Experimental
                                                 , (:&)(..)
                                                 , (==.)
                                                 , (^.)
+                                                , asc
                                                 , desc
                                                 , from
                                                 , groupBy
@@ -59,6 +60,7 @@ import           Model                          ( Category
                                                     , PkgRecordId
                                                     , VersionRecordDescLong
                                                     , VersionRecordDescShort
+                                                    , VersionRecordNumber
                                                     , VersionRecordPkgId
                                                     , VersionRecordTitle
                                                     , VersionRecordUpdatedAt
@@ -125,8 +127,12 @@ searchServices (Just category) query = selectSource $ do
                     )
             pure service
         )
-    groupBy (services ^. VersionRecordPkgId)
-    orderBy [desc (services ^. VersionRecordUpdatedAt)]
+    groupBy (services ^. VersionRecordPkgId, services ^. VersionRecordNumber)
+    orderBy
+        [ asc (services ^. VersionRecordPkgId)
+        , desc (services ^. VersionRecordNumber)
+        , desc (services ^. VersionRecordUpdatedAt)
+        ]
     pure services
 
 getPkgData :: (MonadResource m, MonadIO m) => [PkgId] -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()

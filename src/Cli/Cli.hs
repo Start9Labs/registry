@@ -66,23 +66,25 @@ import           Network.HTTP.Client.Conduit    ( StreamFileStatus(StreamFileSta
                                                 , applyBasicAuth
                                                 , httpLbs
                                                 , observedStreamFile
-                                                , parseRequest
                                                 )
 import           Network.HTTP.Client.TLS        ( newTlsManager )
 import           Network.HTTP.Simple            ( getResponseBody
+                                                , getResponseStatus
                                                 , httpJSON
                                                 , httpLBS
+                                                , parseRequest
                                                 , setRequestBody
                                                 , setRequestBodyJSON
                                                 , setRequestHeaders
                                                 )
+import           Network.HTTP.Types             ( status200 )
 import           Network.URI                    ( URI
                                                 , parseURI
                                                 )
 import           Options.Applicative            ( (<$>)
                                                 , (<**>)
                                                 , Alternative((<|>))
-                                                , Applicative((*>), (<*>), liftA2, pure)
+                                                , Applicative((<*>), liftA2, pure)
                                                 , Parser
                                                 , ParserInfo
                                                 , command
@@ -410,12 +412,12 @@ upload (Upload name mpkg shouldIndex) = do
     body <- observedStreamFile (updateProgress bar . const . sfs2prog) pkg
     let withBody = setRequestBody body noBody
     manager <- newTlsManager
-    res     <- getResponseBody <$> runReaderT (httpLbs withBody) manager
-    if LB.null res
+    res     <- runReaderT (httpLbs withBody) manager
+    if getResponseStatus res == status200
         -- no output is successful
         then pure ()
         else do
-            $logError (decodeUtf8 $ LB.toStrict res)
+            $logError (decodeUtf8 . LB.toStrict $ getResponseBody res)
             exitWith $ ExitFailure 1
     putChunkLn $ fromString ("Successfully uploaded " <> pkg) & fore green
     when shouldIndex $ do
@@ -442,9 +444,13 @@ index name pkg v = do
         <&> setRequestHeaders [("accept", "text/plain")]
         <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     let withBody = setRequestBodyJSON (IndexPkgReq (PkgId $ toS pkg) v) noBody
-    res <- getResponseBody <$> httpLBS withBody
+    res <- httpLBS withBody
     -- no output is successful
-    if LB.null res then pure () else $logError (decodeUtf8 $ LB.toStrict res) *> exitWith (ExitFailure 1)
+    if getResponseStatus res == status200
+        then pure ()
+        else do
+            $logError (decodeUtf8 . LB.toStrict $ getResponseBody res)
+            exitWith (ExitFailure 1)
 
 
 deindex :: String -> String -> Version -> IO ()
@@ -455,9 +461,14 @@ deindex name pkg v = do
         <&> setRequestHeaders [("accept", "text/plain")]
         <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     let withBody = setRequestBodyJSON (IndexPkgReq (PkgId $ toS pkg) v) noBody
-    res <- getResponseBody <$> httpLBS withBody
+    res <- httpLBS withBody
     -- no output is successful
-    if LB.null res then pure () else $logError (decodeUtf8 $ LB.toStrict res) *> exitWith (ExitFailure 1)
+    if getResponseStatus res == status200
+        then pure ()
+        else do
+            $logError (decodeUtf8 . LB.toStrict $ getResponseBody res)
+            exitWith (ExitFailure 1)
+
 
 
 listUnindexed :: String -> IO ()

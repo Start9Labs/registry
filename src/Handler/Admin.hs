@@ -36,7 +36,7 @@ import           Database.Persist               ( entityVal
 import           Database.Persist.Postgresql    ( runSqlPoolNoTransaction )
 import           Database.Queries               ( upsertPackageVersion )
 import           Foundation                     ( Handler
-                                                , RegistryCtx(appConnPool)
+                                                , RegistryCtx(..)
                                                 )
 import           Lib.PkgRepository              ( PkgRepo(PkgRepo, pkgRepoFileRoot)
                                                 , extractPkg
@@ -56,6 +56,7 @@ import           Model                          ( Key(AdminKey, PkgRecordKey, Ve
 import           Network.HTTP.Types             ( status404
                                                 , status500
                                                 )
+import           Settings
 import           Startlude                      ( ($)
                                                 , (&&&)
                                                 , (.)
@@ -89,7 +90,7 @@ import           System.FilePath                ( (<.>)
                                                 , (</>)
                                                 )
 import           UnliftIO                       ( try
-                                                , withSystemTempDirectory
+                                                , withTempDirectory
                                                 )
 import           UnliftIO.Directory             ( createDirectoryIfMissing
                                                 , removePathForcibly
@@ -112,7 +113,9 @@ import           Yesod.Core.Types               ( JSONResponse(JSONResponse) )
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
-    withSystemTempDirectory "newpkg" $ \dir -> do
+    resourcesTemp <- getsYesod $ (</> "temp") . resourcesDir . appSettings
+    createDirectoryIfMissing True resourcesTemp
+    withTempDirectory resourcesTemp "newpkg" $ \dir -> do
         let path = dir </> "temp" <.> "s9pk"
         runConduit $ rawRequestBody .| sinkFile path
         pool         <- getsYesod appConnPool
