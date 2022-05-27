@@ -186,5 +186,7 @@ getPkgDeindexR = do
     onDisk     <- fromListWith (<>) . zip pkgsOnDisk <$> traverse getVersionsFor pkgsOnDisk
     pure . JSONResponse . PackageList $ filter (not . null) $ differenceWith (guarded null .* (\\)) onDisk inDb
 
+{-# INLINE (.*) #-}
+infixr 8 .*
 (.*) :: (b -> c) -> (a1 -> a2 -> b) -> a1 -> a2 -> c
 (.*) = (.) . (.)

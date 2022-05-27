@@ -27,13 +27,13 @@ import           Yesod.Persist                  ( (+=.)
                                                 )
 
 data ErrorLog = ErrorLog
-    { errorLogEpoch      :: Text
-    , errorLogCommitHash :: Text
-    , errorLogSourceFile :: Text
-    , errorLogLine       :: Word32
-    , errorLogTarget     :: Text
-    , errorLogLevel      :: Text
-    , errorLogMessage    :: Text
+    { errorLogEpoch      :: !Text
+    , errorLogCommitHash :: !Text
+    , errorLogSourceFile :: !Text
+    , errorLogLine       :: !Word32
+    , errorLogTarget     :: !Text
+    , errorLogLevel      :: !Text
+    , errorLogMessage    :: !Text
     }
     deriving (Eq, Show)
 

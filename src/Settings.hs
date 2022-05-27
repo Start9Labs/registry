@@ -61,30 +61,30 @@ import           Orphans.Emver                  ( )
 -- theoretically even a database.
 type AppPort = Word16
 data AppSettings = AppSettings
-    { appDatabaseConf           :: PostgresConf
-    , appHost                   :: HostPreference
+    { appDatabaseConf           :: !PostgresConf
+    , appHost                   :: !HostPreference
     -- ^ Host/interface the server should bind to.
-    , appPort                   :: AppPort
+    , appPort                   :: !AppPort
     -- ^ Port to listen on
-    , appIpFromHeader           :: Bool
+    , appIpFromHeader           :: !Bool
     -- ^ Get the IP address from the header when logging. Useful when sitting
     -- behind a reverse proxy.
-    , appDetailedRequestLogging :: Bool
+    , appDetailedRequestLogging :: !Bool
     -- ^ Use detailed request logging system
-    , appShouldLogAll           :: Bool
+    , appShouldLogAll           :: !Bool
     -- ^ Should all log messages be displayed?
-    , resourcesDir              :: FilePath
-    , sslPath                   :: FilePath
-    , sslAuto                   :: Bool
-    , registryHostname          :: Text
-    , registryVersion           :: Version
-    , sslKeyLocation            :: FilePath
-    , sslCsrLocation            :: FilePath
-    , sslCertLocation           :: FilePath
-    , torPort                   :: AppPort
-    , staticBinDir              :: FilePath
-    , errorLogRoot              :: FilePath
-    , marketplaceName           :: Text
+    , resourcesDir              :: !FilePath
+    , sslPath                   :: !FilePath
+    , sslAuto                   :: !Bool
+    , registryHostname          :: !Text
+    , registryVersion           :: !Version
+    , sslKeyLocation            :: !FilePath
+    , sslCsrLocation            :: !FilePath
+    , sslCertLocation           :: !FilePath
+    , torPort                   :: !AppPort
+    , staticBinDir              :: !FilePath
+    , errorLogRoot              :: !FilePath
+    , marketplaceName           :: !Text
     }
 instance Has PkgRepo AppSettings where
     extract = liftA2 PkgRepo ((</> "apps") . resourcesDir) staticBinDir

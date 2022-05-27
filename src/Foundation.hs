@@ -10,6 +10,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Foundation where
 
@@ -166,14 +167,17 @@ instance Has EosRepo RegistryCtx where
     extract = transitiveExtract @AppSettings
     update  = transitiveUpdate @AppSettings
 
+{-# INLINE transitiveExtract #-}
 transitiveExtract :: forall b a c . (Has a b, Has b c) => c -> a
 transitiveExtract = extract @a . extract @b
+
+{-# INLINE transitiveUpdate #-}
 transitiveUpdate :: forall b a c . (Has a b, Has b c) => (a -> a) -> (c -> c)
 transitiveUpdate f = update (update @a @b f)
 
 
 setWebProcessThreadId :: (ThreadId, ThreadId) -> RegistryCtx -> IO ()
-setWebProcessThreadId tid a = putMVar (appWebServerThreadId a) tid
+setWebProcessThreadId tid@(!_, !_) a = putMVar (appWebServerThreadId a) tid
 
 -- This is where we define all of the routes in our application. For a full
 -- explanation of the syntax, please see:

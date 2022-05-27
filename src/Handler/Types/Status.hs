@@ -21,7 +21,7 @@ import           Yesod.Core.Content             ( ToContent(..)
 import           Lib.Types.Emver                ( Version )
 import           Orphans.Emver                  ( )
 
-data AppVersionRes = AppVersionRes
+newtype AppVersionRes = AppVersionRes
     { appVersionVersion :: Version
     }
     deriving (Eq, Show)

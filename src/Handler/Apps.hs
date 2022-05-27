@@ -65,7 +65,7 @@ import           Util.Shared                    ( addPackageHeader
                                                 , versionPriorityFromQueryIsMin
                                                 )
 
-data FileExtension = FileExtension FilePath (Maybe String)
+data FileExtension = FileExtension !FilePath !(Maybe String)
 instance Show FileExtension where
     show (FileExtension f Nothing ) = f
     show (FileExtension f (Just e)) = f <.> e

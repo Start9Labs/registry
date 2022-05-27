@@ -178,9 +178,9 @@ import           Yesod                          ( logError
                                                 )
 
 data Upload = Upload
-    { publishRepoName :: String
-    , publishPkg      :: Maybe FilePath
-    , publishIndex    :: Bool
+    { publishRepoName :: !String
+    , publishPkg      :: !(Maybe FilePath)
+    , publishIndex    :: !Bool
     }
     deriving Show
 
@@ -195,9 +195,9 @@ instance Default PublishCfg where
 
 
 data PublishCfgRepo = PublishCfgRepo
-    { publishCfgRepoLocation :: URI
-    , publishCfgRepoUser     :: String
-    , publishCfgRepoPass     :: String
+    { publishCfgRepoLocation :: !URI
+    , publishCfgRepoUser     :: !String
+    , publishCfgRepoPass     :: !String
     }
     deriving (Show, Generic)
 instance FromDhall PublishCfgRepo
@@ -214,13 +214,13 @@ instance IsString URI where
 
 data Shell = Bash | Fish | Zsh deriving Show
 data Command
-    = CmdInit (Maybe Shell)
-    | CmdRegAdd String PublishCfgRepo
-    | CmdRegDel String
+    = CmdInit !(Maybe Shell)
+    | CmdRegAdd !String !PublishCfgRepo
+    | CmdRegDel !String
     | CmdRegList
-    | CmdUpload Upload
-    | CmdIndex String String Version Bool
-    | CmdListUnindexed String
+    | CmdUpload !Upload
+    | CmdIndex !String !String !Version !Bool
+    | CmdListUnindexed !String
     deriving Show
 
 cfgLocation :: IO FilePath

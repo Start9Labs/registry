@@ -40,8 +40,8 @@ import           Yesod                          ( Entity
 type URL = Text
 type CategoryTitle = Text
 data InfoRes = InfoRes
-    { name       :: Text
-    , categories :: [CategoryTitle]
+    { name       :: !Text
+    , categories :: ![CategoryTitle]
     }
     deriving (Show, Generic)
 instance ToJSON InfoRes
@@ -50,13 +50,13 @@ instance ToContent InfoRes where
 instance ToTypedContent InfoRes where
     toTypedContent = toTypedContent . toJSON
 data PackageRes = PackageRes
-    { packageResIcon         :: URL
-    , packageResManifest     :: Data.Aeson.Value -- PackageManifest
-    , packageResCategories   :: [CategoryTitle]
-    , packageResInstructions :: URL
-    , packageResLicense      :: URL
-    , packageResVersions     :: [Version]
-    , packageResDependencies :: HM.HashMap PkgId DependencyRes
+    { packageResIcon         :: !URL
+    , packageResManifest     :: !Data.Aeson.Value -- PackageManifest
+    , packageResCategories   :: ![CategoryTitle]
+    , packageResInstructions :: !URL
+    , packageResLicense      :: !URL
+    , packageResVersions     :: ![Version]
+    , packageResDependencies :: !(HM.HashMap PkgId DependencyRes)
     }
     deriving (Show, Generic)
 newtype ReleaseNotes = ReleaseNotes { unReleaseNotes :: HM.HashMap Version Text }
@@ -88,8 +88,8 @@ instance FromJSON PackageRes where
         packageResDependencies <- o .: "dependency-metadata"
         pure PackageRes { .. }
 data DependencyRes = DependencyRes
-    { dependencyResTitle :: Text
-    , dependencyResIcon  :: Text
+    { dependencyResTitle :: !Text
+    , dependencyResIcon  :: !Text
     }
     deriving (Eq, Show)
 instance ToJSON DependencyRes where
@@ -117,17 +117,17 @@ instance ToTypedContent VersionLatestRes where
 data OrderArrangement = ASC | DESC
     deriving (Eq, Show, Read)
 data PackageListDefaults = PackageListDefaults
-    { packageListOrder      :: OrderArrangement
-    , packageListPageLimit  :: Int -- the number of items per page
-    , packageListPageNumber :: Int -- the page you are on
-    , packageListCategory   :: Maybe CategoryTitle
-    , packageListQuery      :: Text
+    { packageListOrder      :: !OrderArrangement
+    , packageListPageLimit  :: !Int -- the number of items per page
+    , packageListPageNumber :: !Int -- the page you are on
+    , packageListCategory   :: !(Maybe CategoryTitle)
+    , packageListQuery      :: !Text
     }
     deriving (Eq, Show, Read)
 data EosRes = EosRes
-    { eosResVersion      :: Version
-    , eosResHeadline     :: Text
-    , eosResReleaseNotes :: ReleaseNotes
+    { eosResVersion      :: !Version
+    , eosResHeadline     :: !Text
+    , eosResReleaseNotes :: !ReleaseNotes
     }
     deriving (Eq, Show, Generic)
 instance ToJSON EosRes where
@@ -139,8 +139,8 @@ instance ToTypedContent EosRes where
     toTypedContent = toTypedContent . toJSON
 
 data PackageReq = PackageReq
-    { packageReqId      :: PkgId
-    , packageReqVersion :: VersionRange
+    { packageReqId      :: !PkgId
+    , packageReqVersion :: !VersionRange
     }
     deriving Show
 instance FromJSON PackageReq where
@@ -149,15 +149,15 @@ instance FromJSON PackageReq where
         packageReqVersion <- o .: "version"
         pure PackageReq { .. }
 data PackageMetadata = PackageMetadata
-    { packageMetadataPkgId             :: PkgId
-    , packageMetadataPkgVersionRecords :: [Entity VersionRecord]
-    , packageMetadataPkgCategories     :: [Entity Category]
-    , packageMetadataPkgVersion        :: Version
+    { packageMetadataPkgId             :: !PkgId
+    , packageMetadataPkgVersionRecords :: ![Entity VersionRecord]
+    , packageMetadataPkgCategories     :: ![Entity Category]
+    , packageMetadataPkgVersion        :: !Version
     }
     deriving (Eq, Show)
 data PackageDependencyMetadata = PackageDependencyMetadata
-    { packageDependencyMetadataPkgDependencyRecord :: Entity PkgDependency
-    , packageDependencyMetadataDepPkgRecord        :: Entity PkgRecord
-    , packageDependencyMetadataDepVersions         :: [Entity VersionRecord]
+    { packageDependencyMetadataPkgDependencyRecord :: !(Entity PkgDependency)
+    , packageDependencyMetadataDepPkgRecord        :: !(Entity PkgRecord)
+    , packageDependencyMetadataDepVersions         :: ![Entity VersionRecord]
     }
     deriving (Eq, Show)

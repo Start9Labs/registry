@@ -15,6 +15,7 @@ scenario we were left with the conundrum of either unilaterally claiming a versi
 or let the issue persist until the next update. Neither of these promote good user experiences, for different reasons.
 This module extends the semver standard linked above with a 4th digit, which is given PATCH semantics.
 -}
+{-# LANGUAGE BangPatterns #-}
 
 module Lib.Types.Emver
     ( major
@@ -53,6 +54,7 @@ import           Startlude                      ( ($)
                                                 , IsString(..)
                                                 , Monad((>>=))
                                                 , Monoid(mappend, mempty)
+                                                , NFData(..)
                                                 , Num((+))
                                                 , Ord(compare)
                                                 , Ordering(..)
@@ -65,6 +67,7 @@ import           Startlude                      ( ($)
                                                 , flip
                                                 , id
                                                 , on
+                                                , seq
                                                 , show
                                                 , (||)
                                                 )
@@ -137,12 +140,16 @@ type Operator = Either Ordering Ordering
 -- Distributivity of conjunction over disjunction: Conj a (Disj b c) === Disj (Conj a b) (Conj a c)
 -- Distributivity of disjunction over conjunction: Disj a (Conj b c) === Conj (Disj a b) (Disj a c)
 data VersionRange
-    = Anchor Operator Version
+    = Anchor !Operator !Version
     | Conj VersionRange VersionRange
     | Disj VersionRange VersionRange
     | Any
     | None
     deriving (Eq)
+instance NFData VersionRange where
+    rnf (Conj a b) = rnf a `seq` rnf b
+    rnf (Disj a b) = rnf a `seq` rnf b
+    rnf other      = other `seq` ()
 
 -- | Smart constructor for conjunctions. Eagerly evaluates zeros and identities
 conj :: VersionRange -> VersionRange -> VersionRange
@@ -150,7 +157,7 @@ conj Any  b    = b
 conj a    Any  = a
 conj None _    = None
 conj _    None = None
-conj a    b    = Conj a b
+conj !a   !b   = Conj a b
 
 -- | Smart constructor for disjunctions. Eagerly evaluates zeros and identities
 disj :: VersionRange -> VersionRange -> VersionRange
@@ -158,7 +165,7 @@ disj Any  _    = Any
 disj _    Any  = Any
 disj None b    = b
 disj a    None = a
-disj a    b    = Disj a b
+disj !a   !b   = Disj a b
 
 exactly :: Version -> VersionRange
 exactly = Anchor (Right EQ)

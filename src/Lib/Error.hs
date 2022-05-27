@@ -31,11 +31,11 @@ import           Yesod.Core                     ( (.=)
 type S9ErrT m = ExceptT S9Error m
 
 data S9Error =
-      PersistentE Text
-    | AppMgrE Text ExitCode
-    | NotFoundE Text
-    | InvalidParamsE Text Text
-    | AssetParseE Text Text
+      PersistentE !Text
+    | AppMgrE !Text !ExitCode
+    | NotFoundE !Text
+    | InvalidParamsE !Text !Text
+    | AssetParseE !Text !Text
     deriving (Show, Eq)
 
 instance Exception S9Error
@@ -60,8 +60,8 @@ instance ToJSON ErrorCode where
     toJSON = String . show
 
 data Error = Error
-    { errorCode    :: ErrorCode
-    , errorMessage :: Text
+    { errorCode    :: !ErrorCode
+    , errorMessage :: !Text
     }
     deriving (Eq, Show)
 instance ToJSON Error where

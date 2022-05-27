@@ -69,18 +69,18 @@ instance PathPiece PkgId where
     fromPathPiece = fmap PkgId . fromPathPiece
     toPathPiece   = unPkgId
 data VersionInfo = VersionInfo
-    { versionInfoVersion      :: Version
-    , versionInfoReleaseNotes :: Text
-    , versionInfoDependencies :: HM.HashMap PkgId VersionRange
-    , versionInfoOsVersion    :: Version
-    , versionInfoInstallAlert :: Maybe Text
+    { versionInfoVersion      :: !Version
+    , versionInfoReleaseNotes :: !Text
+    , versionInfoDependencies :: !(HM.HashMap PkgId VersionRange)
+    , versionInfoOsVersion    :: !Version
+    , versionInfoInstallAlert :: !(Maybe Text)
     }
     deriving (Eq, Show)
 
 data PackageDependency = PackageDependency
-    { packageDependencyOptional    :: Maybe Text
-    , packageDependencyVersion     :: VersionRange
-    , packageDependencyDescription :: Maybe Text
+    { packageDependencyOptional    :: !(Maybe Text)
+    , packageDependencyVersion     :: !VersionRange
+    , packageDependencyDescription :: !(Maybe Text)
     }
     deriving Show
 instance FromJSON PackageDependency where

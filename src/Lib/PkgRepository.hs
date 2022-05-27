@@ -161,8 +161,8 @@ newtype ManifestParseException = ManifestParseException FilePath
 instance Exception ManifestParseException
 
 data PkgRepo = PkgRepo
-    { pkgRepoFileRoot  :: FilePath
-    , pkgRepoAppMgrBin :: FilePath
+    { pkgRepoFileRoot  :: !FilePath
+    , pkgRepoAppMgrBin :: !FilePath
     }
 
 newtype EosRepo = EosRepo
