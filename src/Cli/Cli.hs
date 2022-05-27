@@ -33,6 +33,7 @@ import           Data.ByteArray.Encoding        ( Base(..)
                                                 )
 import qualified Data.ByteString.Char8         as B8
 import qualified Data.ByteString.Lazy          as LB
+import           Data.Conduit.Process           ( system )
 import           Data.Default
 import           Data.Functor.Contravariant     ( contramap )
 import           Data.HashMap.Internal.Strict   ( HashMap
@@ -42,6 +43,7 @@ import           Data.HashMap.Internal.Strict   ( HashMap
                                                 , lookup
                                                 , traverseWithKey
                                                 )
+import           Data.Text                      ( toLower )
 import           Dhall                   hiding ( void )
 import           Dhall.Core                     ( pretty )
 import           Handler.Admin                  ( IndexPkgReq(IndexPkgReq)
@@ -108,22 +110,29 @@ import           Startlude                      ( ($)
                                                 , Semigroup((<>))
                                                 , Show
                                                 , String
+                                                , appendFile
+                                                , asum
                                                 , const
                                                 , decodeUtf8
                                                 , exitWith
                                                 , filter
                                                 , flip
                                                 , fmap
+                                                , for
                                                 , for_
                                                 , fromIntegral
                                                 , fromMaybe
+                                                , fst
+                                                , headMay
                                                 , panic
                                                 , putStrLn
                                                 , show
+                                                , snd
                                                 , unlessM
                                                 , void
                                                 , when
                                                 , writeFile
+                                                , zip
                                                 )
 import           System.Directory               ( createDirectoryIfMissing
                                                 , doesPathExist
@@ -136,6 +145,7 @@ import           System.FilePath                ( (</>)
                                                 , takeDirectory
                                                 , takeExtension
                                                 )
+import           System.Process                 ( callCommand )
 import           System.ProgressBar             ( Progress(..)
                                                 , defStyle
                                                 , newProgressBar
@@ -181,8 +191,9 @@ instance ToDhall URI where
 instance IsString URI where
     fromString = fromMaybe (panic "Invalid URI for publish target") . parseURI
 
+data Shell = Bash | Fish | Zsh deriving Show
 data Command
-    = CmdInit
+    = CmdInit (Maybe Shell)
     | CmdRegAdd String PublishCfgRepo
     | CmdRegDel String
     | CmdRegList
@@ -194,9 +205,11 @@ data Command
 cfgLocation :: IO FilePath
 cfgLocation = getHomeDirectory <&> \d -> d </> ".embassy/publish.dhall"
 
-parseInit :: Parser ()
-parseInit =
-    subparser $ command "init" (info (pure ()) $ progDesc "Initializes embassy-publish config") <> metavar "init"
+parseInit :: Parser (Maybe Shell)
+parseInit = subparser $ command "init" (info go $ progDesc "Initializes embassy-publish config") <> metavar "init"
+    where
+        shells = [Bash, Fish, Zsh]
+        go     = headMay . fmap fst . filter snd . zip shells <$> for shells (switch . long . toS . toLower . show)
 
 parsePublish :: Parser Upload
 parsePublish = subparser $ command "upload" (info go $ progDesc "Publishes a .s9pk to a remote registry") <> metavar
@@ -271,7 +284,7 @@ parseListUnindexed = subparser $ command
 
 parseCommand :: Parser Command
 parseCommand =
-    (parseInit $> CmdInit)
+    (CmdInit <$> parseInit)
         <|> (CmdUpload <$> parsePublish)
         <|> subparser (command "reg" (info reg $ progDesc "Manage configured registries") <> metavar "reg")
         <|> parseIndex
@@ -286,7 +299,7 @@ cliMain :: IO ()
 cliMain =
     execParser opts
         >>= (\case
-                CmdInit                         -> init
+                CmdInit sh                      -> init sh
                 CmdRegAdd s pcr                 -> regAdd s pcr
                 CmdRegDel s                     -> regRm s
                 CmdRegList                      -> regLs
@@ -295,11 +308,25 @@ cliMain =
                 CmdListUnindexed name           -> listUnindexed name
             )
 
-init :: IO ()
-init = do
+init :: Maybe Shell -> IO ()
+init sh = do
     loc <- cfgLocation
     createDirectoryIfMissing True (takeDirectory loc)
-    unlessM (doesPathExist loc) $ writeFile loc (pretty $ embed inject (def @PublishCfg))
+    unlessM (doesPathExist loc) $ do
+        writeFile loc (pretty $ embed inject (def @PublishCfg))
+        home <- getHomeDirectory
+        for_ sh $ \case
+            Bash -> do
+                let bashrc = home </> ".bashrc"
+                appendFile bashrc "source <(embassy-publish --bash-completion-script `which embassy-publish`)\n"
+            Fish -> do
+                let fishrc = home </> ".config" </> "fish" </> "config.fish"
+                appendFile fishrc "source <(embassy-publish --fish-compltion-script `which embassy-publish`)\n"
+            Zsh -> do
+                let zshrc = home </> ".zshrc"
+                appendFile zshrc "source <(embassy-publish --zsh-completion-script `which embassy-publish`)\n"
+
+
 
 regAdd :: String -> PublishCfgRepo -> IO ()
 regAdd name val = do
