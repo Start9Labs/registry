@@ -31,6 +31,7 @@ import           Data.ByteArray.Encoding        ( Base(..)
                                                 )
 import qualified Data.ByteString.Char8         as B8
 import qualified Data.ByteString.Lazy          as LB
+import           Data.Conduit.Process           ( readProcess )
 import           Data.Default
 import           Data.Functor.Contravariant     ( contramap )
 import           Data.HashMap.Internal.Strict   ( HashMap
@@ -344,10 +345,11 @@ init sh = do
                 appendFile bashrc "source <(embassy-publish --bash-completion-script `which embassy-publish`)\n"
             Fish -> do
                 let fishrc = home </> ".config" </> "fish" </> "config.fish"
-                appendFile fishrc "source <(embassy-publish --fish-compltion-script `which embassy-publish`)\n"
+                appendFile fishrc "source <(embassy-publish --fish-completion-script `which embassy-publish`)\n"
             Zsh -> do
-                let zshrc = home </> ".zshrc"
-                appendFile zshrc "source <(embassy-publish --zsh-completion-script `which embassy-publish`)\n"
+                let zshcompleter = "/usr/local/share/zsh/site-functions/_embassy-publish"
+                res <- readProcess "embassy-publish" ["--zsh-completion-script", "`which embassy-publish`"] ""
+                writeFile zshcompleter (toS res)
 
 
 
