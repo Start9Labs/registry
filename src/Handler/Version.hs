@@ -1,5 +1,4 @@
 {-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE QuasiQuotes     #-}
@@ -7,14 +6,14 @@
 
 module Handler.Version where
 
-import           Startlude               hiding ( Handler )
+import           Startlude                      ( (<$>) )
 
-import           Yesod.Core
+import           Yesod.Core                     ( sendResponseStatus )
 
 import           Data.String.Interpolate.IsString
                                                 ( i )
-import           Foundation
-import           Handler.Types.Status
+import           Foundation                     ( Handler )
+import           Handler.Types.Status           ( AppVersionRes(AppVersionRes) )
 import           Lib.Error                      ( S9Error(NotFoundE) )
 import           Lib.PkgRepository              ( getBestVersion )
 import           Lib.Types.AppIndex             ( PkgId )

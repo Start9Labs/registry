@@ -29,14 +29,15 @@ import           Data.List                      ( (\\)
                                                 )
 import           Data.String.Interpolate.IsString
                                                 ( i )
-import           Database.Persist               ( entityKey
-                                                , entityVal
+import           Database.Persist               ( entityVal
                                                 , insert_
                                                 , selectList
                                                 )
 import           Database.Persist.Postgresql    ( runSqlPoolNoTransaction )
 import           Database.Queries               ( upsertPackageVersion )
-import           Foundation
+import           Foundation                     ( Handler
+                                                , RegistryCtx(appConnPool)
+                                                )
 import           Lib.PkgRepository              ( PkgRepo(PkgRepo, pkgRepoFileRoot)
                                                 , extractPkg
                                                 , getManifestLocation
@@ -71,13 +72,11 @@ import           Startlude                      ( ($)
                                                 , asum
                                                 , fmap
                                                 , getCurrentTime
-                                                , guard
                                                 , guarded
                                                 , hush
                                                 , isNothing
                                                 , liftIO
                                                 , not
-                                                , panic
                                                 , replicate
                                                 , show
                                                 , throwIO

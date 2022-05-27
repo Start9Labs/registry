@@ -1,14 +1,24 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NamedFieldPuns    #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use newtype instead of data" #-}
 module Handler.Types.Status where
 
-import           Startlude               hiding ( toLower )
+import           Startlude                      ( (.)
+                                                , Eq
+                                                , Maybe
+                                                , Show
+                                                )
 
-import           Data.Aeson
-import           Yesod.Core.Content
+import           Data.Aeson                     ( KeyValue((.=))
+                                                , ToJSON(toJSON)
+                                                , object
+                                                )
+import           Yesod.Core.Content             ( ToContent(..)
+                                                , ToTypedContent(..)
+                                                )
 
-import           Lib.Types.Emver
+import           Lib.Types.Emver                ( Version )
 import           Orphans.Emver                  ( )
 
 data AppVersionRes = AppVersionRes
@@ -16,7 +26,7 @@ data AppVersionRes = AppVersionRes
     }
     deriving (Eq, Show)
 instance ToJSON AppVersionRes where
-    toJSON AppVersionRes { appVersionVersion } = object $ ["version" .= appVersionVersion]
+    toJSON AppVersionRes { appVersionVersion } = object ["version" .= appVersionVersion]
 instance ToContent AppVersionRes where
     toContent = toContent . toJSON
 instance ToTypedContent AppVersionRes where

@@ -10,13 +10,48 @@
 
 module Handler.Marketplace where
 
-import           Startlude               hiding ( Any
-                                                , Handler
-                                                , ask
-                                                , concurrently
-                                                , from
-                                                , on
-                                                , sortOn
+import           Startlude                      ( ($)
+                                                , (&&&)
+                                                , (.)
+                                                , (<$>)
+                                                , (<&>)
+                                                , Applicative((*>), pure)
+                                                , Bool(True)
+                                                , ByteString
+                                                , Down(Down)
+                                                , Either(Left, Right)
+                                                , FilePath
+                                                , Foldable(foldMap)
+                                                , Functor(fmap)
+                                                , Int
+                                                , Maybe(..)
+                                                , Monad((>>=))
+                                                , MonadIO
+                                                , MonadReader
+                                                , Monoid(mappend)
+                                                , Num((*), (-))
+                                                , Ord((<))
+                                                , ReaderT(runReaderT)
+                                                , Text
+                                                , Traversable(traverse)
+                                                , catMaybes
+                                                , const
+                                                , decodeUtf8
+                                                , encodeUtf8
+                                                , filter
+                                                , flip
+                                                , for_
+                                                , fromMaybe
+                                                , fst
+                                                , head
+                                                , headMay
+                                                , id
+                                                , maybe
+                                                , partitionEithers
+                                                , readMaybe
+                                                , show
+                                                , snd
+                                                , void
                                                 )
 
 import           Conduit                        ( (.|)
@@ -45,7 +80,7 @@ import           Data.Attoparsec.Text           ( Parser
 import           Data.ByteArray.Encoding        ( Base(..)
                                                 , convertToBase
                                                 )
-import           Data.ByteString.Base64
+import           Data.ByteString.Base64         ( encodeBase64 )
 import qualified Data.ByteString.Lazy          as LBS
 import qualified Data.Conduit.List             as CL
 import qualified Data.HashMap.Strict           as HM
@@ -84,7 +119,26 @@ import           Foundation                     ( Handler
                                                 , RegistryCtx(appConnPool, appSettings)
                                                 , Route(InstructionsR, LicenseR)
                                                 )
-import           Handler.Types.Marketplace
+import           Handler.Types.Marketplace      ( CategoryTitle
+                                                , DependencyRes(..)
+                                                , EosRes(..)
+                                                , InfoRes(InfoRes)
+                                                , OrderArrangement(DESC)
+                                                , PackageListDefaults
+                                                    ( PackageListDefaults
+                                                    , packageListCategory
+                                                    , packageListOrder
+                                                    , packageListPageLimit
+                                                    , packageListPageNumber
+                                                    , packageListQuery
+                                                    )
+                                                , PackageListRes(..)
+                                                , PackageMetadata(..)
+                                                , PackageReq(packageReqId, packageReqVersion)
+                                                , PackageRes(..)
+                                                , ReleaseNotes(ReleaseNotes)
+                                                , VersionLatestRes(..)
+                                                )
 import           Lib.Error                      ( S9Error(..) )
 import           Lib.PkgRepository              ( PkgRepo
                                                 , getIcon
@@ -110,7 +164,7 @@ import           Network.HTTP.Types             ( status400
                                                 , status404
                                                 )
 import           Protolude.Unsafe               ( unsafeFromJust )
-import           Settings
+import           Settings                       ( AppSettings(marketplaceName, resourcesDir) )
 import           System.FilePath                ( (</>) )
 import           UnliftIO.Async                 ( mapConcurrently )
 import           UnliftIO.Directory             ( listDirectory )

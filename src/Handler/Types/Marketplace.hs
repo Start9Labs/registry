@@ -2,7 +2,14 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 module Handler.Types.Marketplace where
-import           Data.Aeson
+import           Data.Aeson                     ( (.:)
+                                                , FromJSON(parseJSON)
+                                                , KeyValue((.=))
+                                                , ToJSON(toJSON)
+                                                , Value(String)
+                                                , object
+                                                , withObject
+                                                )
 import qualified Data.HashMap.Internal.Strict  as HM
 import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Emver                ( Version
@@ -13,8 +20,21 @@ import           Model                          ( Category
                                                 , PkgRecord
                                                 , VersionRecord
                                                 )
-import           Startlude
-import           Yesod
+import           Startlude                      ( ($)
+                                                , (.)
+                                                , Applicative(pure)
+                                                , Eq
+                                                , Generic
+                                                , Int
+                                                , Maybe
+                                                , Read
+                                                , Show
+                                                , Text
+                                                )
+import           Yesod                          ( Entity
+                                                , ToContent(..)
+                                                , ToTypedContent(..)
+                                                )
 
 
 type URL = Text

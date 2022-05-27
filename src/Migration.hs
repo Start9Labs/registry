@@ -1,6 +1,15 @@
 module Migration where
 
-import           Database.Persist.Migration
+import           Database.Persist.Migration     ( Column(Column)
+                                                , ColumnProp(NotNull)
+                                                , MigrateSql(MigrateSql)
+                                                , Migration
+                                                , MigrationPath((:=))
+                                                , Operation(AddColumn, DropColumn, RawOperation)
+                                                , PersistValue(PersistText)
+                                                , SqlType(SqlString)
+                                                , rawSql
+                                                )
 import           Database.Persist.Sql           ( Single(..) )
 import           Startlude                      ( ($)
                                                 , (<<$>>)

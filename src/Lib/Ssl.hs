@@ -2,15 +2,34 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Lib.Ssl where
-import           System.Directory
-import           System.Process
+import           System.Directory               ( doesPathExist )
+import           System.Process                 ( rawSystem
+                                                , system
+                                                )
 
 import           Data.String.Interpolate.IsString
+                                                ( i )
 
-import           Startlude
+import           Startlude                      ( ($)
+                                                , (&&&)
+                                                , (.)
+                                                , (<&&>)
+                                                , Applicative(pure)
+                                                , Bool
+                                                , Eq((/=))
+                                                , ExitCode(ExitSuccess)
+                                                , IO
+                                                , MonadIO(liftIO)
+                                                , ReaderT
+                                                , Semigroup((<>))
+                                                , Text
+                                                , asks
+                                                , unless
+                                                , void
+                                                )
 
-import           Foundation
-import           Settings
+import           Foundation                     ( RegistryCtx(appSettings) )
+import           Settings                       ( AppSettings(..) )
 
 -- openssl genrsa -out key.pem 2048
 -- openssl req -new -key key.pem -out certificate.csr

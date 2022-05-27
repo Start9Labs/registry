@@ -10,8 +10,20 @@ module Util.Shared where
 
 
 import qualified Data.Text                     as T
-import           Network.HTTP.Types
-import           Yesod.Core
+import           Network.HTTP.Types             ( Status
+                                                , status400
+                                                )
+import           Yesod.Core                     ( MonadHandler
+                                                , MonadLogger
+                                                , MonadUnliftIO
+                                                , ToContent(toContent)
+                                                , TypedContent(TypedContent)
+                                                , addHeader
+                                                , logInfo
+                                                , lookupGetParam
+                                                , sendResponseStatus
+                                                , typePlain
+                                                )
 
 import           Conduit                        ( ConduitT
                                                 , awaitForever
@@ -28,7 +40,7 @@ import           Database.Esqueleto.Experimental
                                                 , Key
                                                 , entityVal
                                                 )
-import           Foundation
+import           Foundation                     ( Handler )
 import           GHC.List                       ( lookup )
 import           Handler.Types.Marketplace      ( PackageDependencyMetadata(..)
                                                 , PackageMetadata(..)
@@ -37,7 +49,11 @@ import           Lib.PkgRepository              ( PkgRepo
                                                 , getHash
                                                 )
 import           Lib.Types.AppIndex             ( PkgId )
-import           Lib.Types.Emver
+import           Lib.Types.Emver                ( (<||)
+                                                , Version
+                                                , VersionRange(Any)
+                                                , satisfies
+                                                )
 import           Model                          ( Category
                                                 , PkgDependency(pkgDependencyDepId, pkgDependencyDepVersionRange)
                                                 , PkgRecord

@@ -9,16 +9,40 @@
 module Settings where
 
 import           Paths_start9_registry          ( version )
-import           Startlude
+import           Startlude                      ( ($)
+                                                , (.)
+                                                , (<$>)
+                                                , Applicative(liftA2)
+                                                , Bool(..)
+                                                , ByteString
+                                                , ConvertText(toS)
+                                                , FilePath
+                                                , IsString(fromString)
+                                                , Monad(return)
+                                                , Monoid(mempty)
+                                                , Text
+                                                , Word16
+                                                , either
+                                                , id
+                                                , panic
+                                                )
 
 import qualified Control.Exception             as Exception
-import           Data.Aeson
-import           Data.Aeson.Types
+import           Data.Aeson                     ( (.!=)
+                                                , (.:)
+                                                , (.:?)
+                                                , FromJSON(parseJSON)
+                                                , Result(Error, Success)
+                                                , Value(String)
+                                                , fromJSON
+                                                , withObject
+                                                )
+import           Data.Aeson.Types               ( parseMaybe )
 import           Data.FileEmbed                 ( embedFile )
-import           Data.Maybe
+import           Data.Maybe                     ( fromJust )
 import           Data.Version                   ( showVersion )
 import           Data.Yaml                      ( decodeEither' )
-import           Data.Yaml.Config
+import           Data.Yaml.Config               ( applyEnvValue )
 import           Database.Persist.Postgresql    ( PostgresConf )
 import           Network.Wai.Handler.Warp       ( HostPreference )
 import           System.FilePath                ( (</>)
@@ -30,7 +54,7 @@ import           Control.Monad.Reader.Has       ( Has(extract, update) )
 import           Lib.PkgRepository              ( EosRepo(EosRepo, eosRepoFileRoot)
                                                 , PkgRepo(..)
                                                 )
-import           Lib.Types.Emver
+import           Lib.Types.Emver                ( Version )
 import           Orphans.Emver                  ( )
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,

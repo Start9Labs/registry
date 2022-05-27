@@ -3,11 +3,30 @@
 
 module Lib.Error where
 
-import           Startlude
+import           Startlude                      ( (.)
+                                                , Eq
+                                                , ExceptT
+                                                , Exception
+                                                , ExitCode
+                                                , Show
+                                                , Text
+                                                , show
+                                                )
 
 import           Data.String.Interpolate.IsString
-import           Network.HTTP.Types
-import           Yesod.Core
+                                                ( i )
+import           Network.HTTP.Types             ( Status
+                                                , status400
+                                                , status404
+                                                , status500
+                                                )
+import           Yesod.Core                     ( (.=)
+                                                , ToContent(..)
+                                                , ToJSON(toJSON)
+                                                , ToTypedContent(..)
+                                                , Value(String)
+                                                , object
+                                                )
 
 type S9ErrT m = ExceptT S9Error m
 

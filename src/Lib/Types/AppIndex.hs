@@ -22,6 +22,7 @@ import qualified Data.ByteString.Lazy          as BS
 import           Data.Functor.Contravariant     ( contramap )
 import qualified Data.HashMap.Strict           as HM
 import           Data.String.Interpolate.IsString
+                                                ( i )
 import qualified Data.Text                     as T
 import           Database.Persist               ( PersistField(..)
                                                 , PersistValue(PersistText)

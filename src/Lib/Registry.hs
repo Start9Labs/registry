@@ -5,12 +5,27 @@
 
 module Lib.Registry where
 
-import           Startlude
+import           Startlude                      ( ($)
+                                                , (.)
+                                                , ConvertText(toS)
+                                                , Eq((==))
+                                                , KnownSymbol
+                                                , Proxy(Proxy)
+                                                , Read
+                                                , Show
+                                                , String
+                                                , Symbol
+                                                , readMaybe
+                                                , show
+                                                , symbolVal
+                                                )
 
 import qualified GHC.Read                       ( Read(..) )
 import qualified GHC.Show                       ( Show(..) )
-import           System.FilePath
-import           Yesod.Core
+import           System.FilePath                ( (<.>)
+                                                , splitExtension
+                                                )
+import           Yesod.Core                     ( PathPiece(..) )
 
 newtype Extension (a :: Symbol) = Extension String deriving (Eq)
 type S9PK = Extension "s9pk"

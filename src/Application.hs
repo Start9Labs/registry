@@ -27,13 +27,53 @@ module Application
     , db
     ) where
 
-import           Startlude               hiding ( Handler )
+import           Startlude                      ( ($)
+                                                , (++)
+                                                , (.)
+                                                , (<$>)
+                                                , (<||>)
+                                                , Applicative(pure)
+                                                , Async(asyncThreadId)
+                                                , Bool(False, True)
+                                                , Either(Left, Right)
+                                                , Eq((==))
+                                                , ExitCode(ExitSuccess)
+                                                , IO
+                                                , Int
+                                                , Maybe(Just)
+                                                , Monad((>>=), return)
+                                                , MonadIO(..)
+                                                , Print(putStr, putStrLn)
+                                                , ReaderT(runReaderT)
+                                                , Text
+                                                , ThreadId
+                                                , async
+                                                , flip
+                                                , for_
+                                                , forever
+                                                , forkIO
+                                                , fromIntegral
+                                                , killThread
+                                                , newEmptyMVar
+                                                , newMVar
+                                                , onException
+                                                , panic
+                                                , print
+                                                , putMVar
+                                                , show
+                                                , stdout
+                                                , swapMVar
+                                                , takeMVar
+                                                , void
+                                                , waitEitherCatchCancel
+                                                , when
+                                                )
 
 import           Control.Monad.Logger           ( LoggingT
                                                 , liftLoc
                                                 , runLoggingT
                                                 )
-import           Data.Default
+import           Data.Default                   ( Default(def) )
 import           Database.Persist.Postgresql    ( createPostgresqlPool
                                                 , pgConnStr
                                                 , pgPoolSize
@@ -41,7 +81,11 @@ import           Database.Persist.Postgresql    ( createPostgresqlPool
                                                 , runSqlPool
                                                 )
 import           Language.Haskell.TH.Syntax     ( qLocation )
-import           Network.Wai
+import           Network.Wai                    ( Application
+                                                , Middleware
+                                                , Request(requestHeaders)
+                                                , ResponseReceived
+                                                )
 import           Network.Wai.Handler.Warp       ( Settings
                                                 , defaultSettings
                                                 , defaultShouldDisplayException
@@ -53,14 +97,19 @@ import           Network.Wai.Handler.Warp       ( Settings
                                                 , setPort
                                                 , setTimeout
                                                 )
-import           Network.Wai.Handler.WarpTLS
+import           Network.Wai.Handler.WarpTLS    ( runTLS
+                                                , tlsSettings
+                                                )
 import           Network.Wai.Middleware.AcceptOverride
+                                                ( acceptOverride )
 import           Network.Wai.Middleware.Autohead
+                                                ( autohead )
 import           Network.Wai.Middleware.Cors    ( CorsResourcePolicy(..)
                                                 , cors
                                                 , simpleCorsResourcePolicy
                                                 )
 import           Network.Wai.Middleware.MethodOverride
+                                                ( methodOverride )
 import           Network.Wai.Middleware.RequestLogger
                                                 ( Destination(Logger)
                                                 , OutputFormat(..)
@@ -75,28 +124,83 @@ import           System.Log.FastLogger          ( defaultBufSize
                                                 , newStdoutLoggerSet
                                                 , toLogStr
                                                 )
-import           Yesod.Core
-import           Yesod.Core.Types        hiding ( Logger )
-import           Yesod.Default.Config2
+import           Yesod.Core                     ( HandlerFor
+                                                , LogLevel(LevelError)
+                                                , Yesod(messageLoggerSource)
+                                                , logInfo
+                                                , mkYesodDispatch
+                                                , toWaiAppPlain
+                                                , typeOctet
+                                                )
+import           Yesod.Core.Types               ( Logger(loggerSet) )
+import           Yesod.Default.Config2          ( configSettingsYml
+                                                , develMainHelper
+                                                , getDevSettings
+                                                , loadYamlSettings
+                                                , loadYamlSettingsArgs
+                                                , makeYesodLogger
+                                                , useEnv
+                                                )
 
-import           Control.Lens
+import           Control.Lens                   ( both )
 import           Data.List                      ( lookup )
 import           Data.String.Interpolate.IsString
                                                 ( i )
 import qualified Database.Persist.Migration
 import qualified Database.Persist.Migration.Postgres
 import           Database.Persist.Sql           ( SqlBackend )
-import           Foundation
-import           Handler.Admin
-import           Handler.Apps
-import           Handler.ErrorLogs
-import           Handler.Icons
-import           Handler.Marketplace
-import           Handler.Version
+import           Foundation                     ( Handler
+                                                , RegistryCtx(..)
+                                                , Route
+                                                    ( AppManifestR
+                                                    , AppR
+                                                    , EosR
+                                                    , EosVersionR
+                                                    , ErrorLogsR
+                                                    , IconsR
+                                                    , InfoR
+                                                    , InstructionsR
+                                                    , LicenseR
+                                                    , PackageListR
+                                                    , PkgDeindexR
+                                                    , PkgIndexR
+                                                    , PkgUploadR
+                                                    , PkgVersionR
+                                                    , ReleaseNotesR
+                                                    , VersionLatestR
+                                                    )
+                                                , resourcesRegistryCtx
+                                                , setWebProcessThreadId
+                                                , unsafeHandler
+                                                )
+import           Handler.Admin                  ( getPkgDeindexR
+                                                , postPkgDeindexR
+                                                , postPkgIndexR
+                                                , postPkgUploadR
+                                                )
+import           Handler.Apps                   ( getAppManifestR
+                                                , getAppR
+                                                )
+import           Handler.ErrorLogs              ( postErrorLogsR )
+import           Handler.Icons                  ( getIconsR
+                                                , getInstructionsR
+                                                , getLicenseR
+                                                )
+import           Handler.Marketplace            ( getEosR
+                                                , getEosVersionR
+                                                , getInfoR
+                                                , getPackageListR
+                                                , getReleaseNotesR
+                                                , getVersionLatestR
+                                                )
+import           Handler.Version                ( getPkgVersionR )
 import           Lib.PkgRepository              ( watchEosRepoRoot )
-import           Lib.Ssl
+import           Lib.Ssl                        ( doesSslNeedRenew
+                                                , renewSslCerts
+                                                , setupSsl
+                                                )
 import           Migration                      ( manualMigration )
-import           Model
+import           Model                          ( migrateAll )
 import           Network.HTTP.Types.Header      ( hOrigin )
 import           Network.Wai.Middleware.Gzip    ( GzipFiles(GzipCompress)
                                                 , GzipSettings(gzipCheckMime, gzipFiles)
@@ -104,12 +208,15 @@ import           Network.Wai.Middleware.Gzip    ( GzipFiles(GzipCompress)
                                                 , gzip
                                                 )
 import           Network.Wai.Middleware.RequestLogger.JSON
-import           Settings
+                                                ( formatAsJSONWithHeaders )
+import           Settings                       ( AppPort
+                                                , AppSettings(..)
+                                                , configSettingsYmlValue
+                                                )
 import           System.Directory               ( createDirectoryIfMissing )
-import           System.Posix.Process
-import           System.Time.Extra
-import qualified UnliftIO
-import           Yesod
+import           System.Posix.Process           ( exitImmediately )
+import           System.Time.Extra              ( sleep )
+import           Yesod                          ( YesodPersist(runDB) )
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the

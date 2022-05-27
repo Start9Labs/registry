@@ -38,21 +38,54 @@ import           Database.Esqueleto.Experimental
                                                 , (||.)
                                                 )
 import qualified Database.Persist              as P
-import           Database.Persist.Postgresql
-                                         hiding ( (==.)
-                                                , getJust
-                                                , selectSource
-                                                , (||.)
+import           Database.Persist.Postgresql    ( ConnectionPool
+                                                , Entity(entityKey, entityVal)
+                                                , PersistEntity(Key)
+                                                , SqlBackend
+                                                , runSqlPool
                                                 )
 import           Handler.Types.Marketplace      ( PackageDependencyMetadata(..) )
 import           Lib.Types.AppIndex             ( PkgId )
 import           Lib.Types.Emver                ( Version )
-import           Model
-import           Startlude               hiding ( (%)
-                                                , from
-                                                , groupBy
-                                                , on
-                                                , yield
+import           Model                          ( Category
+                                                , EntityField
+                                                    ( CategoryId
+                                                    , CategoryName
+                                                    , PkgCategoryCategoryId
+                                                    , PkgCategoryPkgId
+                                                    , PkgDependencyDepId
+                                                    , PkgDependencyPkgId
+                                                    , PkgDependencyPkgVersion
+                                                    , PkgRecordId
+                                                    , VersionRecordDescLong
+                                                    , VersionRecordDescShort
+                                                    , VersionRecordPkgId
+                                                    , VersionRecordTitle
+                                                    , VersionRecordUpdatedAt
+                                                    )
+                                                , Key(PkgRecordKey, unPkgRecordKey)
+                                                , PkgCategory
+                                                , PkgDependency
+                                                , PkgRecord
+                                                , VersionRecord(versionRecordNumber, versionRecordPkgId)
+                                                )
+import           Startlude                      ( ($)
+                                                , ($>)
+                                                , (.)
+                                                , (<$>)
+                                                , Applicative(pure)
+                                                , Down(Down)
+                                                , Eq((==))
+                                                , Functor(fmap)
+                                                , Maybe(..)
+                                                , Monad
+                                                , MonadIO
+                                                , ReaderT
+                                                , Text
+                                                , headMay
+                                                , lift
+                                                , snd
+                                                , sortOn
                                                 )
 
 type CategoryTitle = Text

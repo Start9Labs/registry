@@ -11,15 +11,46 @@
 
 module Lib.External.AppMgr where
 
-import           Startlude               hiding ( bracket
-                                                , catch
-                                                , finally
-                                                , handle
+import           Startlude                      ( ($)
+                                                , (&&)
+                                                , (<$>)
+                                                , Applicative((*>), pure)
+                                                , ByteString
+                                                , Eq((==))
+                                                , ExitCode
+                                                , FilePath
+                                                , Monad
+                                                , MonadIO(..)
+                                                , Monoid
+                                                , String
+                                                , atomically
+                                                , id
+                                                , liftA3
+                                                , stderr
+                                                , throwIO
                                                 )
 
 import qualified Data.ByteString.Lazy          as LBS
 import           Data.String.Interpolate.IsString
-import           System.Process.Typed    hiding ( createPipe )
+                                                ( i )
+import           System.Process.Typed           ( ExitCodeException(eceExitCode)
+                                                , Process
+                                                , ProcessConfig
+                                                , byteStringInput
+                                                , byteStringOutput
+                                                , getStderr
+                                                , getStdout
+                                                , proc
+                                                , setEnvInherit
+                                                , setStderr
+                                                , setStdin
+                                                , setStdout
+                                                , startProcess
+                                                , stopProcess
+                                                , useHandleOpen
+                                                , waitExitCodeSTM
+                                                , withProcessWait
+                                                )
 
 import           Conduit                        ( (.|)
                                                 , ConduitT
@@ -29,11 +60,11 @@ import           Control.Monad.Logger           ( MonadLoggerIO
                                                 , logErrorSH
                                                 )
 import qualified Data.Conduit.List             as CL
-import           Data.Conduit.Process.Typed
+import           Data.Conduit.Process.Typed     ( createSource )
 import           GHC.IO.Exception               ( IOErrorType(NoSuchThing)
                                                 , IOException(ioe_description, ioe_type)
                                                 )
-import           Lib.Error
+import           Lib.Error                      ( S9Error(AppMgrE) )
 import           System.FilePath                ( (</>) )
 import           UnliftIO                       ( MonadUnliftIO
                                                 , bracket
