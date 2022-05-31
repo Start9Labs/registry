@@ -103,7 +103,12 @@ searchServices Nothing query = selectSource $ do
         ||. (service ^. VersionRecordDescLong `ilike` (%) ++. val query ++. (%))
         ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
         )
-    orderBy [desc (service ^. VersionRecordUpdatedAt)]
+    groupBy (service ^. VersionRecordPkgId, service ^. VersionRecordNumber)
+    orderBy
+        [ asc (service ^. VersionRecordPkgId)
+        , desc (service ^. VersionRecordNumber)
+        , desc (service ^. VersionRecordUpdatedAt)
+        ]
     pure service
 searchServices (Just category) query = selectSource $ do
     services <- from
