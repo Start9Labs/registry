@@ -1,11 +1,12 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Cli.Cli
     ( cliMain
@@ -25,7 +26,9 @@ import           Control.Monad.Logger           ( LogLevel(..)
 import           Crypto.Hash                    ( SHA256(SHA256)
                                                 , hashWith
                                                 )
-import           Data.Aeson                     ( eitherDecodeStrict )
+import           Data.Aeson                     ( ToJSON
+                                                , eitherDecodeStrict
+                                                )
 import           Data.ByteArray.Encoding        ( Base(..)
                                                 , convertToBase
                                                 )
@@ -41,6 +44,8 @@ import           Data.HashMap.Internal.Strict   ( HashMap
                                                 , lookup
                                                 , traverseWithKey
                                                 )
+import           Data.String.Interpolate.IsString
+                                                ( i )
 import           Data.Text                      ( toLower )
 import           Dhall                          ( Encoder(embed)
                                                 , FromDhall(..)
@@ -51,7 +56,8 @@ import           Dhall                          ( Encoder(embed)
                                                 , inputFile
                                                 )
 import           Dhall.Core                     ( pretty )
-import           Handler.Admin                  ( IndexPkgReq(IndexPkgReq)
+import           Handler.Admin                  ( AddCategoryReq(AddCategoryReq)
+                                                , IndexPkgReq(IndexPkgReq)
                                                 , PackageList(..)
                                                 )
 import           Lib.External.AppMgr            ( sourceManifest )
@@ -88,6 +94,7 @@ import           Options.Applicative            ( (<$>)
                                                 , Applicative((<*>), liftA2, pure)
                                                 , Parser
                                                 , ParserInfo
+                                                , auto
                                                 , command
                                                 , execParser
                                                 , fullDesc
@@ -98,6 +105,7 @@ import           Options.Applicative            ( (<$>)
                                                 , long
                                                 , mappend
                                                 , metavar
+                                                , option
                                                 , optional
                                                 , progDesc
                                                 , short
@@ -131,6 +139,7 @@ import           Startlude                      ( ($)
                                                 , ExitCode(..)
                                                 , FilePath
                                                 , IO
+                                                , Int
                                                 , IsString(..)
                                                 , Maybe(..)
                                                 , Monad((>>=))
@@ -151,6 +160,7 @@ import           Startlude                      ( ($)
                                                 , fromMaybe
                                                 , fst
                                                 , headMay
+                                                , not
                                                 , panic
                                                 , show
                                                 , snd
@@ -224,6 +234,10 @@ data Command
     | CmdUpload !Upload
     | CmdIndex !String !String !Version !Bool
     | CmdListUnindexed !String
+    | CmdCatAdd !String !String !(Maybe String) !(Maybe Int)
+    | CmdCatDel !String !String
+    | CmdPkgCatAdd !String !PkgId !String
+    | CmdPkgCatDel !String !PkgId !String
     deriving Show
 
 cfgLocation :: IO FilePath
@@ -314,23 +328,62 @@ parseCommand =
         <|> parseIndex
         <|> parseDeindex
         <|> (CmdListUnindexed <$> parseListUnindexed)
+        <|> parseCat
+        <|> parsePkgCat
     where reg = parseRepoAdd <|> (CmdRegDel <$> parseRepoDel) <|> (parseRepoList $> CmdRegList)
+
+parseCat :: Parser Command
+parseCat = subparser $ command "category" (info (add <|> del) $ progDesc "Manage categories")
+    where
+        add = subparser $ command
+            "add"
+            ( info
+                    (   CmdCatAdd
+                    <$> strOption (short 't' <> long "target" <> metavar "REGISTRY_NAME")
+                    <*> strArgument (metavar "CATEGORY")
+                    <*> optional (strOption (short 'd' <> long "description" <> metavar "DESCRIPTION"))
+                    <*> optional
+                            (option Options.Applicative.auto (short 'p' <> long "priority" <> metavar "PRIORITY"))
+                    )
+            $ progDesc "Adds category to registry"
+            )
+        del = subparser $ command
+            "rm"
+            ( info
+                    (CmdCatDel <$> strOption (short 't' <> long "target" <> metavar "REGISTRY_NAME") <*> strArgument
+                        (metavar "CATEGORY")
+                    )
+            $ progDesc "Removes category from registry"
+            )
+
+parsePkgCat :: Parser Command
+parsePkgCat = subparser $ command "categorize" (info cat $ progDesc "Add or remove package from category")
+    where
+        cat :: Parser Command
+        cat =
+            let cmd rm = if not rm then CmdPkgCatAdd else CmdPkgCatDel
+            in  cmd
+                    <$> switch (long "remove")
+                    <*> strOption (short 't' <> long "target" <> metavar "REGISTRY_NAME")
+                    <*> strArgument (metavar "PACKAGE_ID")
+                    <*> strArgument (metavar "CATEGORY")
 
 opts :: ParserInfo Command
 opts = info (parseCommand <**> helper) (fullDesc <> progDesc "Publish tool for Embassy Packages")
 
 cliMain :: IO ()
-cliMain =
-    execParser opts
-        >>= (\case
-                CmdInit sh                      -> init sh
-                CmdRegAdd s pcr                 -> regAdd s pcr
-                CmdRegDel s                     -> regRm s
-                CmdRegList                      -> regLs
-                CmdUpload up                    -> upload up
-                CmdIndex name pkg v shouldIndex -> if shouldIndex then index name pkg v else deindex name pkg v
-                CmdListUnindexed name           -> listUnindexed name
-            )
+cliMain = execParser opts >>= \case
+    CmdInit sh                      -> init sh
+    CmdRegAdd s pcr                 -> regAdd s pcr
+    CmdRegDel s                     -> regRm s
+    CmdRegList                      -> regLs
+    CmdUpload up                    -> upload up
+    CmdIndex name pkg v shouldIndex -> if shouldIndex then index name pkg v else deindex name pkg v
+    CmdListUnindexed name           -> listUnindexed name
+    CmdCatAdd target cat desc pri   -> catAdd target cat desc pri
+    CmdCatDel target cat            -> catDel target cat
+    CmdPkgCatAdd target pkg cat     -> pkgCatAdd target pkg cat
+    CmdPkgCatDel target pkg cat     -> pkgCatDel target pkg cat
 
 init :: Maybe Shell -> IO ()
 init sh = do
@@ -356,7 +409,7 @@ init sh = do
 regAdd :: String -> PublishCfgRepo -> IO ()
 regAdd name val = do
     loc            <- cfgLocation
-    PublishCfg cfg <- inputFile auto loc
+    PublishCfg cfg <- inputFile Dhall.auto loc
     let cfg' = insert name val cfg
     writeFile loc (pretty $ embed inject $ PublishCfg cfg')
     putChunkLn $ "Below is the hash to provide to the server operator for your admin credentials" & fore yellow
@@ -373,14 +426,14 @@ regAdd name val = do
 regRm :: String -> IO ()
 regRm name = do
     loc            <- cfgLocation
-    PublishCfg cfg <- inputFile auto loc
+    PublishCfg cfg <- inputFile Dhall.auto loc
     let cfg' = delete name cfg
     writeFile loc (pretty $ embed inject $ PublishCfg cfg')
 
 regLs :: IO ()
 regLs = do
     loc            <- cfgLocation
-    PublishCfg cfg <- inputFile auto loc
+    PublishCfg cfg <- inputFile Dhall.auto loc
     void $ traverseWithKey f cfg
     where
         f k v = do
@@ -439,39 +492,10 @@ upload (Upload name mpkg shouldIndex) = do
         sfs2prog StreamFileStatus {..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
 
 index :: String -> String -> Version -> IO ()
-index name pkg v = do
-    PublishCfgRepo {..} <- findNameInCfg name
-    noBody              <-
-        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/index")
-        <&> setRequestHeaders [("accept", "text/plain")]
-        <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
-    let withBody = setRequestBodyJSON (IndexPkgReq (PkgId $ toS pkg) v) noBody
-    res <- httpLBS withBody
-    -- no output is successful
-    if getResponseStatus res == status200
-        then pure ()
-        else do
-            $logError (decodeUtf8 . LB.toStrict $ getResponseBody res)
-            exitWith (ExitFailure 1)
-
+index name pkg v = performHttp name "POST" [i|/admin/v0/index|] (IndexPkgReq (PkgId $ toS pkg) v)
 
 deindex :: String -> String -> Version -> IO ()
-deindex name pkg v = do
-    PublishCfgRepo {..} <- findNameInCfg name
-    noBody              <-
-        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/deindex")
-        <&> setRequestHeaders [("accept", "text/plain")]
-        <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
-    let withBody = setRequestBodyJSON (IndexPkgReq (PkgId $ toS pkg) v) noBody
-    res <- httpLBS withBody
-    -- no output is successful
-    if getResponseStatus res == status200
-        then pure ()
-        else do
-            $logError (decodeUtf8 . LB.toStrict $ getResponseBody res)
-            exitWith (ExitFailure 1)
-
-
+deindex name pkg v = performHttp name "POST" [i|/admin/v0/deindex|] (IndexPkgReq (PkgId $ toS pkg) v)
 
 listUnindexed :: String -> IO ()
 listUnindexed name = do
@@ -485,15 +509,44 @@ listUnindexed name = do
         putChunk (chunk (unPkgId k <> ": ") & fore blue)
         putChunkLn $ chunk (show v) & fore yellow
 
+catAdd :: String -> String -> Maybe String -> Maybe Int -> IO ()
+catAdd target name desc pri =
+    performHttp target "POST" [i|/admin/v0/category/#{name}|] (AddCategoryReq (toS <$> desc) pri)
+
+catDel :: String -> String -> IO ()
+catDel target name = performHttp target "DELETE" [i|/admin/v0/category/#{name}|] ()
+
+pkgCatAdd :: String -> PkgId -> String -> IO ()
+pkgCatAdd target pkg cat = performHttp target "POST" [i|/admin/v0/categorize/#{cat}/#{pkg}|] ()
+
+pkgCatDel :: String -> PkgId -> String -> IO ()
+pkgCatDel target pkg cat = performHttp target "DELETE" [i|/admin/v0/categorize/#{cat}/#{pkg}|] ()
+
 findNameInCfg :: String -> IO PublishCfgRepo
 findNameInCfg name = do
     loc            <- cfgLocation
-    PublishCfg cfg <- inputFile auto loc
+    PublishCfg cfg <- inputFile Dhall.auto loc
     case lookup name cfg of
         Nothing -> do
             $logError "Registry name not found!"
             exitWith $ ExitFailure 1
         Just pcr -> pure pcr
+
+performHttp :: ToJSON a => String -> String -> String -> a -> IO ()
+performHttp target method route body = do
+    PublishCfgRepo {..} <- findNameInCfg target
+    noBody              <-
+        parseRequest (method <> " " <> show publishCfgRepoLocation <> route)
+        <&> setRequestHeaders [("accept", "text/plain")]
+        <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
+    let withBody = setRequestBodyJSON body noBody
+    res <- httpLBS withBody
+    if getResponseStatus res == status200
+        then pure ()
+        else do
+            $logError (decodeUtf8 . LB.toStrict $ getResponseBody res)
+            exitWith (ExitFailure 1)
+
 
 instance MonadLogger IO where
     monadLoggerLog _ _ LevelDebug     = putChunkLn . colorLog white

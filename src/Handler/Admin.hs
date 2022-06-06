@@ -12,6 +12,7 @@ import           Control.Exception              ( ErrorCall(ErrorCall) )
 import           Control.Monad.Reader.Has       ( ask )
 import           Control.Monad.Trans.Maybe      ( MaybeT(..) )
 import           Data.Aeson                     ( (.:)
+                                                , (.:?)
                                                 , (.=)
                                                 , FromJSON(parseJSON)
                                                 , ToJSON
@@ -29,7 +30,11 @@ import           Data.List                      ( (\\)
                                                 )
 import           Data.String.Interpolate.IsString
                                                 ( i )
-import           Database.Persist               ( entityVal
+import           Database.Persist               ( Entity(entityKey)
+                                                , PersistStoreRead(get)
+                                                , PersistUniqueRead(getBy)
+                                                , PersistUniqueWrite(deleteBy, insertUnique, upsert)
+                                                , entityVal
                                                 , insert_
                                                 , selectList
                                                 )
@@ -48,12 +53,16 @@ import           Lib.Types.AppIndex             ( PackageManifest(..)
                                                 , PkgId(unPkgId)
                                                 )
 import           Lib.Types.Emver                ( Version(..) )
-import           Model                          ( Key(AdminKey, PkgRecordKey, VersionRecordKey)
+import           Model                          ( Category(..)
+                                                , Key(AdminKey, PkgRecordKey, VersionRecordKey)
+                                                , PkgCategory(PkgCategory)
+                                                , Unique(UniqueName, UniquePkgCategory)
                                                 , Upload(..)
                                                 , VersionRecord(versionRecordNumber, versionRecordPkgId)
                                                 , unPkgRecordKey
                                                 )
-import           Network.HTTP.Types             ( status404
+import           Network.HTTP.Types             ( status403
+                                                , status404
                                                 , status500
                                                 )
 import           Settings
@@ -66,12 +75,15 @@ import           Startlude                      ( ($)
                                                 , Applicative(pure)
                                                 , Bool(..)
                                                 , Eq
+                                                , Int
                                                 , Maybe(..)
                                                 , Monad((>>=))
                                                 , Show
                                                 , SomeException(..)
+                                                , Text
                                                 , asum
                                                 , fmap
+                                                , fromMaybe
                                                 , getCurrentTime
                                                 , guarded
                                                 , hush
@@ -83,6 +95,7 @@ import           Startlude                      ( ($)
                                                 , throwIO
                                                 , toS
                                                 , traverse
+                                                , void
                                                 , when
                                                 , zip
                                                 )
@@ -193,3 +206,39 @@ getPkgDeindexR = do
 infixr 8 .*
 (.*) :: (b -> c) -> (a1 -> a2 -> b) -> a1 -> a2 -> c
 (.*) = (.) . (.)
+
+data AddCategoryReq = AddCategoryReq
+    { addCategoryDescription :: !(Maybe Text)
+    , addCategoryPriority    :: !(Maybe Int)
+    }
+instance FromJSON AddCategoryReq where
+    parseJSON = withObject "AddCategoryReq" $ \o -> do
+        addCategoryDescription <- o .:? "description"
+        addCategoryPriority    <- o .:? "priority"
+        pure AddCategoryReq { .. }
+instance ToJSON AddCategoryReq where
+    toJSON AddCategoryReq {..} = object ["description" .= addCategoryDescription, "priority" .= addCategoryPriority]
+
+postCategoryR :: Text -> Handler ()
+postCategoryR cat = do
+    AddCategoryReq {..} <- requireCheckJsonBody
+    now                 <- liftIO getCurrentTime
+    void . runDB $ upsert (Category now cat (fromMaybe "" addCategoryDescription) (fromMaybe 0 addCategoryPriority)) []
+
+deleteCategoryR :: Text -> Handler ()
+deleteCategoryR cat = runDB $ deleteBy (UniqueName cat)
+
+postPkgCategorizeR :: Text -> PkgId -> Handler ()
+postPkgCategorizeR cat pkg = runDB $ do
+    catEnt  <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
+    _pkgEnt <- get (PkgRecordKey pkg) `orThrow` sendResponseText status404 [i|Package "#{pkg}" does not exist|]
+    now     <- liftIO getCurrentTime
+    void $ insertUnique (PkgCategory now (PkgRecordKey pkg) (entityKey catEnt)) `orThrow` sendResponseText
+        status403
+        [i|Package "#{pkg}" is already assigned to category "#{cat}"|]
+
+deletePkgCategorizeR :: Text -> PkgId -> Handler ()
+deletePkgCategorizeR cat pkg = runDB $ do
+    catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
+    deleteBy (UniquePkgCategory (PkgRecordKey pkg) (entityKey catEnt))
+

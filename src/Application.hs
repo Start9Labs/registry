@@ -151,29 +151,16 @@ import qualified Database.Persist.Migration.Postgres
 import           Database.Persist.Sql           ( SqlBackend )
 import           Foundation                     ( Handler
                                                 , RegistryCtx(..)
-                                                , Route
-                                                    ( AppManifestR
-                                                    , AppR
-                                                    , EosR
-                                                    , EosVersionR
-                                                    , ErrorLogsR
-                                                    , IconsR
-                                                    , InfoR
-                                                    , InstructionsR
-                                                    , LicenseR
-                                                    , PackageListR
-                                                    , PkgDeindexR
-                                                    , PkgIndexR
-                                                    , PkgUploadR
-                                                    , PkgVersionR
-                                                    , ReleaseNotesR
-                                                    , VersionLatestR
-                                                    )
+                                                , Route(..)
                                                 , resourcesRegistryCtx
                                                 , setWebProcessThreadId
                                                 , unsafeHandler
                                                 )
-import           Handler.Admin                  ( getPkgDeindexR
+import           Handler.Admin                  ( deleteCategoryR
+                                                , deletePkgCategorizeR
+                                                , getPkgDeindexR
+                                                , postCategoryR
+                                                , postPkgCategorizeR
                                                 , postPkgDeindexR
                                                 , postPkgIndexR
                                                 , postPkgUploadR

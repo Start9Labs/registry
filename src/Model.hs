@@ -77,7 +77,6 @@ Metric
 Category
     createdAt UTCTime
     name Text
-    parent CategoryId Maybe
     description Text
     priority Int default=0
     UniqueName name
@@ -88,6 +87,7 @@ PkgCategory
     createdAt UTCTime
     pkgId PkgRecordId
     categoryId CategoryId
+    UniquePkgCategory pkgId categoryId
     deriving Eq
     deriving Show
 
