@@ -111,7 +111,7 @@ import Lib.PkgRepository (
     EosRepo,
     PkgRepo,
  )
-import Lib.Types.AppIndex (PkgId, S9PK)
+import Lib.Types.Core (PkgId, S9PK)
 import Model (
     Admin (..),
     Key (AdminKey),

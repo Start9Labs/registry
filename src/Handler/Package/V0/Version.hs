@@ -12,7 +12,7 @@ import Handler.Util (
  )
 import Lib.Error (S9Error (..))
 import Lib.PkgRepository (getBestVersion)
-import Lib.Types.AppIndex (PkgId)
+import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version (..))
 import Network.HTTP.Types (status404)
 import Startlude (Eq, Maybe, Show, (.), (<$>))

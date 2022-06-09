@@ -62,11 +62,11 @@ import Lib.PkgRepository (
     getPackages,
     getVersionsFor,
  )
-import Lib.Types.AppIndex (
-    PackageManifest (..),
+import Lib.Types.Core (
     PkgId (unPkgId),
  )
 import Lib.Types.Emver (Version (..))
+import Lib.Types.Manifest (PackageManifest (..))
 import Model (
     Category (..),
     Key (AdminKey, PkgRecordKey, VersionRecordKey),

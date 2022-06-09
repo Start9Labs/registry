@@ -7,7 +7,7 @@ import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
 import Database.Queries (fetchAllAppVersions)
 import Foundation (Handler, RegistryCtx (..))
-import Lib.Types.AppIndex (PkgId)
+import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version)
 import Model (VersionRecord (..))
 import Startlude (Down (..), Eq, Show, Text, fst, pure, sortOn, ($), (&&&), (.), (<$>))

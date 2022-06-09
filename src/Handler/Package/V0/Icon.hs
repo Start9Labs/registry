@@ -14,7 +14,7 @@ import Handler.Util (
  )
 import Lib.Error (S9Error (..))
 import Lib.PkgRepository (getBestVersion, getIcon)
-import Lib.Types.AppIndex (PkgId)
+import Lib.Types.Core (PkgId)
 import Network.HTTP.Types (status400)
 import Startlude (show, ($))
 import Yesod (TypedContent, addHeader, respondSource, sendChunkBS, sendResponseStatus)

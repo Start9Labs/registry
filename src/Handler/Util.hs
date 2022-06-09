@@ -12,7 +12,7 @@ import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
 import Lib.PkgRepository (PkgRepo, getHash)
-import Lib.Types.AppIndex (PkgId)
+import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (
     Version,
     VersionRange,

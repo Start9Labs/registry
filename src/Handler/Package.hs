@@ -12,7 +12,7 @@ import Handler.Package.V0.ReleaseNotes (ReleaseNotes, getReleaseNotesR)
 import Handler.Package.V0.S9PK qualified
 import Handler.Package.V0.Version (AppVersionRes, getPkgVersionR)
 import Handler.Types.Api (ApiVersion (..))
-import Lib.Types.AppIndex (PkgId, S9PK)
+import Lib.Types.Core (PkgId, S9PK)
 import Yesod.Core.Types (
     JSONResponse,
     TypedContent,

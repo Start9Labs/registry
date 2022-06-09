@@ -10,8 +10,7 @@ import Database.Persist.Sql (
     PersistStoreWrite (insertKey, insert_, repsert),
     SqlBackend,
  )
-import Lib.Types.AppIndex (
-    PackageManifest (..),
+import Lib.Types.Core (
     PkgId,
  )
 import Lib.Types.Emver (Version)
@@ -81,6 +80,7 @@ import Database.Persist.Postgresql (
     Entity (entityVal),
     runSqlPool,
  )
+import Lib.Types.Manifest (PackageManifest (..))
 import Model (
     Category,
     EntityField (
