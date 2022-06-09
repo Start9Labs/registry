@@ -14,9 +14,6 @@
 /package/#ApiVersion/instructions/#PkgId            InstructionsR      GET -- get instructions - can specify version with ?spec=<emver>
 /package/#ApiVersion/version/#PkgId                 PkgVersionR        GET -- get most recent appId version
 
--- SUPPORT API V0
-/support/v0/error-logs                     ErrorLogsR         POST
-
 -- ADMIN API V0
 /admin/v0/upload                           PkgUploadR         POST !admin
 /admin/v0/index                            PkgIndexR          POST !admin

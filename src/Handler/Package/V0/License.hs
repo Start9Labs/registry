@@ -2,11 +2,16 @@
 
 module Handler.Package.V0.License where
 
+import Conduit (awaitForever, (.|))
 import Data.String.Interpolate.IsString (i)
 import Foundation (Handler)
-import Handler.Util (getVersionSpecFromQuery)
+import Handler.Util (getVersionSpecFromQuery, orThrow, versionPriorityFromQueryIsMin)
+import Lib.Error (S9Error (..))
+import Lib.PkgRepository (getBestVersion, getLicense)
 import Lib.Types.AppIndex (PkgId)
-import Yesod (TypedContent)
+import Network.HTTP.Types (status400)
+import Startlude (show, ($))
+import Yesod (TypedContent, addHeader, respondSource, sendChunkBS, sendResponseStatus, typePlain)
 
 
 getLicenseR :: PkgId -> Handler TypedContent

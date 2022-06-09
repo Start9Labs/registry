@@ -3,28 +3,36 @@
 
 module Handler.Package.V0.Index where
 
-import Conduit (runConduit, (.|))
+import Conduit (concatMapC, dropC, mapC, mapMC, runConduit, sinkList, takeC, (.|))
 import Control.Monad.Reader.Has (Functor (fmap), Has, Monad ((>>=)), MonadReader, ReaderT (runReaderT), ask)
-import Data.Aeson (FromJSON (..), ToJSON (..), Value, decode, object, withObject, (.:), (.=))
+import Data.Aeson (FromJSON (..), ToJSON (..), Value, decode, eitherDecodeStrict, object, withObject, (.:), (.=))
 import Data.Attoparsec.Text qualified as Atto
 import Data.ByteString.Base64 (encodeBase64)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Conduit.List qualified as CL
 import Data.HashMap.Internal.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
+import Data.List (lookup)
+import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
-import Database.Marketplace (PackageMetadata (..), collateVersions, getPkgDependencyData, searchServices, zipDependencyVersions)
-import Database.Persist (Entity (..), Key)
+import Database.Marketplace (PackageMetadata (..), collateVersions, getCategoriesFor, getPkgDataSource, getPkgDependencyData, serviceQuerySource, zipDependencyVersions)
+import Database.Persist (Key)
 import Database.Persist.Sql (SqlBackend)
 import Foundation (Handler, Route (InstructionsR, LicenseR))
+import Handler.Types.Api (ApiVersion (..))
+import Handler.Util (basicRender)
+import Lib.Conduit (filterDependencyBestVersion, filterDependencyOsCompatible, selectLatestVersionFromSpec)
 import Lib.Error (S9Error (..))
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
 import Lib.Types.AppIndex (PkgId)
-import Lib.Types.Emver (Version, VersionRange, parseRange, satisfies)
+import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies)
 import Model (Category (..), Key (..), PkgRecord (..), VersionRecord (..))
+import Network.HTTP.Types (status400)
+import Protolude.Unsafe (unsafeFromJust)
 import Settings (AppSettings)
-import Startlude (Bool (..), ByteString, Either (..), Eq, Generic, Int, Maybe (..), MonadIO, Read, Show, Text, Traversable (traverse), catMaybes, const, flip, fromMaybe, id, pure, snd, ($), (.), (<$>), (<&>))
-import Yesod (MonadLogger, MonadResource, ToContent (..), ToTypedContent (..), YesodPersist (runDB), lookupGetParam)
+import Startlude (Applicative ((*>)), Bifunctor (second), Bool (..), ByteString, Either (..), Eq, Generic, Int, Maybe (..), MonadIO, Num ((*), (-)), Read, Show, Text, Traversable (traverse), catMaybes, const, encodeUtf8, filter, flip, fromMaybe, id, nonEmpty, pure, readMaybe, show, snd, ($), (&&&), (.), (<$>), (<&>))
+import UnliftIO (mapConcurrently)
+import Yesod (MonadLogger, MonadResource, ToContent (..), ToTypedContent (..), YesodPersist (runDB), lookupGetParam, sendResponseStatus)
 import Yesod.Core (logWarn)
 
 
@@ -108,8 +116,8 @@ data OrderArrangement = ASC | DESC
     deriving (Eq, Show, Read)
 
 
-getPackageListR :: Handler PackageListRes
-getPackageListR = do
+getPackageIndexR :: Handler PackageListRes
+getPackageIndexR = do
     osPredicate <-
         getOsVersionQuery <&> \case
             Nothing -> const True
@@ -124,27 +132,39 @@ getPackageListR = do
             query <- T.strip . fromMaybe (packageListQuery defaults) <$> lookupGetParam "query"
             runDB $
                 runConduit $
-                    searchServices category query
+                    serviceQuerySource category query
+                        -- group conduit pipeline by pkg id
                         .| collateVersions
-                        .| zipCategories
-                        -- empty list since there are no requested packages in this case
-                        .| filterLatestVersionFromSpec []
-                        .| filterPkgOsCompatible osPredicate
+                        -- filter out versions of apps that are incompatible with the OS predicate
+                        .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
+                        -- prune empty version sets
+                        .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
+                        -- grab the latest matching version if it exists
+                        .| concatMapC (\(a, b) -> (a,b,) <$> (selectLatestVersionFromSpec (const Any) b))
+                        -- construct
+                        .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> getCategoriesFor a)
                         -- pages start at 1 for some reason. TODO: make pages start at 0
                         .| (dropC (limit' * (page - 1)) *> takeC limit')
                         .| sinkList
         Just packages' -> do
             -- for each item in list get best available from version range
-            let vMap = (packageReqId &&& packageReqVersion) <$> packages'
+            let packageRanges = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages')
             runDB
                 -- TODO could probably be better with sequenceConduits
                 . runConduit
-                $ getPkgData (packageReqId <$> packages')
+                $ getPkgDataSource (packageReqId <$> packages')
+                    -- group conduit pipeline by pkg id
                     .| collateVersions
-                    .| zipCategories
-                    .| filterLatestVersionFromSpec vMap
-                    .| filterPkgOsCompatible osPredicate
+                    -- filter out versions of apps that are incompatible with the OS predicate
+                    .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
+                    -- prune empty version sets
+                    .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
+                    -- grab the latest matching version if it exists
+                    .| concatMapC (\(a, b) -> (a,b,) <$> (selectLatestVersionFromSpec packageRanges b))
+                    -- construct
+                    .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> getCategoriesFor a)
                     .| sinkList
+
     -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
     pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
     PackageListRes <$> mapConcurrently constructPackageListApiRes pkgsWithDependencies
@@ -165,7 +185,8 @@ getPackageListR = do
                     Left _ ->
                         do
                             let e = InvalidParamsE "get:ids" ids
-                            $logWarn (show e) sendResponseStatus status400 e
+                            $logWarn (show e)
+                            sendResponseStatus status400 e
                     Right a -> pure a
         getCategoryQuery :: Handler (Maybe Text)
         getCategoryQuery =
@@ -175,7 +196,8 @@ getPackageListR = do
                     Nothing ->
                         do
                             let e = InvalidParamsE "get:category" c
-                            $logWarn (show e) sendResponseStatus status400 e
+                            $logWarn (show e)
+                            sendResponseStatus status400 e
                     Just t -> pure $ Just t
         getPageQuery :: Handler Int
         getPageQuery =
@@ -185,7 +207,8 @@ getPackageListR = do
                     Nothing ->
                         do
                             let e = InvalidParamsE "get:page" p
-                            $logWarn (show e) sendResponseStatus status400 e
+                            $logWarn (show e)
+                            sendResponseStatus status400 e
                     Just t -> pure $ case t of
                         0 -> 1 -- disallow page 0 so offset is not negative
                         _ -> t
@@ -197,7 +220,8 @@ getPackageListR = do
                     Nothing ->
                         do
                             let e = InvalidParamsE "get:per-page" pp
-                            $logWarn (show e) sendResponseStatus status400 e
+                            $logWarn (show e)
+                            sendResponseStatus status400 e
                     Just l -> pure l
         getOsVersionQuery :: Handler (Maybe VersionRange)
         getOsVersionQuery =
@@ -207,7 +231,8 @@ getPackageListR = do
                     Left _ ->
                         do
                             let e = InvalidParamsE "get:eos-version-compat" osv
-                            $logWarn (show e) sendResponseStatus status400 e
+                            $logWarn (show e)
+                            sendResponseStatus status400 e
                     Right v -> pure $ Just v
         getPackageDependencies ::
             (MonadIO m, MonadLogger m) =>
@@ -225,13 +250,13 @@ getPackageListR = do
         getPackageDependencies osPredicate PackageMetadata{packageMetadataPkgId = pkg, packageMetadataPkgVersionRecords = pkgVersions, packageMetadataPkgCategories = pkgCategories, packageMetadataPkgVersion = pkgVersion} =
             do
                 let pkgId = PkgRecordKey pkg
-                let pkgVersions' = versionRecordNumber . entityVal <$> pkgVersions
-                let pkgCategories' = entityVal <$> pkgCategories
+                let pkgVersions' = versionRecordNumber <$> pkgVersions
+                let pkgCategories' = pkgCategories
                 pkgDepInfo <- getPkgDependencyData pkgId pkgVersion
                 pkgDepInfoWithVersions <- traverse zipDependencyVersions pkgDepInfo
                 let compatiblePkgDepInfo = fmap (filterDependencyOsCompatible osPredicate) pkgDepInfoWithVersions
                 res <- catMaybes <$> traverse filterDependencyBestVersion compatiblePkgDepInfo
-                pure (pkgId, pkgCategories', pkgVersions', pkgVersion, res)
+                pure (pkgId, pkgCategories', NE.toList pkgVersions', pkgVersion, res)
         constructPackageListApiRes ::
             (MonadResource m, MonadReader r m, Has AppSettings r, Has PkgRepo r) =>
             ( Key PkgRecord
@@ -255,8 +280,8 @@ getPackageListR = do
                     { packageResIcon = encodeBase64 icon -- pass through raw JSON Value, we have checked its correct parsing above
                     , packageResManifest = unsafeFromJust . decode $ manifest
                     , packageResCategories = categoryName <$> pkgCategories
-                    , packageResInstructions = basicRender $ InstructionsR _ pkgId
-                    , packageResLicense = basicRender $ LicenseR _ pkgId
+                    , packageResInstructions = basicRender $ InstructionsR V0 pkgId
+                    , packageResLicense = basicRender $ LicenseR V0 pkgId
                     , packageResVersions = pkgVersions
                     , packageResDependencies = HM.fromList deps
                     }

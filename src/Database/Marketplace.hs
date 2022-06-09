@@ -1,8 +1,9 @@
+{-# LANGUAGE BlockArguments #-}
+{-# HLINT ignore "Fuse on/on" #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
-{-# HLINT ignore "Fuse on/on" #-}
 
 module Database.Marketplace where
 
@@ -82,25 +83,26 @@ import Startlude (
     Maybe (..),
     Monad,
     MonadIO,
+    NonEmpty,
     ReaderT,
     Show,
     Text,
     headMay,
-    lift,
     snd,
     sortOn,
     ($),
     ($>),
     (.),
     (<$>),
+    (<<$>>),
  )
 
 
 data PackageMetadata = PackageMetadata
     { packageMetadataPkgId :: !PkgId
-    , packageMetadataPkgVersionRecords :: ![Entity VersionRecord]
-    , packageMetadataPkgCategories :: ![Entity Category]
+    , packageMetadataPkgVersionRecords :: !(NonEmpty VersionRecord)
     , packageMetadataPkgVersion :: !Version
+    , packageMetadataPkgCategories :: ![Category]
     }
     deriving (Eq, Show)
 data PackageDependencyMetadata = PackageDependencyMetadata
@@ -111,12 +113,12 @@ data PackageDependencyMetadata = PackageDependencyMetadata
     deriving (Eq, Show)
 
 
-searchServices ::
+serviceQuerySource ::
     (MonadResource m, MonadIO m) =>
     Maybe Text ->
     Text ->
     ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
-searchServices Nothing query = selectSource $ do
+serviceQuerySource Nothing query = selectSource $ do
     service <- from $ table @VersionRecord
     where_
         ( (service ^. VersionRecordDescShort `ilike` (%) ++. val query ++. (%))
@@ -130,7 +132,7 @@ searchServices Nothing query = selectSource $ do
         , desc (service ^. VersionRecordUpdatedAt)
         ]
     pure service
-searchServices (Just category) query = selectSource $ do
+serviceQuerySource (Just category) query = selectSource $ do
     services <-
         from
             ( do
@@ -162,8 +164,8 @@ searchServices (Just category) query = selectSource $ do
     pure services
 
 
-getPkgData :: (MonadResource m, MonadIO m) => [PkgId] -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
-getPkgData pkgs = selectSource $ do
+getPkgDataSource :: (MonadResource m, MonadIO m) => [PkgId] -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
+getPkgDataSource pkgs = selectSource $ do
     pkgData <- from $ table @VersionRecord
     where_ (pkgData ^. VersionRecordPkgId `in_` valList (PkgRecordKey <$> pkgs))
     pure pkgData
@@ -188,29 +190,24 @@ getPkgDependencyData pkgId pkgVersion = select $ do
         )
 
 
-zipCategories ::
+getCategoriesFor ::
     MonadUnliftIO m =>
-    ConduitT
-        (PkgId, [Entity VersionRecord])
-        (PkgId, [Entity VersionRecord], [Entity Category])
-        (ReaderT SqlBackend m)
-        ()
-zipCategories = awaitForever $ \(pkg, vers) -> do
-    raw <- lift $
-        select $ do
-            (sc :& cat) <-
-                from $
-                    table @PkgCategory
-                        `innerJoin` table @Category
-                        `on` (\(sc :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
-            where_ (sc ^. PkgCategoryPkgId ==. val (PkgRecordKey pkg))
-            pure cat
-    yield (pkg, vers, raw)
+    PkgId ->
+    ReaderT SqlBackend m [Category]
+getCategoriesFor pkg =
+    entityVal <<$>> select do
+        (sc :& cat) <-
+            from $
+                table @PkgCategory
+                    `innerJoin` table @Category
+                    `on` (\(sc :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
+        where_ (sc ^. PkgCategoryPkgId ==. val (PkgRecordKey pkg))
+        pure cat
 
 
 collateVersions ::
     MonadUnliftIO m =>
-    ConduitT (Entity VersionRecord) (PkgId, [Entity VersionRecord]) (ReaderT SqlBackend m) ()
+    ConduitT (Entity VersionRecord) (PkgId, [VersionRecord]) (ReaderT SqlBackend m) ()
 collateVersions = awaitForever $ \v0 -> do
     let pkg = unPkgRecordKey . versionRecordPkgId $ entityVal v0
     let pull = do
@@ -221,7 +218,7 @@ collateVersions = awaitForever $ \v0 -> do
                     let pkg' = unPkgRecordKey . versionRecordPkgId $ entityVal vn
                     if pkg == pkg' then pure (Just vn) else leftover vn $> Nothing
     ls <- unfoldM pull
-    yield (pkg, v0 : ls)
+    yield (pkg, fmap entityVal $ v0 : ls)
 
 
 zipDependencyVersions ::

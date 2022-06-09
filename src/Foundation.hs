@@ -62,7 +62,6 @@ import Database.Persist.Sql (
     SqlPersistT,
     runSqlPool,
  )
-import Lib.Registry (S9PK)
 import Yesod.Core (
     AuthResult (Authorized, Unauthorized),
     LogLevel (..),
@@ -112,7 +111,7 @@ import Lib.PkgRepository (
     EosRepo,
     PkgRepo,
  )
-import Lib.Types.AppIndex (PkgId)
+import Lib.Types.AppIndex (PkgId, S9PK)
 import Model (
     Admin (..),
     Key (AdminKey),

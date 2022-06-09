@@ -1,16 +1,20 @@
+{-# LANGUAGE QuasiQuotes #-}
+
 module Handler.Util where
 
 import Control.Monad.Reader.Has (
     Has,
     MonadReader,
  )
+import Data.Attoparsec.Text (Parser, parseOnly)
+import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
 import Lib.PkgRepository (PkgRepo, getHash)
 import Lib.Types.AppIndex (PkgId)
 import Lib.Types.Emver (
-    Version (Version),
+    Version,
     VersionRange,
  )
 import Network.HTTP.Types (
@@ -19,29 +23,35 @@ import Network.HTTP.Types (
  )
 import Startlude (
     Bool (..),
+    Either (..),
     Foldable (foldMap),
     Maybe (..),
+    Monoid (..),
     Semigroup ((<>)),
     Text,
+    decodeUtf8,
     fromMaybe,
+    fst,
     isSpace,
     not,
     pure,
     readMaybe,
+    ($),
     (.),
     (<$>),
-    (>>=),, ($)
+    (>>=),
  )
 import UnliftIO (MonadUnliftIO)
 import Yesod (
     MonadHandler,
-    RenderRoute (Route),
+    RenderRoute (..),
     TypedContent (..),
     lookupGetParam,
     sendResponseStatus,
     toContent,
     typePlain,
  )
+import Yesod.Core (addHeader)
 
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
@@ -81,3 +91,13 @@ addPackageHeader pkg version = do
 
 basicRender :: RenderRoute a => Route a -> Text
 basicRender = TL.toStrict . TB.toLazyText . foldMap (mappend (TB.singleton '/') . TB.fromText) . fst . renderRoute
+
+
+queryParamAs :: MonadHandler m => Text -> Parser a -> m (Maybe a)
+queryParamAs k p =
+    lookupGetParam k >>= \case
+        Nothing -> pure Nothing
+        Just x -> case parseOnly p x of
+            Left e ->
+                sendResponseText status400 [i|Invalid Request! The query parameter '#{k}' failed to parse: #{e}|]
+            Right a -> pure (Just a)

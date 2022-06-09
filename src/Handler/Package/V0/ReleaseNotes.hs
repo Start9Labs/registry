@@ -2,12 +2,16 @@
 
 module Handler.Package.V0.ReleaseNotes where
 
-import Data.Aeson (ToJSON (..), Value (..), object, (.=))
+import Data.Aeson (ToJSON (..))
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
+import Database.Marketplace (fetchAllAppVersions)
+import Foundation (Handler, RegistryCtx (..))
+import Lib.Types.AppIndex (PkgId)
 import Lib.Types.Emver (Version)
-import Startlude (Eq, Show, Text, (.))
-import Yesod (ToContent (..), ToTypedContent (..))
+import Model (VersionRecord (..))
+import Startlude (Down (..), Eq, Show, Text, fst, pure, sortOn, ($), (&&&), (.), (<$>))
+import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), getYesod)
 
 
 newtype ReleaseNotes = ReleaseNotes {unReleaseNotes :: HashMap Version Text}
@@ -18,3 +22,18 @@ instance ToContent ReleaseNotes where
     toContent = toContent . toJSON
 instance ToTypedContent ReleaseNotes where
     toTypedContent = toTypedContent . toJSON
+
+
+getReleaseNotesR :: PkgId -> Handler ReleaseNotes
+getReleaseNotesR pkg = do
+    appConnPool <- appConnPool <$> getYesod
+    versionRecords <- runDB $ fetchAllAppVersions appConnPool pkg
+    pure $ constructReleaseNotesApiRes versionRecords
+    where
+        constructReleaseNotesApiRes :: [VersionRecord] -> ReleaseNotes
+        constructReleaseNotesApiRes vers = do
+            ReleaseNotes $
+                HM.fromList $
+                    sortOn (Down . fst) $
+                        (versionRecordNumber &&& versionRecordReleaseNotes)
+                            <$> vers

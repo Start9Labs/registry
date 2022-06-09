@@ -1,46 +1,57 @@
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
+
 module Lib.Types.AppIndex where
 
-import           Startlude
+import Startlude
 
 -- NOTE: leave eitherDecode for inline test evaluation below
-import           Control.Monad                  ( fail )
-import           Data.Aeson                     ( (.:)
-                                                , (.:?)
-                                                , FromJSON(..)
-                                                , FromJSONKey(..)
-                                                , ToJSON(..)
-                                                , ToJSONKey(..)
-                                                , withObject
-                                                )
-import qualified Data.ByteString.Lazy          as BS
-import           Data.Functor.Contravariant     ( contramap )
-import qualified Data.HashMap.Strict           as HM
-import           Data.String.Interpolate.IsString
-                                                ( i )
-import qualified Data.Text                     as T
-import           Database.Persist               ( PersistField(..)
-                                                , PersistValue(PersistText)
-                                                , SqlType(..)
-                                                )
-import           Database.Persist.Sql           ( PersistFieldSql(sqlType) )
-import           GHC.Read                       ( Read(readsPrec) )
-import           Lib.Types.Emver                ( Version
-                                                , VersionRange
-                                                )
-import           Orphans.Emver                  ( )
-import qualified Protolude.Base                as P
-                                                ( Show(..) )
-import           Web.HttpApiData                ( FromHttpApiData
-                                                , ToHttpApiData
-                                                )
-import           Yesod                          ( PathPiece(..) )
-newtype PkgId = PkgId { unPkgId :: Text }
+import Control.Monad (fail)
+import Data.Aeson (
+    FromJSON (..),
+    FromJSONKey (..),
+    ToJSON (..),
+    ToJSONKey (..),
+    withObject,
+    (.:),
+    (.:?),
+ )
+import Data.ByteString.Lazy qualified as BS
+import Data.Functor.Contravariant (contramap)
+import Data.HashMap.Strict qualified as HM
+import Data.String.Interpolate.IsString (
+    i,
+ )
+import Data.Text qualified as T
+import Database.Persist (
+    PersistField (..),
+    PersistValue (PersistText),
+    SqlType (..),
+ )
+import Database.Persist.Sql (PersistFieldSql (sqlType))
+import GHC.Read (Read (readsPrec))
+import Lib.Types.Emver (
+    Version,
+    VersionRange,
+ )
+import Orphans.Emver ()
+import Protolude.Base qualified as P (
+    Show (..),
+ )
+import System.FilePath (splitExtension, (<.>))
+import Web.HttpApiData (
+    FromHttpApiData,
+    ToHttpApiData,
+ )
+import Yesod (PathPiece (..))
+
+
+newtype PkgId = PkgId {unPkgId :: Text}
     deriving stock (Eq, Ord)
     deriving newtype (FromHttpApiData, ToHttpApiData)
 instance IsString PkgId where
@@ -62,72 +73,100 @@ instance ToJSONKey PkgId where
 instance PersistField PkgId where
     toPersistValue = PersistText . show
     fromPersistValue (PersistText t) = Right . PkgId $ toS t
-    fromPersistValue other           = Left [i|Invalid AppId: #{other}|]
+    fromPersistValue other = Left [i|Invalid AppId: #{other}|]
 instance PersistFieldSql PkgId where
     sqlType _ = SqlString
 instance PathPiece PkgId where
     fromPathPiece = fmap PkgId . fromPathPiece
-    toPathPiece   = unPkgId
+    toPathPiece = unPkgId
 data VersionInfo = VersionInfo
-    { versionInfoVersion      :: !Version
+    { versionInfoVersion :: !Version
     , versionInfoReleaseNotes :: !Text
     , versionInfoDependencies :: !(HM.HashMap PkgId VersionRange)
-    , versionInfoOsVersion    :: !Version
+    , versionInfoOsVersion :: !Version
     , versionInfoInstallAlert :: !(Maybe Text)
     }
     deriving (Eq, Show)
 
+
 data PackageDependency = PackageDependency
-    { packageDependencyOptional    :: !(Maybe Text)
-    , packageDependencyVersion     :: !VersionRange
+    { packageDependencyOptional :: !(Maybe Text)
+    , packageDependencyVersion :: !VersionRange
     , packageDependencyDescription :: !(Maybe Text)
     }
-    deriving Show
+    deriving (Show)
 instance FromJSON PackageDependency where
     parseJSON = withObject "service dependency info" $ \o -> do
-        packageDependencyOptional    <- o .:? "optional"
-        packageDependencyVersion     <- o .: "version"
+        packageDependencyOptional <- o .:? "optional"
+        packageDependencyVersion <- o .: "version"
         packageDependencyDescription <- o .:? "description"
-        pure PackageDependency { .. }
+        pure PackageDependency{..}
 data ServiceAlert = INSTALL | UNINSTALL | RESTORE | START | STOP
     deriving (Show, Eq, Generic, Hashable, Read)
 data PackageManifest = PackageManifest
-    { packageManifestId               :: !PkgId
-    , packageManifestTitle            :: !Text
-    , packageManifestVersion          :: !Version
-    , packageManifestDescriptionLong  :: !Text
+    { packageManifestId :: !PkgId
+    , packageManifestTitle :: !Text
+    , packageManifestVersion :: !Version
+    , packageManifestDescriptionLong :: !Text
     , packageManifestDescriptionShort :: !Text
-    , packageManifestReleaseNotes     :: !Text
-    , packageManifestIcon             :: !(Maybe Text)
-    , packageManifestAlerts           :: !(HM.HashMap ServiceAlert (Maybe Text))
-    , packageManifestDependencies     :: !(HM.HashMap PkgId PackageDependency)
-    , packageManifestEosVersion       :: !Version
+    , packageManifestReleaseNotes :: !Text
+    , packageManifestIcon :: !(Maybe Text)
+    , packageManifestAlerts :: !(HM.HashMap ServiceAlert (Maybe Text))
+    , packageManifestDependencies :: !(HM.HashMap PkgId PackageDependency)
+    , packageManifestEosVersion :: !Version
     }
-    deriving Show
+    deriving (Show)
 instance FromJSON PackageManifest where
     parseJSON = withObject "service manifest" $ \o -> do
-        packageManifestId               <- o .: "id"
-        packageManifestTitle            <- o .: "title"
-        packageManifestVersion          <- o .: "version"
-        packageManifestDescriptionLong  <- o .: "description" >>= (.: "long")
+        packageManifestId <- o .: "id"
+        packageManifestTitle <- o .: "title"
+        packageManifestVersion <- o .: "version"
+        packageManifestDescriptionLong <- o .: "description" >>= (.: "long")
         packageManifestDescriptionShort <- o .: "description" >>= (.: "short")
-        packageManifestIcon             <- o .: "assets" >>= (.: "icon")
-        packageManifestReleaseNotes     <- o .: "release-notes"
-        alerts                          <- o .: "alerts"
-        a                               <- for (HM.toList alerts) $ \(key, value) -> do
+        packageManifestIcon <- o .: "assets" >>= (.: "icon")
+        packageManifestReleaseNotes <- o .: "release-notes"
+        alerts <- o .: "alerts"
+        a <- for (HM.toList alerts) $ \(key, value) -> do
             alertType <- case readMaybe $ T.toUpper key of
                 Nothing -> fail "could not parse alert key as ServiceAlert"
-                Just t  -> pure t
+                Just t -> pure t
             alertDesc <- parseJSON value
             pure (alertType, alertDesc)
         let packageManifestAlerts = HM.fromList a
         packageManifestDependencies <- o .: "dependencies"
-        packageManifestEosVersion   <- o .: "eos-version"
-        pure PackageManifest { .. }
+        packageManifestEosVersion <- o .: "eos-version"
+        pure PackageManifest{..}
+
+
+newtype Extension (a :: Symbol) = Extension String deriving (Eq)
+type S9PK = Extension "s9pk"
+
+
+extension :: KnownSymbol a => Extension a -> String
+extension = symbolVal
+
+
+instance KnownSymbol a => Show (Extension a) where
+    show e@(Extension file) = file <.> extension e
+
+
+instance KnownSymbol a => Read (Extension a) where
+    readsPrec _ s = case symbolVal $ Proxy @a of
+        "" -> [(Extension s, "")]
+        other -> [(Extension file, "") | ext' == "" <.> other]
+        where
+            (file, ext') = splitExtension s
+
+
+instance KnownSymbol a => PathPiece (Extension a) where
+    fromPathPiece = readMaybe . toS
+    toPathPiece = show
+
 
 -- >>> eitherDecode testManifest :: Either String PackageManifest
 testManifest :: BS.ByteString
-testManifest = [i|{
+testManifest =
+    [i|{
   "id": "embassy-pages",
   "title": "Embassy Pages",
   "version": "0.1.3",
