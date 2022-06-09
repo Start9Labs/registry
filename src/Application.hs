@@ -165,22 +165,11 @@ import           Handler.Admin                  ( deleteCategoryR
                                                 , postPkgIndexR
                                                 , postPkgUploadR
                                                 )
-import           Handler.Apps                   ( getAppManifestR
-                                                , getAppR
-                                                )
 import           Handler.ErrorLogs              ( postErrorLogsR )
-import           Handler.Icons                  ( getIconsR
-                                                , getInstructionsR
-                                                , getLicenseR
-                                                )
 import           Handler.Marketplace            ( getEosR
                                                 , getEosVersionR
-                                                , getInfoR
-                                                , getPackageListR
-                                                , getReleaseNotesR
-                                                , getVersionLatestR
                                                 )
-import           Handler.Version                ( getPkgVersionR )
+import           Handler.Package
 import           Lib.PkgRepository              ( watchEosRepoRoot )
 import           Lib.Ssl                        ( doesSslNeedRenew
                                                 , renewSslCerts

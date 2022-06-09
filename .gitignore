@@ -36,3 +36,5 @@ start9-registry.hp
 start9-registry.pdf
 start9-registry.aux
 start9-registry.ps
+shell.nix
+testdata/

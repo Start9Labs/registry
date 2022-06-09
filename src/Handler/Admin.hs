@@ -43,6 +43,9 @@ import           Database.Queries               ( upsertPackageVersion )
 import           Foundation                     ( Handler
                                                 , RegistryCtx(..)
                                                 )
+import           Handler.Util                   ( orThrow
+                                                , sendResponseText
+                                                )
 import           Lib.PkgRepository              ( PkgRepo(PkgRepo, pkgRepoFileRoot)
                                                 , extractPkg
                                                 , getManifestLocation
@@ -109,9 +112,6 @@ import           UnliftIO.Directory             ( createDirectoryIfMissing
                                                 , removePathForcibly
                                                 , renameDirectory
                                                 , renameFile
-                                                )
-import           Util.Shared                    ( orThrow
-                                                , sendResponseText
                                                 )
 import           Yesod                          ( ToJSON(..)
                                                 , delete

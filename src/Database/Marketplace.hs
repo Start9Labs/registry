@@ -1,107 +1,127 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 {-# HLINT ignore "Fuse on/on" #-}
 
 module Database.Marketplace where
 
-import           Conduit                        ( ConduitT
-                                                , MonadResource
-                                                , MonadUnliftIO
-                                                , awaitForever
-                                                , leftover
-                                                , yield
-                                                )
-import           Control.Monad.Loops            ( unfoldM )
-import           Data.Conduit                   ( await )
-import           Database.Esqueleto.Experimental
-                                                ( (%)
-                                                , (&&.)
-                                                , (++.)
-                                                , (:&)(..)
-                                                , (==.)
-                                                , (^.)
-                                                , asc
-                                                , desc
-                                                , from
-                                                , groupBy
-                                                , ilike
-                                                , in_
-                                                , innerJoin
-                                                , on
-                                                , orderBy
-                                                , select
-                                                , selectSource
-                                                , table
-                                                , val
-                                                , valList
-                                                , where_
-                                                , (||.)
-                                                )
-import qualified Database.Persist              as P
-import           Database.Persist.Postgresql    ( ConnectionPool
-                                                , Entity(entityKey, entityVal)
-                                                , PersistEntity(Key)
-                                                , SqlBackend
-                                                , runSqlPool
-                                                )
-import           Handler.Types.Marketplace      ( PackageDependencyMetadata(..) )
-import           Lib.Types.AppIndex             ( PkgId )
-import           Lib.Types.Emver                ( Version )
-import           Model                          ( Category
-                                                , EntityField
-                                                    ( CategoryId
-                                                    , CategoryName
-                                                    , PkgCategoryCategoryId
-                                                    , PkgCategoryPkgId
-                                                    , PkgDependencyDepId
-                                                    , PkgDependencyPkgId
-                                                    , PkgDependencyPkgVersion
-                                                    , PkgRecordId
-                                                    , VersionRecordDescLong
-                                                    , VersionRecordDescShort
-                                                    , VersionRecordNumber
-                                                    , VersionRecordPkgId
-                                                    , VersionRecordTitle
-                                                    , VersionRecordUpdatedAt
-                                                    )
-                                                , Key(PkgRecordKey, unPkgRecordKey)
-                                                , PkgCategory
-                                                , PkgDependency
-                                                , PkgRecord
-                                                , VersionRecord(versionRecordNumber, versionRecordPkgId)
-                                                )
-import           Startlude                      ( ($)
-                                                , ($>)
-                                                , (.)
-                                                , (<$>)
-                                                , Applicative(pure)
-                                                , Down(Down)
-                                                , Eq((==))
-                                                , Functor(fmap)
-                                                , Maybe(..)
-                                                , Monad
-                                                , MonadIO
-                                                , ReaderT
-                                                , Text
-                                                , headMay
-                                                , lift
-                                                , snd
-                                                , sortOn
-                                                )
+import Conduit (
+    ConduitT,
+    MonadResource,
+    MonadUnliftIO,
+    awaitForever,
+    leftover,
+    yield,
+ )
+import Control.Monad.Loops (unfoldM)
+import Data.Conduit (await)
+import Database.Esqueleto.Experimental (
+    asc,
+    desc,
+    from,
+    groupBy,
+    ilike,
+    in_,
+    innerJoin,
+    on,
+    orderBy,
+    select,
+    selectSource,
+    table,
+    val,
+    valList,
+    where_,
+    (%),
+    (&&.),
+    (++.),
+    (:&) (..),
+    (==.),
+    (^.),
+    (||.),
+ )
+import Database.Persist qualified as P
+import Database.Persist.Postgresql (
+    ConnectionPool,
+    Entity (entityKey, entityVal),
+    PersistEntity (Key),
+    SqlBackend,
+    runSqlPool,
+ )
+import Lib.Types.AppIndex (PkgId)
+import Lib.Types.Emver (Version)
+import Model (
+    Category,
+    EntityField (
+        CategoryId,
+        CategoryName,
+        PkgCategoryCategoryId,
+        PkgCategoryPkgId,
+        PkgDependencyDepId,
+        PkgDependencyPkgId,
+        PkgDependencyPkgVersion,
+        PkgRecordId,
+        VersionRecordDescLong,
+        VersionRecordDescShort,
+        VersionRecordNumber,
+        VersionRecordPkgId,
+        VersionRecordTitle,
+        VersionRecordUpdatedAt
+    ),
+    Key (PkgRecordKey, unPkgRecordKey),
+    PkgCategory,
+    PkgDependency,
+    PkgRecord,
+    VersionRecord (versionRecordNumber, versionRecordPkgId),
+ )
+import Startlude (
+    Applicative (pure),
+    Down (Down),
+    Eq ((==)),
+    Functor (fmap),
+    Maybe (..),
+    Monad,
+    MonadIO,
+    ReaderT,
+    Show,
+    Text,
+    headMay,
+    lift,
+    snd,
+    sortOn,
+    ($),
+    ($>),
+    (.),
+    (<$>),
+ )
 
-type CategoryTitle = Text
 
-searchServices :: (MonadResource m, MonadIO m)
-               => Maybe CategoryTitle
-               -> Text
-               -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
+data PackageMetadata = PackageMetadata
+    { packageMetadataPkgId :: !PkgId
+    , packageMetadataPkgVersionRecords :: ![Entity VersionRecord]
+    , packageMetadataPkgCategories :: ![Entity Category]
+    , packageMetadataPkgVersion :: !Version
+    }
+    deriving (Eq, Show)
+data PackageDependencyMetadata = PackageDependencyMetadata
+    { packageDependencyMetadataPkgDependencyRecord :: !(Entity PkgDependency)
+    , packageDependencyMetadataDepPkgRecord :: !(Entity PkgRecord)
+    , packageDependencyMetadataDepVersions :: ![Entity VersionRecord]
+    }
+    deriving (Eq, Show)
+
+
+searchServices ::
+    (MonadResource m, MonadIO m) =>
+    Maybe Text ->
+    Text ->
+    ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
 searchServices Nothing query = selectSource $ do
     service <- from $ table @VersionRecord
     where_
-        (   (service ^. VersionRecordDescShort `ilike` (%) ++. val query ++. (%))
-        ||. (service ^. VersionRecordDescLong `ilike` (%) ++. val query ++. (%))
-        ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
+        ( (service ^. VersionRecordDescShort `ilike` (%) ++. val query ++. (%))
+            ||. (service ^. VersionRecordDescLong `ilike` (%) ++. val query ++. (%))
+            ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
         )
     groupBy (service ^. VersionRecordPkgId, service ^. VersionRecordNumber)
     orderBy
@@ -111,27 +131,28 @@ searchServices Nothing query = selectSource $ do
         ]
     pure service
 searchServices (Just category) query = selectSource $ do
-    services <- from
-        (do
-            (service :& _ :& cat) <-
-                from
-                $           table @VersionRecord
-                `innerJoin` table @PkgCategory
-                `on`        (\(s :& sc) -> sc ^. PkgCategoryPkgId ==. s ^. VersionRecordPkgId)
-                `innerJoin` table @Category
-                `on`        (\(_ :& sc :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
-            -- if there is a cateogry, only search in category
-            -- weight title, short, long (bitcoin should equal Bitcoin Core)
-            where_
-                $   cat
-                ^.  CategoryName
-                ==. val category
-                &&. (   (service ^. VersionRecordDescShort `ilike` (%) ++. val query ++. (%))
-                    ||. (service ^. VersionRecordDescLong `ilike` (%) ++. val query ++. (%))
-                    ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
-                    )
-            pure service
-        )
+    services <-
+        from
+            ( do
+                (service :& _ :& cat) <-
+                    from $
+                        table @VersionRecord
+                            `innerJoin` table @PkgCategory
+                            `on` (\(s :& sc) -> sc ^. PkgCategoryPkgId ==. s ^. VersionRecordPkgId)
+                            `innerJoin` table @Category
+                            `on` (\(_ :& sc :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
+                -- if there is a cateogry, only search in category
+                -- weight title, short, long (bitcoin should equal Bitcoin Core)
+                where_ $
+                    cat
+                        ^. CategoryName
+                        ==. val category
+                        &&. ( (service ^. VersionRecordDescShort `ilike` (%) ++. val query ++. (%))
+                                ||. (service ^. VersionRecordDescLong `ilike` (%) ++. val query ++. (%))
+                                ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
+                            )
+                pure service
+            )
     groupBy (services ^. VersionRecordPkgId, services ^. VersionRecordNumber)
     orderBy
         [ asc (services ^. VersionRecordPkgId)
@@ -140,48 +161,56 @@ searchServices (Just category) query = selectSource $ do
         ]
     pure services
 
+
 getPkgData :: (MonadResource m, MonadIO m) => [PkgId] -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
 getPkgData pkgs = selectSource $ do
     pkgData <- from $ table @VersionRecord
     where_ (pkgData ^. VersionRecordPkgId `in_` valList (PkgRecordKey <$> pkgs))
     pure pkgData
 
-getPkgDependencyData :: MonadIO m
-                     => Key PkgRecord
-                     -> Version
-                     -> ReaderT SqlBackend m [(Entity PkgDependency, Entity PkgRecord)]
+
+getPkgDependencyData ::
+    MonadIO m =>
+    Key PkgRecord ->
+    Version ->
+    ReaderT SqlBackend m [(Entity PkgDependency, Entity PkgRecord)]
 getPkgDependencyData pkgId pkgVersion = select $ do
     from
-        (do
+        ( do
             (pkgDepRecord :& depPkgRecord) <-
-                from
-                $           table @PkgDependency
-                `innerJoin` table @PkgRecord
-                `on`        (\(pdr :& dpr) -> dpr ^. PkgRecordId ==. pdr ^. PkgDependencyDepId)
+                from $
+                    table @PkgDependency
+                        `innerJoin` table @PkgRecord
+                        `on` (\(pdr :& dpr) -> dpr ^. PkgRecordId ==. pdr ^. PkgDependencyDepId)
             where_ (pkgDepRecord ^. PkgDependencyPkgId ==. val pkgId)
             where_ (pkgDepRecord ^. PkgDependencyPkgVersion ==. val pkgVersion)
             pure (pkgDepRecord, depPkgRecord)
         )
 
-zipCategories :: MonadUnliftIO m
-              => ConduitT
-                     (PkgId, [Entity VersionRecord])
-                     (PkgId, [Entity VersionRecord], [Entity Category])
-                     (ReaderT SqlBackend m)
-                     ()
+
+zipCategories ::
+    MonadUnliftIO m =>
+    ConduitT
+        (PkgId, [Entity VersionRecord])
+        (PkgId, [Entity VersionRecord], [Entity Category])
+        (ReaderT SqlBackend m)
+        ()
 zipCategories = awaitForever $ \(pkg, vers) -> do
-    raw <- lift $ select $ do
-        (sc :& cat) <-
-            from
-            $           table @PkgCategory
-            `innerJoin` table @Category
-            `on`        (\(sc :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
-        where_ (sc ^. PkgCategoryPkgId ==. val (PkgRecordKey pkg))
-        pure cat
+    raw <- lift $
+        select $ do
+            (sc :& cat) <-
+                from $
+                    table @PkgCategory
+                        `innerJoin` table @Category
+                        `on` (\(sc :& cat) -> sc ^. PkgCategoryCategoryId ==. cat ^. CategoryId)
+            where_ (sc ^. PkgCategoryPkgId ==. val (PkgRecordKey pkg))
+            pure cat
     yield (pkg, vers, raw)
 
-collateVersions :: MonadUnliftIO m
-                => ConduitT (Entity VersionRecord) (PkgId, [Entity VersionRecord]) (ReaderT SqlBackend m) ()
+
+collateVersions ::
+    MonadUnliftIO m =>
+    ConduitT (Entity VersionRecord) (PkgId, [Entity VersionRecord]) (ReaderT SqlBackend m) ()
 collateVersions = awaitForever $ \v0 -> do
     let pkg = unPkgRecordKey . versionRecordPkgId $ entityVal v0
     let pull = do
@@ -194,32 +223,39 @@ collateVersions = awaitForever $ \v0 -> do
     ls <- unfoldM pull
     yield (pkg, v0 : ls)
 
-zipDependencyVersions :: (Monad m, MonadIO m)
-                      => (Entity PkgDependency, Entity PkgRecord)
-                      -> ReaderT SqlBackend m PackageDependencyMetadata
+
+zipDependencyVersions ::
+    (Monad m, MonadIO m) =>
+    (Entity PkgDependency, Entity PkgRecord) ->
+    ReaderT SqlBackend m PackageDependencyMetadata
 zipDependencyVersions (pkgDepRecord, depRecord) = do
     let pkgDbId = entityKey depRecord
     depVers <- select $ do
         v <- from $ table @VersionRecord
         where_ $ v ^. VersionRecordPkgId ==. val pkgDbId
         pure v
-    pure $ PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDepRecord
-                                     , packageDependencyMetadataDepPkgRecord        = depRecord
-                                     , packageDependencyMetadataDepVersions         = depVers
-                                     }
+    pure $
+        PackageDependencyMetadata
+            { packageDependencyMetadataPkgDependencyRecord = pkgDepRecord
+            , packageDependencyMetadataDepPkgRecord = depRecord
+            , packageDependencyMetadataDepVersions = depVers
+            }
+
 
 fetchAllAppVersions :: MonadUnliftIO m => ConnectionPool -> PkgId -> m [VersionRecord]
 fetchAllAppVersions appConnPool appId = do
     entityAppVersions <- runSqlPool (P.selectList [VersionRecordPkgId P.==. PkgRecordKey appId] []) appConnPool
     pure $ entityVal <$> entityAppVersions
 
+
 fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity PkgRecord, P.Entity VersionRecord))
 fetchLatestApp appId = fmap headMay . sortResults . select $ do
     (service :& version) <-
-        from
-        $           table @PkgRecord
-        `innerJoin` table @VersionRecord
-        `on`        (\(service :& version) -> service ^. PkgRecordId ==. version ^. VersionRecordPkgId)
+        from $
+            table @PkgRecord
+                `innerJoin` table @VersionRecord
+                `on` (\(service :& version) -> service ^. PkgRecordId ==. version ^. VersionRecordPkgId)
     where_ (service ^. PkgRecordId ==. val (PkgRecordKey appId))
     pure (service, version)
-    where sortResults = fmap $ sortOn (Down . versionRecordNumber . entityVal . snd)
+    where
+        sortResults = fmap $ sortOn (Down . versionRecordNumber . entityVal . snd)

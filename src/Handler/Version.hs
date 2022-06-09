@@ -14,12 +14,12 @@ import           Data.String.Interpolate.IsString
                                                 ( i )
 import           Foundation                     ( Handler )
 import           Handler.Types.Status           ( AppVersionRes(AppVersionRes) )
+import           Handler.Util                   ( orThrow )
 import           Lib.Error                      ( S9Error(NotFoundE) )
 import           Lib.PkgRepository              ( getBestVersion )
 import           Lib.Types.AppIndex             ( PkgId )
 import           Network.HTTP.Types.Status      ( status404 )
 import           Util.Shared                    ( getVersionSpecFromQuery
-                                                , orThrow
                                                 , versionPriorityFromQueryIsMin
                                                 )
 

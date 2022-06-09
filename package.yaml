@@ -2,15 +2,10 @@ name: start9-registry
 version: 0.2.1
 
 default-extensions:
-  - FlexibleInstances
-  - GeneralizedNewtypeDeriving
-  - LambdaCase
-  - MultiWayIf
-  - NamedFieldPuns
   - NoImplicitPrelude
-  - NumericUnderscores
+  - GHC2021
+  - LambdaCase
   - OverloadedStrings
-  - StandaloneDeriving
 
 dependencies:
   - base >=4.12 && <5
