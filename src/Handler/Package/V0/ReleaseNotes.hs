@@ -5,7 +5,7 @@ module Handler.Package.V0.ReleaseNotes where
 import Data.Aeson (ToJSON (..))
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
-import Database.Marketplace (fetchAllAppVersions)
+import Database.Queries (fetchAllAppVersions)
 import Foundation (Handler, RegistryCtx (..))
 import Lib.Types.AppIndex (PkgId)
 import Lib.Types.Emver (Version)

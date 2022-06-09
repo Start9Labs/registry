@@ -5,7 +5,7 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
 import Data.List (lookup)
-import Database.Marketplace (fetchLatestApp)
+import Database.Queries (fetchLatestApp)
 import Foundation (Handler)
 import Lib.Error (S9Error (..))
 import Lib.Types.AppIndex (PkgId)

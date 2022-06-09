@@ -6,7 +6,7 @@ module Handler.Package.V0.S9PK where
 
 import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
-import Database.Queries (createMetric, fetchApp, fetchAppVersion)
+import Database.Queries (createMetric, fetchAppVersion)
 import Foundation (Handler)
 import GHC.Show (show)
 import Handler.Util (addPackageHeader, getVersionSpecFromQuery, orThrow, versionPriorityFromQueryIsMin)
@@ -40,17 +40,10 @@ getAppR file = do
 
 recordMetrics :: PkgId -> Version -> Handler ()
 recordMetrics pkg appVersion = do
-    sa <- runDB $ fetchApp pkg
-    case sa of
+    existingVersion <- runDB $ fetchAppVersion pkg appVersion
+    case existingVersion of
         Nothing ->
             do
-                $logError [i|#{pkg} not found in database|]
+                $logError [i|#{pkg}@#{appVersion} not found in database|]
                 notFound
-        Just _ -> do
-            existingVersion <- runDB $ fetchAppVersion pkg appVersion
-            case existingVersion of
-                Nothing ->
-                    do
-                        $logError [i|#{pkg}@#{appVersion} not found in database|]
-                        notFound
-                Just _ -> runDB $ createMetric pkg appVersion
+        Just _ -> runDB $ createMetric pkg appVersion
