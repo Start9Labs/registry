@@ -17,6 +17,7 @@ import Lib.Types.Emver (Version)
 import Model (
     Key (PkgRecordKey, VersionRecordKey),
     Metric (Metric),
+    PkgDependency (..),
     PkgRecord (PkgRecord),
     VersionRecord (VersionRecord),
  )
@@ -100,7 +101,6 @@ import Model (
     ),
     Key (unPkgRecordKey),
     PkgCategory,
-    PkgDependency (pkgDependencyPkgId),
     VersionRecord (versionRecordNumber, versionRecordPkgId),
  )
 import Startlude (
@@ -221,7 +221,7 @@ getDependencyVersions ::
     PkgDependency ->
     ReaderT SqlBackend m [VersionRecord]
 getDependencyVersions pkgDepRecord = do
-    let pkgDbId = pkgDependencyPkgId pkgDepRecord
+    let pkgDbId = pkgDependencyDepId pkgDepRecord
     depVers <- select $ do
         v <- from $ table @VersionRecord
         where_ $ v ^. VersionRecordPkgId ==. val pkgDbId
