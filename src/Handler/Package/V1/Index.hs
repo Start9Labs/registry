@@ -115,7 +115,7 @@ data PackageMetadata = PackageMetadata
     deriving (Eq, Show)
 
 
-getPackageIndexR :: Handler (PackageListRes 'V1)
+getPackageIndexR :: Handler PackageListRes
 getPackageIndexR = do
     osPredicate <-
         getOsVersionQuery <&> \case
@@ -191,7 +191,7 @@ getPackageDependencies ::
     (MonadIO m, MonadLogger m, MonadResource m, Has PkgRepo r, MonadReader r m) =>
     (Version -> Bool) ->
     PackageMetadata ->
-    ReaderT SqlBackend m (HashMap PkgId (DependencyRes 'V1))
+    ReaderT SqlBackend m (HashMap PkgId DependencyRes)
 getPackageDependencies osPredicate PackageMetadata{packageMetadataPkgId = pkg, packageMetadataPkgVersion = pkgVersion} =
     do
         pkgDepInfo <- getPkgDependencyData pkg pkgVersion
@@ -208,8 +208,8 @@ getPackageDependencies osPredicate PackageMetadata{packageMetadataPkgId = pkg, p
 constructPackageListApiRes ::
     (MonadResource m, MonadReader r m, Has AppSettings r, Has PkgRepo r) =>
     PackageMetadata ->
-    HashMap PkgId (DependencyRes a) ->
-    m (PackageRes a)
+    HashMap PkgId DependencyRes ->
+    m PackageRes
 constructPackageListApiRes PackageMetadata{..} dependencies = do
     settings <- ask @_ @_ @AppSettings
     let pkgId = packageMetadataPkgId

@@ -54,9 +54,6 @@ dependencies:
   - protolude
   - rainbow
   - shakespeare
-  - singletons # sorry
-  - singletons-base # sorry
-  - singletons-th # sorry
   - template-haskell
   - terminal-progress-bar
   - text

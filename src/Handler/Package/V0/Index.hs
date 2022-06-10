@@ -6,11 +6,8 @@ module Handler.Package.V0.Index where
 import Foundation (Handler)
 import Handler.Package.Api (PackageListRes)
 import Handler.Package.V1.Index qualified
-import Handler.Types.Api (ApiVersion (..))
-import Startlude ((<$>))
-import Unsafe.Coerce (unsafeCoerce)
 
 
--- this use of unsafecoerce is OK because the 'V0 witness does not appear in any way in the representation
-getPackageIndexR :: Handler (PackageListRes 'V0)
-getPackageIndexR = unsafeCoerce <$> Handler.Package.V1.Index.getPackageIndexR
+-- implementation is the same but we will encode different payloads on the way out
+getPackageIndexR :: Handler PackageListRes
+getPackageIndexR = Handler.Package.V1.Index.getPackageIndexR

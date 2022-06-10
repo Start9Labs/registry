@@ -9,13 +9,23 @@ module Handler.Package.Api where
 
 import Data.ByteString.Base64 (encodeBase64)
 import Data.HashMap.Strict
-import Data.Singletons (TyCon)
-import Data.Singletons.Sigma (Sigma (..))
 import Data.String.Interpolate.IsString (i)
-import Handler.Types.Api (ApiVersion (..), SApiVersion (..))
+import Handler.Types.Api (ApiResponse (..), ApiVersion (..))
 import Lib.Types.Core
 import Lib.Types.Emver
-import Startlude
+import Startlude (
+    ByteString,
+    Eq,
+    Generic,
+    NonEmpty,
+    Show,
+    Text,
+    snd,
+    ($),
+    (&),
+    (.),
+    (<$>),
+ )
 import Yesod
 
 
@@ -23,72 +33,49 @@ dataUrl :: (ContentType, ByteString) -> Text
 dataUrl (ct, payload) = [i|data:#{ct};base64,#{encodeBase64 payload}|]
 
 
-type PackageListRes :: ApiVersion -> Type
-newtype PackageListRes a = PackageListRes [PackageRes a]
+newtype PackageListRes = PackageListRes [PackageRes]
     deriving (Generic)
-instance ToJSON (PackageRes a) => ToJSON (PackageListRes a) where
-    toJSON (PackageListRes a) = toJSON a
-instance ToJSON (PackageRes a) => ToContent (PackageListRes a) where
-    toContent = toContent . toJSON
-instance ToJSON (PackageRes a) => ToTypedContent (PackageListRes a) where
-    toTypedContent = toTypedContent . toJSON
+instance ApiResponse PackageListRes where
+    apiEncode V0 (PackageListRes pkgs) = toJSON $ apiEncode V0 <$> pkgs
+    apiEncode V1 (PackageListRes pkgs) = toJSON $ apiEncode V1 <$> pkgs
 
 
-data PackageRes a = PackageRes
+data PackageRes = PackageRes
     { packageResIcon :: !(ContentType, ByteString)
     , packageResManifest :: !Value -- PackageManifest
     , packageResCategories :: ![Text]
     , packageResInstructions :: !Text
     , packageResLicense :: !Text
     , packageResVersions :: !(NonEmpty Version)
-    , packageResDependencies :: !(HashMap PkgId (DependencyRes a))
+    , packageResDependencies :: !(HashMap PkgId DependencyRes)
     }
     deriving (Show, Generic)
 
 
-instance ToJSON (PackageRes 'V0) where
-    toJSON PackageRes{..} =
+instance ApiResponse PackageRes where
+    apiEncode v PackageRes{..} =
         object
-            [ "icon" .= encodeBase64 (snd packageResIcon)
+            [ "icon"
+                .= ( packageResIcon & case v of
+                        V0 -> encodeBase64 . snd
+                        V1 -> dataUrl
+                   )
             , "license" .= packageResLicense
             , "instructions" .= packageResInstructions
             , "manifest" .= packageResManifest
             , "categories" .= packageResCategories
             , "versions" .= packageResVersions
-            , "dependency-metadata" .= packageResDependencies
-            ]
-instance ToJSON (PackageRes 'V1) where
-    toJSON PackageRes{..} =
-        object
-            [ "icon" .= dataUrl packageResIcon
-            , "license" .= packageResLicense
-            , "instructions" .= packageResInstructions
-            , "manifest" .= packageResManifest
-            , "categories" .= packageResCategories
-            , "versions" .= packageResVersions
-            , "dependency-metadata" .= packageResDependencies
+            , "dependency-metadata" .= (apiEncode v <$> packageResDependencies)
             ]
 
 
-instance ToJSON (Sigma ApiVersion (TyCon PackageListRes)) where
-    toJSON (s :&: t) = case s of
-        SV0 -> toJSON t
-        SV1 -> toJSON t
-instance ToContent (Sigma ApiVersion (TyCon PackageListRes)) where
-    toContent = toContent . toJSON
-instance ToTypedContent (Sigma ApiVersion (TyCon PackageListRes)) where
-    toTypedContent = toTypedContent . toJSON
-
-
-type DependencyRes :: ApiVersion -> Type
-data DependencyRes a = DependencyRes
+data DependencyRes = DependencyRes
     { dependencyResTitle :: !Text
     , dependencyResIcon :: !(ContentType, ByteString)
     }
     deriving (Eq, Show)
 
 
-instance ToJSON (DependencyRes 'V0) where
-    toJSON DependencyRes{..} = object ["icon" .= encodeBase64 (snd dependencyResIcon), "title" .= dependencyResTitle]
-instance ToJSON (DependencyRes 'V1) where
-    toJSON DependencyRes{..} = object ["icon" .= dataUrl dependencyResIcon, "title" .= dependencyResTitle]
+instance ApiResponse DependencyRes where
+    apiEncode V0 DependencyRes{..} = object ["icon" .= encodeBase64 (snd dependencyResIcon), "title" .= dependencyResTitle]
+    apiEncode V1 DependencyRes{..} = object ["icon" .= dataUrl dependencyResIcon, "title" .= dependencyResTitle]

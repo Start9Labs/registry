@@ -6,11 +6,9 @@
 
 module Handler.Types.Api where
 
-import Data.Ord.Singletons
-import Data.Singletons.TH
+import Data.Aeson (Value)
 import GHC.Read (Read (..))
 import GHC.Show (show)
-import Prelude.Singletons
 import Startlude (
     Eq,
     Maybe (..),
@@ -20,14 +18,10 @@ import Startlude (
 import Yesod (PathPiece (..))
 
 
-$( singletons
-    [d|
-        data ApiVersion
-            = V0
-            | V1
-            deriving (Eq, Ord)
-        |]
- )
+data ApiVersion
+    = V0
+    | V1
+    deriving (Eq, Ord)
 
 
 instance Show ApiVersion where
@@ -47,3 +41,7 @@ instance PathPiece ApiVersion where
     fromPathPiece "v0" = Just V0
     fromPathPiece "v1" = Just V1
     fromPathPiece _ = Nothing
+
+
+class ApiResponse a where
+    apiEncode :: ApiVersion -> a -> Value
