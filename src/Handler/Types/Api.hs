@@ -1,7 +1,16 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 module Handler.Types.Api where
 
+import Data.Ord.Singletons
+import Data.Singletons.TH
 import GHC.Read (Read (..))
 import GHC.Show (show)
+import Prelude.Singletons
 import Startlude (
     Eq,
     Maybe (..),
@@ -11,10 +20,14 @@ import Startlude (
 import Yesod (PathPiece (..))
 
 
-data ApiVersion
-    = V0
-    | V1
-    deriving (Eq, Ord)
+$( singletons
+    [d|
+        data ApiVersion
+            = V0
+            | V1
+            deriving (Eq, Ord)
+        |]
+ )
 
 
 instance Show ApiVersion where
