@@ -70,7 +70,7 @@ import Handler.Admin (
     PackageList (..),
  )
 import Lib.External.AppMgr (sourceManifest)
-import Lib.Types.AppIndex (
+import Lib.Types.Core (
     PkgId (..),
  )
 import Lib.Types.Emver (Version (..))
