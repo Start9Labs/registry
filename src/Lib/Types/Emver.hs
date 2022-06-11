@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RankNTypes #-}
 
 -- |
@@ -59,12 +60,17 @@ import Startlude (
     Show,
     String,
     Word,
+    Word64,
     either,
     flip,
+    fst,
     id,
+    isRight,
     on,
+    otherwise,
     seq,
     show,
+    snd,
     ($),
     ($>),
     (&&),
@@ -77,13 +83,13 @@ import Startlude (
 
 import Control.Monad.Fail (fail)
 import Data.Aeson (ToJSONKey)
-import qualified Data.Attoparsec.Text as Atto
-import qualified Data.Text as T
-import GHC.Base (error)
-import qualified GHC.Read as GHC (
+import Data.Attoparsec.Text qualified as Atto
+import Data.Text qualified as T
+import GHC.Base (Ord (..), error)
+import GHC.Read qualified as GHC (
     readsPrec,
  )
-import qualified GHC.Show as GHC (
+import GHC.Show qualified as GHC (
     show,
  )
 
@@ -171,6 +177,27 @@ geq :: Operator
 geq = Left LT
 
 
+faces :: Operator -> (Bool, Bool) -- faces left right both or neither, fst is "faces left" snd is "faces right"
+-- eq faces neither
+faces (Right EQ) = (False, False)
+-- neq faces both
+faces (Left EQ) = (True, True)
+-- lt/e faces left
+faces (Right LT) = (True, False)
+faces (Left GT) = (True, False)
+-- gt/e faces right
+faces (Right GT) = (False, True)
+faces (Left LT) = (False, True)
+
+
+fr :: Operator -> Bool
+fr = snd . faces
+
+
+fl :: Operator -> Bool
+fl = fst . faces
+
+
 -- | 'VersionRange' is the algebra of sets of versions. They can be constructed by having an 'Anchor' term which
 -- compares against the target version, or can be described with 'Conj' which is a conjunction, or 'Disj', which is a
 -- disjunction. The 'Any' and 'All' terms are primarily there to round out the algebra, but 'Any' is also exposed due to
@@ -223,119 +250,113 @@ disj a b = reduce $ Disj a b
 
 
 reduce :: VersionRange -> VersionRange
+-- atomic forms
 reduce Any = Any
 reduce None = None
 reduce vr@(Anchor _ _) = vr
+-- conj units
 reduce (Conj Any vr) = vr
 reduce (Conj vr Any) = vr
+-- conj annihilators
 reduce (Conj None _) = None
 reduce (Conj _ None) = None
+-- disj annihilators
 reduce (Disj Any _) = Any
 reduce (Disj _ Any) = Any
+-- disj units
 reduce (Disj None vr) = vr
 reduce (Disj vr None) = vr
+-- primitive conjunction reduction
 reduce x@(Conj a@(Anchor op pt) b@(Anchor op' pt')) = case compare pt pt' of
-    GT -> reduce (Conj b a) -- conj commutes so we can make normalization order the points
-    EQ -> case (isRight op, isRight op', isRight op == isRight op', primOrd op == primOrd op') of
+    -- conj commutes so we can make normalization order the points
+    GT -> reduce (Conj b a)
+    -- trivial cases where the points are identical
+    EQ -> case (isRight op, isRight op == isRight op', primOrd op == primOrd op') of
         -- the theorems found here will elucidate what is going on
         -- https://faculty.uml.edu/klevasseur/ads/s-laws-of-set-theory.html
         -- conj idempodent law: these sets are identical
-        (_, _, True, True) -> a
+        (_, True, True) -> a
         -- conj complement law: these sets are opposites
-        (_, _, False, True) -> None
+        (_, False, True) -> None
         -- inequality incompatibility: these sets do not overlap
-        (True, True, _, False) -> None
+        (True, True, False) -> None
         -- conj absorption law (right): the right set is more specific
-        (False, True, _, False) -> b
+        (False, True, False) -> b
         -- conj absorption law (left): the left set is more specific
-        (True, False, _, False) -> a
+        (True, False, False) -> a
         -- all that is left is to intersect these sets. In every one of these cases the intersection can be expressed
         -- as exactly the ordering that is not mentioned by the other two.
-        (False, False, _, False) -> Anchor (Right $ complement (primOrd op) (primOrd op')) pt
-    LT -> case (op, op') of -- at this point the left post is is guaranteed to be a lower version than the right
-        (Left LT, Left LT) -> b
-        (Left LT, Left EQ) -> x
-        (Left LT, Left GT) -> x
-        (Left LT, Right LT) -> x
-        (Left LT, Right EQ) -> b
-        (Left LT, Right GT) -> b
-        (Left EQ, Left LT) -> b
-        (Left EQ, Left EQ) -> x
-        (Left EQ, Left GT) -> x
-        (Left EQ, Right LT) -> x
-        (Left EQ, Right EQ) -> b
-        (Left EQ, Right GT) -> b
-        (Left GT, Left LT) -> None
-        (Left GT, Left EQ) -> a
-        (Left GT, Left GT) -> a
-        (Left GT, Right LT) -> a
-        (Left GT, Right EQ) -> None
-        (Left GT, Right GT) -> None
-        (Right LT, Left LT) -> None
-        (Right LT, Left EQ) -> a
-        (Right LT, Left GT) -> a
-        (Right LT, Right LT) -> a
-        (Right LT, Right EQ) -> None
-        (Right LT, Right GT) -> None
-        (Right EQ, Left LT) -> None
-        (Right EQ, Left EQ) -> a
-        (Right EQ, Left GT) -> a
-        (Right EQ, Right LT) -> a
-        (Right EQ, Right EQ) -> None
-        (Right EQ, Right GT) -> None
-        (Right GT, Left LT) -> b
-        (Right GT, Left EQ) -> x
-        (Right GT, Left GT) -> x
-        (Right GT, Right LT) -> x
-        (Right GT, Right EQ) -> b
-        (Right GT, Right GT) -> b
+        (False, False, False) -> Anchor (Right $ complement (primOrd op) (primOrd op')) pt
+    -- pattern reduction, throughout you will see the following notation (primarily for visualization purposes)
+    -- o: this means 'eq'
+    -- >: this means 'lt' or 'lte'
+    -- <: this means 'gt' or 'gte'
+    -- x: this means 'neq'
+    -- you may find this notation a bit odd, after all the less than and greater than signs seem backwards, you can see
+    -- it more clearly by viewing them as area dividers. the wide part of the angle represents this concept of 'faces'.
+    -- By this analogy, > faces left, < faces right, x faces both left and right, and o faces neither left nor right
+    -- it turns out that we only care about the inner two components: the right facing component of the lesser point,
+    -- and the left facing component of the greater point. Why is left as an exercise to the reader.
+    LT -> case (fr op, fl op') of
+        -- Annihilator patterns: oo, ><, o<, >o
+        (False, False) -> None
+        -- Left specific patterns: ox, o>, >x, >>
+        (False, True) -> a
+        -- Right specific patterns: xo, <o, x<, <<
+        (True, False) -> b
+        -- Irreducible patterns: <>, <x, x>, xx
+        (True, True) -> x
+-- primitive disjunction reduction
 reduce x@(Disj a@(Anchor op pt) b@(Anchor op' pt')) = case compare pt pt' of
     GT -> reduce (Disj b a)
-    EQ -> case (isRight op, isRight op', isRight op == isRight op', primOrd op == primOrd op') of
-        (_, _, True, True) -> a
-        (_, _, False, True) -> Any
-        (True, True, _, False) -> Anchor (Left $ complement (primOrd op) (primOrd op')) pt
-        (False, True, _, False) -> a
-        (True, False, _, False) -> b
-        (False, False, _, False) -> Any
-    LT -> case (op, op') of
-        (Left LT, Left LT) -> a
-        (Left LT, Left EQ) -> Any
-        (Left LT, Left GT) -> Any
-        (Left LT, Right LT) -> Any
-        (Left LT, Right EQ) -> a
-        (Left LT, Right GT) -> a
-        (Left EQ, Left LT) -> a
-        (Left EQ, Left EQ) -> Any
-        (Left EQ, Left GT) -> Any
-        (Left EQ, Right LT) -> Any
-        (Left EQ, Right EQ) -> a
-        (Left EQ, Right GT) -> a
-        (Left GT, Left LT) -> x
-        (Left GT, Left EQ) -> b
-        (Left GT, Left GT) -> b
-        (Left GT, Right LT) -> b
-        (Left GT, Right EQ) -> x
-        (Left GT, Right GT) -> x
-        (Right LT, Left LT) -> x
-        (Right LT, Left EQ) -> b
-        (Right LT, Left GT) -> b
-        (Right LT, Right LT) -> b
-        (Right LT, Right EQ) -> x
-        (Right LT, Right GT) -> x
-        (Right EQ, Left LT) -> x
-        (Right EQ, Left EQ) -> b
-        (Right EQ, Left GT) -> b
-        (Right EQ, Right LT) -> b
-        (Right EQ, Right EQ) -> x
-        (Right EQ, Right GT) -> x
-        (Right GT, Left LT) -> a
-        (Right GT, Left EQ) -> Any
-        (Right GT, Left GT) -> Any
-        (Right GT, Right LT) -> Any
-        (Right GT, Right EQ) -> a
-        (Right GT, Right GT) -> a
-reduce (Conj a@(Conj _ _) b@(Anchor _ _)) = reduce (Conj b a)
+    EQ -> case (isRight op, isRight op == isRight op', primOrd op == primOrd op') of
+        -- idempotence
+        (_, True, True) -> a
+        -- complement
+        (_, False, True) -> Any
+        -- union these sets
+        (True, True, False) -> Anchor (Left $ complement (primOrd op) (primOrd op')) pt
+        -- disj absorption left: the left set is more general
+        (False, False, False) -> a
+        -- disj absorption right: the right set is more general
+        (True, False, False) -> b
+        -- inequality hypercompatibility: these sets are universal
+        (False, True, False) -> Any
+    LT -> case (fr op, fl op') of
+        -- Annihilator patterns: <>, <x, x>, xx
+        (True, True) -> Any
+        -- Left general patterns: x<, xo, <o, <<
+        (True, False) -> a
+        -- Right general patterns: >x, ox, o>, >>
+        (False, True) -> b
+        -- Irreducible patterns: >< >o o< oo
+        (False, False) -> x
+reduce (Conj x y) = case (reduce x, reduce y) of
+    (a@(Anchor opa pta), Conj b@(Anchor opb ptb) c@(Anchor opc ptc)) ->
+        case (compare pta ptb, compare pta ptc) of
+            -- impossible because all anchors of equal versions reduce
+            (GT, GT) ->
+                -- here we are to the right of an irreducible conj
+                _
+            (LT, LT) ->
+                -- here we are to the left of an irreducible conj
+                _
+            (GT, LT) ->
+                -- here we are in the middle of an irreducible conj
+                _
+            -- eq patterns reduce so prioritize conj'ing those
+            (EQ, LT) -> conj (conj a b) c
+            (GT, EQ) -> conj b (conj a c)
+            (_, GT) -> error "bug in anchor order normalization"
+            (LT, _) -> error "bug in anchor order normalization"
+            (EQ, EQ) -> error "bug in equal anchor version reduction"
+    _ -> _
+-- left distribute
+reduce (Conj a (Disj p q)) = disj (conj a p) (conj a q)
+-- right distribute
+reduce (Conj (Disj p q) b) = disj (conj b p) (conj b q)
+reduce x@(Conj a@(Conj _ _) b@(Anchor _ _)) = conj b a
+reduce x@(Conj a@(Anchor _ _) b@(Conj _ _)) = x
 reduce x@(Conj a@(Anchor op pt) b@(Conj p q)) = case (p, q) of
     ((Anchor opP ptP), (Anchor opQ ptQ)) ->
         if ptP >= ptQ
