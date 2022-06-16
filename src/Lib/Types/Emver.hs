@@ -59,6 +59,7 @@ import Startlude (
     Foldable (length),
     Hashable,
     IsString (..),
+    Maybe (..),
     Monad ((>>=)),
     Monoid (mappend, mempty),
     NFData (..),
@@ -71,6 +72,7 @@ import Startlude (
     String,
     Word,
     Word64,
+    all,
     either,
     empty,
     flip,
@@ -90,6 +92,7 @@ import Startlude (
     (&&),
     (.),
     (<$>),
+    (<&&>),
     (<&>),
     (<<$>>),
     (||),
@@ -325,6 +328,8 @@ reduce orig@(Conj x y) = case (reduce x, reduce y) of
     (None, _) -> None
     (_, None) -> None
     -- primitive conjunction reduction
+    (a@(Anchor (Right EQ) pt), y') -> if pt <|| y' then a else None
+    (x', b@(Anchor (Right EQ) pt)) -> if pt <|| x' then b else None
     (a@(Anchor op pt), b@(Anchor op' pt')) -> case compare pt pt' of
         -- conj commutes so we can make normalization order the points
         GT -> conj b a
@@ -344,7 +349,7 @@ reduce orig@(Conj x y) = case (reduce x, reduce y) of
             (False, False, False) -> b
             -- all that is left is to intersect these sets. In every one of these cases the intersection can be expressed
             -- as exactly the ordering that is not mentioned by the other two.
-            (False, True, False) -> Anchor (Right $ complement (primOrd op) (primOrd op')) pt
+            (False, True, False) -> reduce $ Anchor (Right $ complement (primOrd op) (primOrd op')) pt
         -- pattern reduction, throughout you will see the following notation (primarily for visualization purposes)
         -- o: this means 'eq'
         -- >: this means 'lt' or 'lte'
@@ -538,6 +543,8 @@ reduce orig@(Disj x y) = case (reduce x, reduce y) of
     (None, vr) -> vr
     (vr, None) -> vr
     -- primitive disj reduction
+    (a@(Anchor (Left EQ) pt), y') -> if pt <|| y' then Any else a
+    (x', b@(Anchor (Left EQ) pt)) -> if pt <|| x' then Any else b
     (a@(Anchor op pt), b@(Anchor op' pt')) -> case compare pt pt' of
         GT -> disj b a
         EQ -> case (isRight op, isRight op == isRight op', primOrd op == primOrd op') of
@@ -546,7 +553,7 @@ reduce orig@(Disj x y) = case (reduce x, reduce y) of
             -- complement
             (_, False, True) -> Any
             -- union these sets
-            (True, True, False) -> Anchor (Left $ complement (primOrd op) (primOrd op')) pt
+            (True, True, False) -> reduce $ Anchor (Left $ complement (primOrd op) (primOrd op')) pt
             -- disj absorption left: the left set is more general
             (False, False, False) -> a
             -- disj absorption right: the right set is more general
@@ -569,6 +576,8 @@ reduce orig@(Disj x y) = case (reduce x, reduce y) of
         -- here we are to the right of an irreducible conj, so we try to reduce with the right side
         (GT, GT) -> case disj c a of
             -- cascade if successful
+            Any -> Any
+            None -> b
             dca@(Anchor _ _) -> disj b dca
             -- otherwise we move o's out right
             -- we know for sure at this point that the opc is o
@@ -580,6 +589,8 @@ reduce orig@(Disj x y) = case (reduce x, reduce y) of
                 -- here we are to the left of an irreducible conj, so we try to reduce the left side
         (LT, LT) -> case disj a b of
             --     -- cascade if successful
+            Any -> Any
+            None -> c
             dab@(Anchor _ _) -> disj dab c
             -- otherwise we move xs out right
             -- we know for sure that opb is o
@@ -591,7 +602,7 @@ reduce orig@(Disj x y) = case (reduce x, reduce y) of
                 -- here we are in the middle of an irreducible conj
         (GT, LT)
             -- >o< >oo oo< ooo all irreducible
-            | opa == eq -> Disj b (Disj a c)
+            | opa == eq -> disj b (Disj a c)
             -- if there is a remaining left face component it will reduce with the left side
             | fl opa -> disj (disj b a) c
             -- corollary
@@ -641,13 +652,23 @@ reduce orig@(Disj x y) = case (reduce x, reduce y) of
     (x'@(Conj (Anchor _ _) (Anchor _ ptb)), c@(Anchor opc ptc))
         | ptc > ptb && not (fl opc) -> Disj x' c
         | otherwise -> disj c x'
-    (x'@(Disj a@(Anchor _ pta) b), c@(Anchor _ ptc)) -> case disj c a of
-        dca@(Anchor _ _) -> disj dca b
-        _ -> if ptc < pta then Disj c x' else disj a (disj c b)
-    (Conj _ _, Conj _ _) -> error "Disj (Conj _ _) (Conj _ _)"
-    (Conj _ _, _) -> error "Disj (Conj _ _) _"
-    (_, Conj _ _) -> error "Disj _ (Conj _ _)"
-    (Disj _ _, Disj _ _) -> error "Disj (Disj _ _) (Disj _ _)"
+    -- anchor into x tree
+    (Anchor _ _, Conj (Anchor (Left EQ) _) (Conj _ _)) -> error "Anchor, X Tree"
+    -- anchor into single bounded conj tree
+    (Anchor _ _, Conj (Anchor _ _) (Conj _ _)) -> error "Anchor, Single Bounded Conj Tree"
+    (Conj (Anchor _ _) (Conj _ _), Anchor _ _) -> error "Single Bounded Conj Tree, Anchor"
+    -- anchor into double bounded conj tree
+    (Anchor _ _, Conj (Conj _ _) _) -> error "Anchor, Double Bounded Conj Tree"
+    (x'@(Conj (Conj _ _) _), y'@(Anchor _ _)) -> conj y' x'
+    -- anchor into disj tree
+    (Anchor _ _, Disj (Conj _ _) _) -> error "Anchor, Disj tree with Conj at head"
+    (Disj (Conj _ _) _, Anchor _ _) -> error "Disj tree with Conj at head, Anchor"
+    (Anchor _ _, Disj (Anchor _ _) _) -> error "Anchor, Disj tree with Anchor at head"
+    (Disj (Anchor _ _) _, Anchor _ _) -> error "Disj tree with Anchor at head, Anchor"
+    (Conj (Anchor _ _) (Anchor _ _), Conj (Anchor _ _) (Anchor _ _)) -> error "Irreducible Conj Pair, Irreducible Conj Pair"
+    (Conj (Anchor _ _) (Anchor _ _), Disj (Anchor _ _) _) -> error "Irreducible Conj Pair, Disj tree with Anchor at head"
+    (Disj (Anchor _ _) _, Conj (Anchor _ _) (Anchor _ _)) -> error "Disj tree with Anchor at head, Irreducible Conj Pair"
+    (Disj (Anchor _ _) _, Disj (Anchor _ _) _) -> error "Disj tree with Anchor head, Disj tree with Anchor head"
     (x', y') -> error [i|missing disj case: #{orig} -> #{x'}, #{y'}|]
 
 
@@ -712,11 +733,11 @@ parseVersion = do
 
 
 -- >>> Atto.parseOnly parseRange "=2.3.4 1.2.3.4 - 2.3.4.5 (>3.0.0 || <3.4.5)"
--- Right =2.3.4 >=1.2.3.4 <=2.3.4.5 (>3.0.0 * || <3.4.5 * || !) * || !
+-- Right (=2.3.4) (((>=1.2.3.4) (<=2.3.4.5)) ((>3.0.0) || (<3.4.5)))
 -- >>> Atto.parseOnly parseRange "0.2.6"
 -- >>> Atto.parseOnly parseRange ">=2.14.1.1 <3.0.0"
 -- Right =0.2.6
--- Right >=2.14.1.1 <3.0.0 * || !
+-- Right (>=2.14.1.1) (<3.0.0)
 parseRange :: Atto.Parser VersionRange
 parseRange = s <|> any <|> none <|> (Anchor (Right EQ) <$> parseVersion)
     where
@@ -783,3 +804,25 @@ wildcard =
 -- Right >=0.1.2.3 <=1.2.3.4
 hyphen :: Atto.Parser VersionRange
 hyphen = liftA2 (range True True) parseVersion (Atto.skipSpace *> Atto.char '-' *> Atto.skipSpace *> parseVersion)
+
+
+data ConjNF = ConjNF
+    { conjNFLower :: Maybe (Version, Bool)
+    , conjNFUpper :: Maybe (Version, Bool)
+    , conjNFExclusions :: [Version]
+    }
+    deriving (Eq)
+
+
+isValidConjNF :: ConjNF -> Bool
+isValidConjNF = \case
+    ConjNF (Just (v0, i0)) (Just (v1, i1)) ex -> v0 < v1 && all ((> v0) <&&> (< v1)) ex
+    ConjNF Nothing (Just (v1, i1)) ex -> all (< v1) ex
+    ConjNF (Just (v0, i0)) Nothing ex -> all (> v0) ex
+    ConjNF Nothing Nothing ex -> _
+
+
+data DisjNF = DisjNF
+    { disjNFLower :: Maybe (Version, Bool)
+    , disjNFUpper :: Maybe (Version, Bool)
+    }

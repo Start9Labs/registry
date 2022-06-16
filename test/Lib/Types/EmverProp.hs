@@ -213,11 +213,21 @@ prop_reduceTerminates = withTests 1000 . property $ do
 
 prop_reduceIdentity :: Property
 prop_reduceIdentity = withTests 1000 . property $ do
-    a <- forAll $ filter ((<= 100) . nodes) rangeGen
+    a <- forAll $ filter (((>= 3) <&&> (<= 100)) . nodes) rangeGen
     obs <- forAll versionGen
-    b <- liftIO $ pure (reduce a) `catch` \e -> throwIO (e :: ErrorCall)
+    let b = reduce a
     unless (b /= a) Test.discard
     obs <|| a === obs <|| b
+
+
+prop_reduceIdempotence :: Property
+prop_reduceIdempotence = withTests 1000 . property $ do
+    a <- forAll $ filter (((>= 3) <&&> (<= 100)) . nodes) rangeGen
+    let b = reduce a
+    annotateShow b
+    let c = reduce b
+    annotateShow c
+    b === c
 
 
 prop_reduceConjTreeNormalForm :: Property
@@ -252,7 +262,7 @@ isConjNF = \case
         opc == neq && opd == neq && opa /= neq && opb /= neq && pta < ptb && ptc < ptd && ptc > pta && ptd < ptb
     (Conj x@(Conj (Anchor opa pta) (Anchor opb ptb)) (Conj (Anchor opc ptc) r)) ->
         pta < ptc && ptc < ptb && opa /= neq && opb /= neq && opc == neq && isConjNF (Conj x r)
-    (Conj a@(Anchor opa pta) y'@(Conj (Anchor opb ptb) r)) ->
+    (Conj a@(Anchor opa pta) y'@(Conj (Anchor _ ptb) r)) ->
         (opa == neq && pta < ptb && isConjNF y')
             || (fr opa && pta < ptb && isConjNF y')
             || (fl opa && pta > ptb && isConjNF (Conj a r))
