@@ -4,6 +4,7 @@ module Lib.Types.EmverProp where
 
 import Startlude hiding (
     Any,
+    filter,
     reduce,
  )
 
@@ -11,8 +12,8 @@ import Data.Attoparsec.Text qualified as Atto
 import Hedgehog as Test
 import Hedgehog.Gen as Gen
 import Hedgehog.Range
-import Lib.Types.Emver
-import UnliftIO qualified
+import Lib.Types.Emver (Version (Version), VersionRange (..), fl, fr, geq, gt, leq, lt, neq, nodes, parseRange, reduce, satisfies, (<||))
+import System.Timeout (timeout)
 
 
 versionGen :: MonadGen m => m Version
@@ -25,7 +26,11 @@ versionGen = do
 
 
 rangeGen :: MonadGen m => m VersionRange
-rangeGen = choice [pure None, pure Any, anchorGen, disjGen, conjGen]
+rangeGen = shrink rangeShrink $ choice [pure None, pure Any, anchorGen, disjGen, conjGen]
+    where
+        rangeShrink (Conj a b) = [a, b]
+        rangeShrink (Disj a b) = [a, b]
+        rangeShrink _ = []
 
 
 anchorGen :: MonadGen m => m VersionRange
@@ -37,6 +42,14 @@ anchorGen = do
 
 conjGen :: MonadGen m => m VersionRange
 conjGen = liftA2 Conj rangeGen rangeGen
+
+
+conjOnlyGen :: MonadGen m => m VersionRange
+conjOnlyGen = shrink conjOnlyShrink . prune $ choice [anchorGen, liftA2 Conj conjOnlyGen conjOnlyGen]
+    where
+        conjOnlyShrink :: VersionRange -> [VersionRange]
+        conjOnlyShrink (Conj a b) = [a, b]
+        conjOnlyShrink _ = []
 
 
 disjGen :: MonadGen m => m VersionRange
@@ -189,15 +202,61 @@ prop_reduceDisjAnchor = property $ do
     obs <|| reduce (Disj a b) === obs <|| Disj a b
 
 
+prop_reduceTerminates :: Property
+prop_reduceTerminates = withTests 1000 . property $ do
+    a <- forAll $ filter ((<= 100) . nodes) rangeGen
+    b <- lift $ timeout 100_000 (pure $! reduce a)
+    case b of
+        Nothing -> failure
+        Just _ -> success
+
+
 prop_reduceIdentity :: Property
-prop_reduceIdentity = withTests 2000 . withDiscards 90 $
-    property $ do
-        -- a   <- forAll rangeGen
-        a <- forAll conjGen
-        obs <- forAll versionGen
-        b <- liftIO $ pure (reduce a) `catch` \e -> throwIO (e :: ErrorCall)
-        unless (b /= a) Test.discard
-        obs <|| a === obs <|| b
+prop_reduceIdentity = withTests 1000 . property $ do
+    a <- forAll $ filter ((<= 100) . nodes) rangeGen
+    obs <- forAll versionGen
+    b <- liftIO $ pure (reduce a) `catch` \e -> throwIO (e :: ErrorCall)
+    unless (b /= a) Test.discard
+    obs <|| a === obs <|| b
+
+
+prop_reduceConjTreeNormalForm :: Property
+prop_reduceConjTreeNormalForm = withTests 1000 . property $ do
+    a <- forAll $ filter ((<= 100) . nodes) conjOnlyGen
+    let b = reduce a
+    annotateShow b
+    assert $ isConjNF b
+
+
+isConjNF :: VersionRange -> Bool
+isConjNF = \case
+    Any -> True
+    None -> True
+    Anchor _ _ -> True
+    Conj (Anchor _ pta) (Anchor _ ptb) -> pta < ptb
+    Conj (Conj (Anchor opa pta) (Anchor opb ptb)) (Anchor opc ptc) ->
+        pta < ptb
+            && opa /= neq
+            && opb /= neq
+            && opc == neq
+            && ptc > pta
+            && ptc < ptb
+    Conj (Anchor opa pta) (Conj (Anchor opb ptb) (Anchor opc ptc)) ->
+        opb == neq
+            && opc == neq
+            && ptb < ptc
+            && (opa /= neq || pta < ptb)
+            && ((opa /= gt && opa /= geq) || pta < ptb)
+            && ((opa /= lt && opa /= leq) || pta > ptc)
+    (Conj (Conj (Anchor opa pta) (Anchor opb ptb)) (Conj (Anchor opc ptc) (Anchor opd ptd))) ->
+        opc == neq && opd == neq && opa /= neq && opb /= neq && pta < ptb && ptc < ptd && ptc > pta && ptd < ptb
+    (Conj x@(Conj (Anchor opa pta) (Anchor opb ptb)) (Conj (Anchor opc ptc) r)) ->
+        pta < ptc && ptc < ptb && opa /= neq && opb /= neq && opc == neq && isConjNF (Conj x r)
+    (Conj a@(Anchor opa pta) y'@(Conj (Anchor opb ptb) r)) ->
+        (opa == neq && pta < ptb && isConjNF y')
+            || (fr opa && pta < ptb && isConjNF y')
+            || (fl opa && pta > ptb && isConjNF (Conj a r))
+    _ -> False
 
 
 tests :: IO Bool

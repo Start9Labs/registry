@@ -53,6 +53,7 @@ dependencies:
   - process
   - protolude
   - rainbow
+  - semigroupoids
   - shakespeare
   - template-haskell
   - terminal-progress-bar
@@ -127,6 +128,7 @@ tests:
     ghc-options:
       - -Wall
       - -fdefer-typed-holes
+      - +RTS -N4 -RTS
     dependencies:
       - start9-registry
       - hspec

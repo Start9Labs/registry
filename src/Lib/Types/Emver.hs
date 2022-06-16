@@ -27,7 +27,6 @@ module Lib.Types.Emver (
     satisfies,
     (<||),
     (||>),
-    -- we do not export 'None' because it is useful for its internal algebraic properties only
     VersionRange (..),
     Version (..),
     AnyRange (..),
@@ -39,22 +38,32 @@ module Lib.Types.Emver (
     parseRange,
     reduce,
     nodes,
+    eq,
+    neq,
+    lt,
+    leq,
+    gt,
+    geq,
+    fl,
+    fr,
+    faces,
 ) where
 
 import Startlude (
     Alternative ((<|>)),
     Applicative (liftA2, pure, (*>), (<*)),
     Bool (..),
+    Bounded (maxBound),
     Either (..),
     Eq (..),
-    Foldable (foldMap, length),
+    Foldable (length),
     Hashable,
     IsString (..),
     Monad ((>>=)),
     Monoid (mappend, mempty),
     NFData (..),
     Num ((+)),
-    Ord (compare),
+    Ord (..),
     Ordering (..),
     Read,
     Semigroup ((<>)),
@@ -63,10 +72,13 @@ import Startlude (
     Word,
     Word64,
     either,
+    empty,
     flip,
     fst,
     id,
     isRight,
+    maybe,
+    not,
     on,
     otherwise,
     seq,
@@ -86,9 +98,12 @@ import Startlude (
 import Control.Monad.Fail (fail)
 import Data.Aeson (ToJSONKey)
 import Data.Attoparsec.Text qualified as Atto
+import Data.List.NonEmpty qualified as NE
+import Data.Semigroup.Foldable (Foldable1 (foldMap1))
 import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
-import GHC.Base (Ord (..), error)
+import Debug.Trace qualified
+import GHC.Base (error)
 import GHC.Read qualified as GHC (
     readsPrec,
  )
@@ -137,6 +152,14 @@ patch (Version (_, _, z, _)) = z
 -- original author, then it is encouraged for you to increment 'quad' instead of 'patch'.
 revision :: Version -> Word
 revision (Version (_, _, _, q)) = q
+
+
+adjacent :: Version -> Version -> Bool
+adjacent a b =
+    major a == major b
+        && minor a == minor b
+        && patch a == patch b
+        && (revision a == revision b + 1 && revision b /= maxBound || revision b == revision a + 1 && revision a /= maxBound)
 
 
 -- | 'Operator' is the type that specifies how to compare against the target version. Right represents the ordering,
@@ -228,6 +251,24 @@ data VersionRange
     deriving (Eq)
 
 
+instance Show VersionRange where
+    show (Anchor (Left EQ) v) = '!' : '=' : GHC.show v
+    show (Anchor (Right EQ) v) = '=' : GHC.show v
+    show (Anchor (Left LT) v) = '>' : '=' : GHC.show v
+    show (Anchor (Right LT) v) = '<' : GHC.show v
+    show (Anchor (Left GT) v) = '<' : '=' : GHC.show v
+    show (Anchor (Right GT) v) = '>' : GHC.show v
+    -- show (Conj a@(Disj _ _) b@(Disj _ _)) = paren (GHC.show a) <> (' ' : paren (GHC.show b))
+    -- show (Conj a@(Disj _ _) b) = paren (GHC.show a) <> (' ' : GHC.show b)
+    -- show (Conj a b@(Disj _ _)) = GHC.show a <> (' ' : paren (GHC.show b))
+    show (Conj a b) = paren (GHC.show a) <> (' ' : paren (GHC.show b))
+    show (Disj a b) = paren (GHC.show a) <> " || " <> paren (GHC.show b)
+    show Any = "*"
+    show None = "!"
+instance Read VersionRange where
+    readsPrec _ s = case Atto.parseOnly parseRange (T.pack s) of
+        Left _ -> []
+        Right a -> [(a, "")]
 instance IsString VersionRange where
     fromString = either error id . Atto.parseOnly parseRange . toS
 
@@ -256,22 +297,37 @@ disj :: VersionRange -> VersionRange -> VersionRange
 disj a b = reduce $ Disj a b
 
 
+beforeAfter :: Show a => a -> a -> a
+beforeAfter before after = Debug.Trace.trace [i|BEFORE: #{before} ===> After #{after}|] after
+
+
+dbg :: Show a => a -> a
+dbg = show >>= Debug.Trace.trace
+
+
 reduce :: VersionRange -> VersionRange
 -- atomic forms
 reduce Any = Any
 reduce None = None
+reduce vr@(Anchor op v@(Version (0, 0, 0, 0))) = case op of
+    (Right LT) -> None
+    (Right EQ) -> vr
+    (Right GT) -> vr
+    (Left LT) -> Any
+    (Left EQ) -> Anchor gt v
+    (Left GT) -> Anchor eq v
 reduce vr@(Anchor _ _) = vr
 reduce orig@(Conj x y) = case (reduce x, reduce y) of
     -- conj units
-    (Any, vr) -> reduce vr
-    (vr, Any) -> reduce vr
+    (Any, vr) -> vr
+    (vr, Any) -> vr
     -- conj annihilators
     (None, _) -> None
     (_, None) -> None
     -- primitive conjunction reduction
     (a@(Anchor op pt), b@(Anchor op' pt')) -> case compare pt pt' of
         -- conj commutes so we can make normalization order the points
-        GT -> reduce (Conj b a)
+        GT -> conj b a
         -- trivial cases where the points are identical
         EQ -> case (isRight op, isRight op == isRight op', primOrd op == primOrd op') of
             -- the theorems found here will elucidate what is going on
@@ -307,78 +363,183 @@ reduce orig@(Conj x y) = case (reduce x, reduce y) of
             -- Right specific patterns: xo, <o, x<, <<
             (True, False) -> b
             -- Irreducible patterns: <>, <x, x>, xx
-            (True, True) -> orig
-    (a@(Anchor opa pta), Conj b@(Anchor opb ptb) c@(Anchor opc ptc)) ->
-        case (compare pta ptb, compare pta ptc) of
-            -- eq patterns reduce so prioritize conj'ing those
-            (EQ, LT) -> conj (conj a b) c
-            (GT, EQ) -> conj b (conj a c)
-            -- here we are to the right of an irreducible conj, so we try to reduce with the right side
-            (GT, GT) -> case conj c a of
-                -- cascade if successful
-                cca@(Anchor _ _) -> conj b cca
-                -- otherwise we move xs out right
-                -- we know for sure at this point that the opc is x
-                _ -> case (fl opb, fr opa) of
-                    (True, True) -> Conj b (Conj c a) -- xxx: x (xx)
-                    (True, False) -> Conj a (Conj b c) -- xx>: > (xx)
-                    (False, True) -> Conj b (Conj c a) -- <xx: < (xx)
-                    (False, False) -> Conj (Conj b a) c -- <x>: (<>) x
-                    -- here we are to the left of an irreducible conj, so we try to reduce the left side
-            (LT, LT) -> case conj a b of
-                -- cascade if successful
-                cab@(Anchor _ _) -> conj cab c
-                -- otherwise we move xs out right
-                -- we know for sure that opb is x
-                _ -> case (fl opa, fr opc) of
-                    (True, True) -> Conj a (Conj b c) -- xxx: x (xx)
-                    (True, False) -> Conj c (Conj a b) -- xx>: > (xx)
-                    (False, True) -> Conj a (Conj b c) -- <xx: < (xx)
-                    (False, False) -> Conj (Conj a c) b -- <x>: (<>) x
-                    -- here we are in the middle of an irreducible conj
-            (GT, LT)
-                -- <x> <xx xx> xxx all irreducible
-                | opa == neq -> conj b (conj a c)
-                -- if there is a remaining left face component it will reduce with the right side
-                | fl opa -> conj b (conj a c)
-                -- corollary
-                | fr opa -> conj (conj b a) c
-                -- only remaining case is eq, which subsumes both sides
-                | otherwise -> a
-            -- impossible because all anchors of equal versions reduce
-            (EQ, EQ) -> error [i|bug in equal anchor version reduction: #{orig} -> #{a}, #{b}, #{c}|]
-            -- ordinarily we reorder things so the lesser point is on the left
-            -- the only exception to this is the accumulation of x's on the right
-            -- so these cases should be impossible
-            _
-                | opb == neq && opc == neq -> orig
-                | otherwise -> error $ [i|bug in anchor order normalization: #{orig} -> #{a}, #{b}, #{c}|]
-    (x'@(Conj (Anchor _ _) (Anchor _ _)), y'@(Anchor _ _)) -> conj y' x'
+            (True, True) ->
+                if adjacent pt pt'
+                    then -- here we have some weird edge cases if versions are immediately adjacent
+                    case (op, op') of
+                        -- <>
+                        (Right GT, Right LT) -> None
+                        (Left LT, Right LT) -> a
+                        (Right GT, Left GT) -> b
+                        (Left LT, Left GT) -> Conj a b
+                        -- x>
+                        (Left EQ, Right LT) -> Anchor lt pt
+                        (Left EQ, Left GT) -> Conj a b
+                        -- <x
+                        (Right GT, Left EQ) -> Anchor gt pt'
+                        (Left LT, Left EQ) -> Conj a b
+                        -- xx
+                        (Left EQ, Left EQ) -> Conj a b
+                        _ -> error [i|impossible reduction (anchor, anchor)|]
+                    else Conj a b
+    -- insert anchor into irreducible conj pair
+    (a@(Anchor opa pta), y'@(Conj b@(Anchor opb ptb) c@(Anchor opc ptc)))
+        | opa == neq && opb == neq && opc == neq && pta < ptb && ptb < ptc -> Conj a y'
+        | otherwise ->
+            case (compare pta ptb, compare pta ptc) of
+                -- eq patterns reduce so prioritize conj'ing those
+                (EQ, LT) -> conj (conj a b) c
+                (GT, EQ) -> conj b (conj a c)
+                -- here we are to the right of an irreducible conj, so we try to reduce with the right side
+                (GT, GT) -> case conj c a of
+                    -- cascade if successful
+                    None -> None
+                    Any -> b
+                    cca@(Anchor _ _) -> conj b cca
+                    -- otherwise we move xs out right
+                    -- we know for sure at this point that the opc is x
+                    _ -> case (fl opb, fr opa) of
+                        (True, True) -> Conj b (Conj c a) -- xxx: x (xx)
+                        (True, False) -> Conj a (Conj b c) -- xx>: > (xx)
+                        (False, True) -> Conj b (Conj c a) -- <xx: < (xx)
+                        (False, False) -> Conj (Conj b a) c -- <x>: (<>) x
+                        -- here we are to the left of an irreducible conj, so we try to reduce the left side
+                (LT, LT) -> case conj a b of
+                    -- cascade if successful
+                    None -> None
+                    Any -> c
+                    cab@(Anchor _ _) -> conj cab c
+                    -- otherwise we move xs out right
+                    -- we know for sure that opb is x
+                    _ -> case (fl opa, fr opc) of
+                        (True, True) -> Conj a (Conj b c) -- xxx: x (xx)
+                        (True, False) -> Conj c (Conj a b) -- xx>: > (xx)
+                        (False, True) -> Conj a (Conj b c) -- <xx: < (xx)
+                        (False, False) -> Conj (Conj a c) b -- <x>: (<>) x
+                        -- here we are in the middle of an irreducible conj
+                (GT, LT)
+                    -- <x> <xx xx> xxx all irreducible
+                    | opa == neq -> conj b (Conj a c)
+                    -- if there is a remaining left face component it will reduce with the right side
+                    | fl opa -> conj b (conj a c)
+                    -- corollary
+                    | fr opa -> conj (conj b a) c
+                    -- only remaining case is eq, which subsumes both sides
+                    | otherwise -> a
+                -- impossible because all anchors of equal versions reduce
+                (EQ, EQ) -> error [i|bug in equal anchor version reduction: #{orig} -> #{a}, #{b}, #{c}|]
+                -- ordinarily we reorder things so the lesser point is on the left
+                -- the only exception to this is the accumulation of x's on the right
+                -- so these cases should be impossible
+                _ -> error $ [i|bug in anchor order normalization: #{orig} -> #{a}, #{b}, #{c}|]
+    (x'@(Conj (Anchor opa pta) (Anchor opb ptb)), c@(Anchor opc ptc))
+        -- in this case it is a fully reduced conj form with lower and upper bounds and a single x
+        | opc == neq && opa /= neq && opb /= neq && ptc > pta && ptc < ptb -> Conj x' c
+        -- isn't in normal form and we will attempt to do so by swapping args and reducing to hit the case above
+        | otherwise -> conj c x'
+    (x'@(Conj _ _), y'@(Anchor _ _)) -> conj y' x'
+    -- insert anchor into conj tree with a single bounded conj tree or x tree
+    (a@(Anchor opa pta), y'@(Conj b@(Anchor opb ptb) at@(Conj _ _))) ->
+        case (opa == neq, opb == neq) of
+            -- this means that the conj tree is all x's
+            (True, True) ->
+                case compare pta ptb of
+                    LT -> Conj a y'
+                    EQ -> y'
+                    GT -> Conj b (Conj a at)
+            -- this means that b is a bound and so we put a with the rest of the x's
+            (True, False) ->
+                if fl opb && pta < ptb || fr opb && pta > ptb
+                    then conj b (conj a at)
+                    else y'
+            -- this means that the conj tree is all neqs and so when a is a bound we give it the bound position
+            (False, True) -> case compare pta ptb of
+                LT -> if fr opa then Conj a y' else a
+                EQ -> conj (conj a b) at
+                GT ->
+                    if fl opa
+                        then case conj a at of
+                            a'@(Anchor _ _) -> conj a' b
+                            (Conj a' at') -> Conj a' (Conj b at')
+                            r -> error [i|impossible reduction: #{r}|]
+                        else conj a at
+            -- a and b are the bounds and we leave the x tree alone
+            (False, False) -> conj (conj a b) at
+    -- insert anchor into conj tree that has two bounds and a x tree
+    (a@(Anchor opa pta), y'@(Conj bounds@(Conj (Anchor _ ptb) (Anchor _ ptc)) neqs))
+        -- if the anchor is an x we put it into the x tree
+        | opa == neq -> if pta > ptb && pta < ptc then Conj bounds (conj a neqs) else y'
+        -- if not we smash it in with the bounds
+        | otherwise -> conj (conj a bounds) neqs
+    -- zip two irreducible conj pairs together
+    (x'@(Conj a@(Anchor opa pta) b@(Anchor opb ptb)), y'@(Conj c@(Anchor opc ptc) d@(Anchor opd ptd)))
+        -- we know for sure that a < b and c < d here
+        | opa /= neq && opb /= neq && opc == neq && opd == neq && ptc > pta && ptc < ptb && ptd < ptb -> Conj x' y'
+        | otherwise -> case (opa == neq, opb == neq, opc == neq, opd == neq) of
+            (False, False, False, False) -> conj (conj a c) (conj b d)
+            (False, _, False, _) -> conj (conj a c) (conj b d)
+            (_, False, _, False) -> conj (conj a c) (conj b d)
+            (True, True, False, False) -> conj y' x'
+            (False, True, True, False) -> conj (conj a d) (Conj b c)
+            (True, False, False, True) -> conj (conj b c) (Conj a d)
+            (False, False, True, True) -> case (ptc > pta && ptc < ptb, ptd > pta && ptd < ptb) of
+                (True, True) -> Conj x' y'
+                (True, False) -> Conj x' c
+                (False, True) -> Conj x' d
+                (False, False) -> x'
+            (True, True, True, False) -> Conj d (conj c x')
+            (True, True, False, True) -> Conj c (conj d x')
+            (True, False, True, True) -> Conj b (conj a y')
+            (False, True, True, True) -> Conj a (conj b y')
+            (True, True, True, True) -> conj a (conj b y')
+    -- insert irreducible conj pair into single bounded conj tree OR x tree
+    (x'@(Conj a@(Anchor opa pta) b@(Anchor opb ptb)), y'@(Conj c@(Anchor opc ptc) r))
+        | opa /= neq && opb /= neq && opc == neq ->
+            if ptc > pta && ptc < ptb
+                then conj c (conj x' r)
+                else conj x' r
+        | otherwise -> conj a (conj b y')
+    (x'@(Conj (Anchor _ _) _), y'@(Conj (Anchor _ _) (Anchor _ _))) -> conj y' x'
+    -- insert irreducible conj pair into double bounded conj tree
+    (Conj a@(Anchor _ _) b@(Anchor _ _), y'@(Conj (Conj (Anchor _ _) (Anchor _ _)) _)) -> conj a (conj b y')
+    (x'@(Conj (Conj (Anchor _ _) (Anchor _ _)) _), y'@(Conj (Anchor _ _) (Anchor _ _))) -> conj y' x'
+    -- zip two conj trees
+    (Conj xBounds@(Conj (Anchor _ _) (Anchor _ _)) xNeqs, Conj yBounds@(Conj (Anchor _ _) (Anchor _ _)) yNeqs) ->
+        conj (conj xBounds yBounds) (conj xNeqs yNeqs)
+    (Conj xBounds@(Anchor _ _) xNeqs@(Conj _ _), Conj yBounds@(Conj (Anchor _ _) (Anchor _ _)) yNeqs) ->
+        conj (conj xBounds yBounds) (conj xNeqs yNeqs)
+    (Conj xBounds@(Conj (Anchor _ _) (Anchor _ _)) xNeqs, Conj yBounds@(Anchor _ _) yNeqs@(Conj _ _)) ->
+        conj (conj xBounds yBounds) (conj xNeqs yNeqs)
+    (Conj xBounds@(Anchor _ _) xNeqs@(Conj _ _), Conj yBounds@(Anchor _ _) yNeqs@(Conj _ _)) ->
+        conj (conj xBounds yBounds) (conj xNeqs yNeqs)
     -- distribute right
     (x', Disj p q) -> disj (conj x' p) (conj x' q)
     -- distribute left
     (Disj p q, y') -> disj (conj p y') (conj q y')
-    -- insert anchor into accumulation tree
-    (a@(Anchor opa pta), Conj b@(Anchor opb ptb) at@(Conj atl atr)) -> error "TODO manage accumulation trees"
-    -- reconcile free anchor with essential anchors in accumulation tree
-    (a@(Anchor opa _), Conj (Conj b@(Anchor _ _) c@(Anchor _ _)) r) -> case (fl opa, fr opa) of
-        (True, True) -> Conj (Conj b c) (conj a r)
-        (True, False) -> Conj (Conj b (conj a c)) r
-        (False, True) -> Conj (Conj (conj b a) c) r
-        (False, False) -> a
-    (x'@(Conj (Conj _ _) (Anchor _ _)), y'@(Anchor _ _)) -> conj y' x'
-    (Conj a@(Anchor _ _) b@(Anchor _ _), y'@(Conj _ _)) -> conj a (conj b y')
+    -- bugs
+    (Conj (Disj _ _) _, _) -> [i|bug in distributing conj over disj|]
+    (Conj _ (Disj _ _), _) -> [i|bug in distributing conj over disj|]
+    (_, Conj (Disj _ _) _) -> [i|bug in distributing conj over disj|]
+    (_, Conj _ (Disj _ _)) -> [i|bug in distributing conj over disj|]
+    (Conj Any _, _) -> [i|bug in conj any unit|]
+    (Conj _ Any, _) -> [i|bug in conj any unit|]
+    (_, Conj Any _) -> [i|bug in conj any unit|]
+    (_, Conj _ Any) -> [i|bug in conj any unit|]
+    (Conj None _, _) -> [i|bug in conj none annihilation|]
+    (Conj _ None, _) -> [i|bug in conj none annihilation|]
+    (_, Conj None _) -> [i|bug in conj none annihilation|]
+    (_, Conj _ None) -> [i|bug in conj none annihilation|]
     (x', y') -> error [i|missing conj case: #{orig} -> #{x'}, #{y'}|]
 reduce orig@(Disj x y) = case (reduce x, reduce y) of
     -- disj annihilators
     (Any, _) -> Any
     (_, Any) -> Any
     -- disj units
-    (None, vr) -> reduce vr
-    (vr, None) -> reduce vr
+    (None, vr) -> vr
+    (vr, None) -> vr
     -- primitive disj reduction
     (a@(Anchor op pt), b@(Anchor op' pt')) -> case compare pt pt' of
-        GT -> reduce (Disj b a)
+        GT -> disj b a
         EQ -> case (isRight op, isRight op == isRight op', primOrd op == primOrd op') of
             -- idempotence
             (_, True, True) -> a
@@ -400,8 +561,8 @@ reduce orig@(Disj x y) = case (reduce x, reduce y) of
             -- Right general patterns: >x, ox, o>, >>
             (False, True) -> b
             -- Irreducible patterns: >< >o o< oo
-            (False, False) -> x
-    (a@(Anchor opa pta), Disj b@(Anchor opb ptb) c@(Anchor opc ptc)) -> case (compare pta ptb, compare pta ptc) of
+            (False, False) -> Disj a b
+    (a@(Anchor opa pta), y'@(Disj b@(Anchor opb ptb) c@(Anchor opc ptc))) -> case (compare pta ptb, compare pta ptc) of
         -- eq patterns reduce so prioritize disj'ing those
         (EQ, LT) -> disj (disj a b) c
         (GT, EQ) -> disj b (disj a c)
@@ -430,7 +591,7 @@ reduce orig@(Disj x y) = case (reduce x, reduce y) of
                 -- here we are in the middle of an irreducible conj
         (GT, LT)
             -- >o< >oo oo< ooo all irreducible
-            | opa == eq -> disj b (disj a c)
+            | opa == eq -> Disj b (Disj a c)
             -- if there is a remaining left face component it will reduce with the left side
             | fl opa -> disj (disj b a) c
             -- corollary
@@ -443,23 +604,46 @@ reduce orig@(Disj x y) = case (reduce x, reduce y) of
         -- the only exception to this is the accumulation of x's on the right
         -- so these cases should be impossible
         _
-            | opb == eq && opc == eq -> orig
+            | opb == eq && opc == eq -> Disj a y'
             | otherwise -> error $ [i|bug in anchor order normalization: #{orig} -> #{a}, #{b}, #{c}|]
-    (x'@(Disj (Anchor _ _) (Anchor _ _)), y'@(Anchor _ _)) -> disj y' x'
+    (x'@(Disj a@(Anchor _ pta) b@(Anchor _ ptb)), c@(Anchor _ ptc))
+        | ptc > pta && ptc > ptb -> disj a (disj b c)
+        | otherwise -> disj c x'
     (a@(Anchor opa pta), y'@(Conj b@(Anchor opb ptb) c@(Anchor opc ptc))) ->
         case (compare pta ptb, compare pta ptc) of
-            (GT, GT) -> if fl opa then a else Disj y' a
-            (LT, LT) -> if fr opa then a else Disj a y'
+            (GT, GT) -> case (fr opc, fl opa) of
+                -- <> / x> || o / <
+                (False, False) -> Disj y' a
+                -- <> / x> || x / >
+                (False, True) -> a
+                -- <x / xx || o / <
+                (True, False) -> y'
+                -- <x / xx || x / >
+                (True, True) -> Any
+            (LT, LT) -> case (fr opa, fl opb) of
+                -- o / > || <> / <x
+                (False, False) -> Disj a y'
+                -- o / > || x> / xx
+                (False, True) -> y'
+                -- < / x || <> / <x
+                (True, False) -> a
+                -- < / x || x> / xx
+                (True, True) -> Any
             (GT, LT) -> case (fl opa, fr opa) of
                 (True, True) -> Any
                 (True, False) -> c
                 (False, True) -> b
                 (False, False) -> y'
             (EQ, EQ) -> error [i|bug in equal anchor version reduction: #{orig} -> #{a}, #{b}, #{c}|]
-            (EQ, _) -> error "TODO1"
-            (_, EQ) -> error "TODO2"
+            (EQ, _) -> conj (conj a b) c
+            (_, EQ) -> conj b (conj a c)
             (LT, GT) -> error [i|bug in anchor order normalization: #{orig} -> #{a}, #{b}, #{c}|]
-    (x'@(Conj _ _), y'@(Anchor _ _)) -> disj y' x'
+    (x'@(Conj (Anchor _ _) (Anchor _ ptb)), c@(Anchor opc ptc))
+        | ptc > ptb && not (fl opc) -> Disj x' c
+        | otherwise -> disj c x'
+    (x'@(Disj a@(Anchor _ pta) b), c@(Anchor _ ptc)) -> case disj c a of
+        dca@(Anchor _ _) -> disj dca b
+        _ -> if ptc < pta then Disj c x' else disj a (disj c b)
     (Conj _ _, Conj _ _) -> error "Disj (Conj _ _) (Conj _ _)"
     (Conj _ _, _) -> error "Disj (Conj _ _) _"
     (_, Conj _ _) -> error "Disj _ (Conj _ _)"
@@ -469,26 +653,6 @@ reduce orig@(Disj x y) = case (reduce x, reduce y) of
 
 exactly :: Version -> VersionRange
 exactly = Anchor (Right EQ)
-
-
-instance Show VersionRange where
-    show (Anchor (Left EQ) v) = '!' : '=' : GHC.show v
-    show (Anchor (Right EQ) v) = '=' : GHC.show v
-    show (Anchor (Left LT) v) = '>' : '=' : GHC.show v
-    show (Anchor (Right LT) v) = '<' : GHC.show v
-    show (Anchor (Left GT) v) = '<' : '=' : GHC.show v
-    show (Anchor (Right GT) v) = '>' : GHC.show v
-    show (Conj a@(Disj _ _) b@(Disj _ _)) = paren (GHC.show a) <> (' ' : paren (GHC.show b))
-    show (Conj a@(Disj _ _) b) = paren (GHC.show a) <> (' ' : GHC.show b)
-    show (Conj a b@(Disj _ _)) = GHC.show a <> (' ' : paren (GHC.show b))
-    show (Conj a b) = GHC.show a <> (' ' : GHC.show b)
-    show (Disj a b) = GHC.show a <> " || " <> GHC.show b
-    show Any = "*"
-    show None = "!"
-instance Read VersionRange where
-    readsPrec _ s = case Atto.parseOnly parseRange (T.pack s) of
-        Left _ -> []
-        Right a -> [(a, "")]
 
 
 paren :: String -> String
@@ -548,21 +712,25 @@ parseVersion = do
 
 
 -- >>> Atto.parseOnly parseRange "=2.3.4 1.2.3.4 - 2.3.4.5 (>3.0.0 || <3.4.5)"
--- Right =2.3.4 >=1.2.3.4 <=2.3.4.5 ((>3.0.0 || <3.4.5))
+-- Right =2.3.4 >=1.2.3.4 <=2.3.4.5 (>3.0.0 * || <3.4.5 * || !) * || !
 -- >>> Atto.parseOnly parseRange "0.2.6"
 -- >>> Atto.parseOnly parseRange ">=2.14.1.1 <3.0.0"
--- Right >=2.14.1.1 <3.0.0
+-- Right =0.2.6
+-- Right >=2.14.1.1 <3.0.0 * || !
 parseRange :: Atto.Parser VersionRange
 parseRange = s <|> any <|> none <|> (Anchor (Right EQ) <$> parseVersion)
     where
         any = Atto.char '*' *> pure Any
         none = Atto.char '!' *> pure None
         sub = Atto.char '(' *> Atto.skipSpace *> parseRange <* Atto.skipSpace <* Atto.char ')'
-        s =
-            unAnyRange
-                . foldMap AnyRange
-                <$> ((p <|> sub) `Atto.sepBy1` (Atto.skipSpace *> Atto.string "||" <* Atto.skipSpace))
-        p = unAllRange . foldMap AllRange <$> ((a <|> sub) `Atto.sepBy1` Atto.space)
+        s = do
+            exprs <- ((p <|> sub) `Atto.sepBy1` (Atto.skipSpace *> Atto.string "||" <* Atto.skipSpace))
+            ne <- maybe empty pure $ NE.nonEmpty exprs
+            pure . unAnyRange . foldMap1 AnyRange $ ne
+        p = do
+            exprs <- ((a <|> sub) `Atto.sepBy1` Atto.space)
+            ne <- maybe empty pure $ NE.nonEmpty exprs
+            pure . unAllRange . foldMap1 AllRange $ ne
         a = liftA2 Anchor parseOperator parseVersion <|> caret <|> tilde <|> wildcard <|> hyphen <|> any <|> none
 
 
