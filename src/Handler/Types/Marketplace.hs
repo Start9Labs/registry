@@ -155,6 +155,12 @@ data PackageMetadata = PackageMetadata
     , packageMetadataPkgVersion        :: !Version
     }
     deriving (Eq, Show)
+data PackageMetadataIntermediary = PackageMetadataIntermediary
+    { packageMetadataIntermediaryPkgId             :: !PkgId
+    , packageMetadataIntermediaryPkgVersionRecords :: ![Entity VersionRecord]
+    , packageMetadataIntermediaryPkgCategories     :: ![Entity Category]
+    }
+    deriving (Eq, Show)
 data PackageDependencyMetadata = PackageDependencyMetadata
     { packageDependencyMetadataPkgDependencyRecord :: !(Entity PkgDependency)
     , packageDependencyMetadataDepPkgRecord        :: !(Entity PkgRecord)

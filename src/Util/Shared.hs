@@ -44,6 +44,7 @@ import           Foundation                     ( Handler )
 import           GHC.List                       ( lookup )
 import           Handler.Types.Marketplace      ( PackageDependencyMetadata(..)
                                                 , PackageMetadata(..)
+                                                , PackageMetadataIntermediary(..)
                                                 )
 import           Lib.PkgRepository              ( PkgRepo
                                                 , getHash
@@ -110,17 +111,17 @@ orThrow action other = action >>= \case
     Nothing -> other
     Just x  -> pure x
 
-filterPkgOsCompatible :: Monad m => (Version -> Bool) -> ConduitT PackageMetadata PackageMetadata m ()
+filterPkgOsCompatible :: Monad m => (Version -> Bool) -> ConduitT  (PkgId, [Entity VersionRecord], [Entity Category]) PackageMetadataIntermediary m ()
 filterPkgOsCompatible p =
     awaitForever
-        $ \PackageMetadata { packageMetadataPkgId = pkg, packageMetadataPkgVersionRecords = versions, packageMetadataPkgCategories = cats, packageMetadataPkgVersion = requestedVersion } ->
+        $ \(pkgId, vs, cats) ->
               do
-                  let compatible = filter (p . versionRecordOsVersion . entityVal) versions
-                  unless (null compatible) $ yield PackageMetadata { packageMetadataPkgId             = pkg
-                                                                   , packageMetadataPkgVersionRecords = compatible
-                                                                   , packageMetadataPkgCategories     = cats
-                                                                   , packageMetadataPkgVersion        = requestedVersion
-                                                                   }
+                  let compatible = filter (p . versionRecordOsVersion . entityVal) vs
+                  unless (null compatible) $ yield PackageMetadataIntermediary 
+                        { packageMetadataIntermediaryPkgId             = pkgId
+                        , packageMetadataIntermediaryPkgVersionRecords = compatible
+                        , packageMetadataIntermediaryPkgCategories     = cats
+                        }
 
 filterDependencyOsCompatible :: (Version -> Bool) -> PackageDependencyMetadata -> PackageDependencyMetadata
 filterDependencyOsCompatible p PackageDependencyMetadata { packageDependencyMetadataPkgDependencyRecord = pkgDeps, packageDependencyMetadataDepPkgRecord = pkg, packageDependencyMetadataDepVersions = depVersions }
@@ -133,14 +134,14 @@ filterDependencyOsCompatible p PackageDependencyMetadata { packageDependencyMeta
 
 filterLatestVersionFromSpec :: (Monad m, MonadLogger m)
                             => [(PkgId, VersionRange)]
-                            -> ConduitT (PkgId, [Entity VersionRecord], [Entity Category]) PackageMetadata m ()
-filterLatestVersionFromSpec versionMap = awaitForever $ \(pkgId, vs, cats) -> do
+                            -> ConduitT PackageMetadataIntermediary PackageMetadata m ()
+filterLatestVersionFromSpec versionMap = awaitForever $ \PackageMetadataIntermediary { packageMetadataIntermediaryPkgId = pkg, packageMetadataIntermediaryPkgVersionRecords = versions, packageMetadataIntermediaryPkgCategories = cats } -> do
     -- if no packages are specified, the VersionRange is implicitly `*`
-    let spec = fromMaybe Any $ lookup pkgId versionMap
-    case headMay . sortOn Down $ filter (`satisfies` spec) $ fmap (versionRecordNumber . entityVal) vs of
-        Nothing -> $logInfo [i|No version for #{pkgId} satisfying #{spec}|]
-        Just v  -> yield $ PackageMetadata { packageMetadataPkgId             = pkgId
-                                           , packageMetadataPkgVersionRecords = vs
+    let spec = fromMaybe Any $ lookup pkg versionMap
+    case headMay . sortOn Down $ filter (`satisfies` spec) $ fmap (versionRecordNumber . entityVal) versions of
+        Nothing -> $logInfo [i|No version for #{pkg} satisfying #{spec}|]
+        Just v  -> yield $ PackageMetadata { packageMetadataPkgId             = pkg
+                                           , packageMetadataPkgVersionRecords = versions
                                            , packageMetadataPkgCategories     = cats
                                            , packageMetadataPkgVersion        = v
                                            }

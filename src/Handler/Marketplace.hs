@@ -313,10 +313,10 @@ getPackageListR = do
                 $  searchServices category query
                 .| collateVersions
                 .| zipCategories
-                        -- empty list since there are no requested packages in this case
-                .| filterLatestVersionFromSpec []
                 .| filterPkgOsCompatible osPredicate
-                        -- pages start at 1 for some reason. TODO: make pages start at 0
+                -- empty list since there are no requested packages in this case
+                .| filterLatestVersionFromSpec []
+                -- pages start at 1 for some reason. TODO: make pages start at 0
                 .| (dropC (limit' * (page - 1)) *> takeC limit')
                 .| sinkList
         Just packages' -> do
@@ -328,8 +328,8 @@ getPackageListR = do
                 $  getPkgData (packageReqId <$> packages')
                 .| collateVersions
                 .| zipCategories
-                .| filterLatestVersionFromSpec vMap
                 .| filterPkgOsCompatible osPredicate
+                .| filterLatestVersionFromSpec vMap
                 .| sinkList
     -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
     pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
