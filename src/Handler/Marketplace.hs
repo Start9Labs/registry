@@ -373,7 +373,7 @@ getPackageListR = do
         getLimitQuery :: Handler Int
         getLimitQuery = lookupGetParam "per-page" >>= \case
             Nothing -> pure $ packageListPageLimit defaults
-            Just pp-> case readMaybe pp of
+            Just pp -> case readMaybe pp of
                 Nothing -> do
                     let e = InvalidParamsE "get:per-page" pp
                     $logWarn (show e)
