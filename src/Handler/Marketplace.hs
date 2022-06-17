@@ -376,6 +376,7 @@ getPackageListR = do
             Just pp-> case readMaybe pp of
                 Nothing -> do
                     let e = InvalidParamsE "get:per-page" pp
+                    $logWarn (show e)
                     sendResponseStatus status400 e
                 Just (l  :: Int) -> pure l
         getOsVersionQuery :: Handler (Maybe VersionRange)
