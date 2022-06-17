@@ -5,6 +5,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant <$>" #-}
 
@@ -335,7 +336,7 @@ getPackageListR = do
     PackageListRes <$> mapConcurrently constructPackageListApiRes pkgsWithDependencies
     where
         defaults = PackageListDefaults { packageListOrder      = DESC
-                                       , packageListPageLimit  = 20
+                                       , packageListPageLimit  = 100
                                        , packageListPageNumber = 1
                                        , packageListCategory   = Nothing
                                        , packageListQuery      = ""
@@ -377,7 +378,7 @@ getPackageListR = do
                     let e = InvalidParamsE "get:per-page" pp
                     $logWarn (show e)
                     sendResponseStatus status400 e
-                Just l -> pure l
+                Just (l  :: Int) -> pure l
         getOsVersionQuery :: Handler (Maybe VersionRange)
         getOsVersionQuery = lookupGetParam "eos-version-compat" >>= \case
             Nothing  -> pure Nothing
