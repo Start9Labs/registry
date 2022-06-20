@@ -3,19 +3,16 @@
 /eos/v0/eos.img                            EosR               GET -- get eos.img
 
 -- PACKAGE API V0
-/package/v0/info                           InfoR              GET -- get all marketplace categories
-/package/v0/index                          PackageListR       GET -- filter marketplace services by various query params
-/package/v0/latest                         VersionLatestR     GET -- get latest version of apps in query param id
-!/package/v0/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec=<emver>
-/package/v0/manifest/#PkgId                AppManifestR       GET -- get app manifest from appmgr -- ?spec=<emver>
-/package/v0/release-notes/#PkgId           ReleaseNotesR      GET -- get release notes for all versions of a package
-/package/v0/icon/#PkgId                    IconsR             GET -- get icons - can specify version with ?spec=<emver>
-/package/v0/license/#PkgId                 LicenseR           GET -- get license - can specify version with ?spec=<emver>
-/package/v0/instructions/#PkgId            InstructionsR      GET -- get instructions - can specify version with ?spec=<emver>
-/package/v0/version/#PkgId                 PkgVersionR        GET -- get most recent appId version
-
--- SUPPORT API V0
-/support/v0/error-logs                     ErrorLogsR         POST
+/package/#ApiVersion/info                           InfoR              GET -- get all marketplace categories
+/package/#ApiVersion/index                          PackageIndexR      GET -- filter marketplace services by various query params
+/package/#ApiVersion/latest                         VersionLatestR     GET -- get latest version of apps in query param id
+!/package/#ApiVersion/#S9PK                         AppR               GET -- get most recent appId at appversion spec, defaults to >=0.0.0 -- ?spec=<emver>
+/package/#ApiVersion/manifest/#PkgId                AppManifestR       GET -- get app manifest from appmgr -- ?spec=<emver>
+/package/#ApiVersion/release-notes/#PkgId           ReleaseNotesR      GET -- get release notes for all versions of a package
+/package/#ApiVersion/icon/#PkgId                    IconsR             GET -- get icons - can specify version with ?spec=<emver>
+/package/#ApiVersion/license/#PkgId                 LicenseR           GET -- get license - can specify version with ?spec=<emver>
+/package/#ApiVersion/instructions/#PkgId            InstructionsR      GET -- get instructions - can specify version with ?spec=<emver>
+/package/#ApiVersion/version/#PkgId                 PkgVersionR        GET -- get most recent appId version
 
 -- ADMIN API V0
 /admin/v0/upload                           PkgUploadR         POST !admin

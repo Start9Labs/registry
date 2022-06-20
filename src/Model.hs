@@ -1,40 +1,47 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DerivingStrategies    #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Model where
 
-import           Crypto.Hash                    ( Digest
-                                                , SHA256
-                                                )
-import           Database.Persist.TH            ( mkMigrate
-                                                , mkPersist
-                                                , persistLowerCase
-                                                , share
-                                                , sqlSettings
-                                                )
-import           Lib.Types.AppIndex             ( PkgId(PkgId) )
-import           Lib.Types.Emver                ( Version
-                                                , VersionRange
-                                                )
-import           Orphans.Cryptonite             ( )
-import           Orphans.Emver                  ( )
-import           Startlude                      ( Eq
-                                                , Int
-                                                , Show
-                                                , Text
-                                                , UTCTime
-                                                , Word32
-                                                )
+import Crypto.Hash (
+    Digest,
+    SHA256,
+ )
+import Database.Persist.TH (
+    mkMigrate,
+    mkPersist,
+    persistLowerCase,
+    share,
+    sqlSettings,
+ )
+import Lib.Types.Core (PkgId (PkgId))
+import Lib.Types.Emver (
+    Version,
+    VersionRange,
+ )
+import Orphans.Cryptonite ()
+import Orphans.Emver ()
+import Startlude (
+    Eq,
+    Int,
+    Show,
+    Text,
+    UTCTime,
+    Word32,
+ )
 
-share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
+
+share
+    [mkPersist sqlSettings, mkMigrate "migrateAll"]
+    [persistLowerCase|
 PkgRecord
     Id PkgId sql=pkg_id
     createdAt UTCTime
