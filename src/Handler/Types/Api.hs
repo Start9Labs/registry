@@ -1,5 +1,12 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 module Handler.Types.Api where
 
+import Data.Aeson (Value)
 import GHC.Read (Read (..))
 import GHC.Show (show)
 import Startlude (
@@ -34,3 +41,7 @@ instance PathPiece ApiVersion where
     fromPathPiece "v0" = Just V0
     fromPathPiece "v1" = Just V1
     fromPathPiece _ = Nothing
+
+
+class ApiResponse a where
+    apiEncode :: ApiVersion -> a -> Value

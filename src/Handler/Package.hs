@@ -2,7 +2,7 @@ module Handler.Package where
 
 import Foundation (Handler)
 import Handler.Package.V0.Icon qualified
-import Handler.Package.V0.Index (PackageListRes, getPackageIndexR)
+import Handler.Package.V0.Index qualified
 import Handler.Package.V0.Info (InfoRes, getInfoR)
 import Handler.Package.V0.Instructions qualified
 import Handler.Package.V0.Latest (VersionLatestRes, getVersionLatestR)
@@ -11,11 +11,13 @@ import Handler.Package.V0.Manifest qualified
 import Handler.Package.V0.ReleaseNotes (ReleaseNotes, getReleaseNotesR)
 import Handler.Package.V0.S9PK qualified
 import Handler.Package.V0.Version (AppVersionRes, getPkgVersionR)
-import Handler.Types.Api (ApiVersion (..))
+import Handler.Package.V1.Index (getPackageIndexR)
+import Handler.Types.Api (ApiResponse (..), ApiVersion (..))
 import Lib.Types.Core (PkgId, S9PK)
+import Startlude ((.), (<$>))
+import Yesod
 import Yesod.Core.Types (
     JSONResponse,
-    TypedContent,
  )
 
 
@@ -23,8 +25,9 @@ getInfoR :: ApiVersion -> Handler (JSONResponse InfoRes)
 getInfoR _ = Handler.Package.V0.Info.getInfoR
 
 
-getPackageIndexR :: ApiVersion -> Handler PackageListRes
-getPackageIndexR _ = Handler.Package.V0.Index.getPackageIndexR
+getPackageIndexR :: ApiVersion -> Handler TypedContent
+getPackageIndexR V0 = toTypedContent . apiEncode V0 <$> Handler.Package.V0.Index.getPackageIndexR
+getPackageIndexR V1 = toTypedContent . apiEncode V1 <$> Handler.Package.V1.Index.getPackageIndexR
 
 
 getVersionLatestR :: ApiVersion -> Handler VersionLatestRes
