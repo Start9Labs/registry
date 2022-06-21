@@ -87,12 +87,14 @@ library:
           - -fwarn-tabs
           - -O0
           - -fdefer-typed-holes
+          - -fmax-pmcheck-models=40
       else:
         ghc-options:
           - -Wall
           - -fwarn-tabs
           - -O2
           - -fdefer-typed-holes
+          - -fmax-pmcheck-models=40
 
 executables:
   start9-registry:

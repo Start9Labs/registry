@@ -4,6 +4,7 @@ module Lib.Types.EmverProp where
 
 import Startlude hiding (
     Any,
+    check,
     filter,
     reduce,
  )
@@ -27,6 +28,22 @@ versionGen = do
 
 rangeGen :: MonadGen m => m VersionRange
 rangeGen = shrink rangeShrink $ choice [pure None, pure Any, anchorGen, disjGen, conjGen]
+    where
+        rangeShrink (Conj a b) = [a, b]
+        rangeShrink (Disj a b) = [a, b]
+        rangeShrink _ = []
+
+
+rangeGenNonTrivial :: MonadGen m => m VersionRange
+rangeGenNonTrivial =
+    shrink rangeShrink $
+        choice
+            [ anchorGen
+            , anchorGen
+            , anchorGen
+            , liftA2 Conj rangeGenNonTrivial rangeGenNonTrivial
+            , liftA2 Disj rangeGenNonTrivial rangeGenNonTrivial
+            ]
     where
         rangeShrink (Conj a b) = [a, b]
         rangeShrink (Disj a b) = [a, b]
@@ -202,9 +219,37 @@ prop_reduceDisjAnchor = property $ do
     obs <|| reduce (Disj a b) === obs <|| Disj a b
 
 
+prop_reduceConjNone :: Property
+prop_reduceConjNone = property $ do
+    a <- forAll anchorGen
+    reduce (Conj a None) === None
+    reduce (Conj None a) === None
+
+
+prop_reduceConjAny :: Property
+prop_reduceConjAny = property $ do
+    a <- forAll anchorGen
+    reduce (Conj a Any) === reduce a
+    reduce (Conj Any a) === reduce a
+
+
+prop_reduceDisjNone :: Property
+prop_reduceDisjNone = property $ do
+    a <- forAll anchorGen
+    reduce (Disj a None) === reduce a
+    reduce (Disj None a) === reduce a
+
+
+prop_reduceDisjAny :: Property
+prop_reduceDisjAny = property $ do
+    a <- forAll anchorGen
+    reduce (Disj a Any) === Any
+    reduce (Disj Any a) === Any
+
+
 prop_reduceTerminates :: Property
-prop_reduceTerminates = withTests 1000 . property $ do
-    a <- forAll $ filter ((<= 100) . nodes) rangeGen
+prop_reduceTerminates = withTests 1_000_000 . property $ do
+    a <- forAll $ filter ((<= 100) . nodes) rangeGenNonTrivial
     b <- lift $ timeout 100_000 (pure $! reduce a)
     case b of
         Nothing -> failure
@@ -212,17 +257,18 @@ prop_reduceTerminates = withTests 1000 . property $ do
 
 
 prop_reduceIdentity :: Property
-prop_reduceIdentity = withTests 1000 . property $ do
-    a <- forAll $ filter (((>= 3) <&&> (<= 100)) . nodes) rangeGen
-    obs <- forAll versionGen
+prop_reduceIdentity = withTests 1_000_000 . withDiscards 2000 . property $ do
+    a <- forAll $ filter (((>= 5) <&&> (<= 100)) . nodes) rangeGenNonTrivial
     let b = reduce a
+    annotateShow b
     unless (b /= a) Test.discard
-    obs <|| a === obs <|| b
+    obs <- replicateM 20 $ forAll versionGen
+    for_ obs $ \ob -> ob <|| a === ob <|| b
 
 
 prop_reduceIdempotence :: Property
-prop_reduceIdempotence = withTests 1000 . property $ do
-    a <- forAll $ filter (((>= 3) <&&> (<= 100)) . nodes) rangeGen
+prop_reduceIdempotence = withTests 1_000_000 . property $ do
+    a <- forAll $ filter (((>= 3) <&&> (<= 100)) . nodes) rangeGenNonTrivial
     let b = reduce a
     annotateShow b
     let c = reduce b
@@ -269,5 +315,17 @@ isConjNF = \case
     _ -> False
 
 
+prop_reduceDisjTreeNormalForm :: Property
+prop_reduceDisjTreeNormalForm = property $ do
+    a <- forAll rangeGenNonTrivial
+    let b = reduce a
+    annotateShow b
+    assert $ isDisjNF b
+
+
+isDisjNF :: VersionRange -> Bool
+isDisjNF = const True -- TODO
+
+
 tests :: IO Bool
-tests = checkParallel $ $$discover
+tests = checkSequential $ $$discover
