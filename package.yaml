@@ -53,6 +53,7 @@ dependencies:
   - process
   - protolude
   - rainbow
+  - semigroupoids
   - shakespeare
   - template-haskell
   - terminal-progress-bar
@@ -86,12 +87,14 @@ library:
           - -fwarn-tabs
           - -O0
           - -fdefer-typed-holes
+          - -fmax-pmcheck-models=40
       else:
         ghc-options:
           - -Wall
           - -fwarn-tabs
           - -O2
           - -fdefer-typed-holes
+          - -fmax-pmcheck-models=40
 
 executables:
   start9-registry:
@@ -127,6 +130,7 @@ tests:
     ghc-options:
       - -Wall
       - -fdefer-typed-holes
+      - +RTS -N4 -RTS
     dependencies:
       - start9-registry
       - hspec
