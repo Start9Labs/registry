@@ -3,6 +3,7 @@ module Handler.Package.V0.Info where
 import Data.Aeson (ToJSON (..))
 import Database.Esqueleto.Experimental (Entity (..), asc, from, orderBy, select, table, (^.))
 import Foundation (Handler, RegistryCtx (..))
+import Handler.Util (tickleMAU)
 import Model (Category (..), EntityField (..))
 import Settings (AppSettings (..))
 import Startlude (Generic, Show, Text, pure, ($), (.), (<$>))
@@ -30,4 +31,5 @@ getInfoR = do
             cats <- from $ table @Category
             orderBy [asc (cats ^. CategoryPriority)]
             pure cats
+    tickleMAU
     pure $ JSONResponse $ InfoRes name $ categoryName . entityVal <$> allCategories

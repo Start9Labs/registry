@@ -11,12 +11,14 @@ import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
+import Foundation
 import Lib.PkgRepository (PkgRepo, getHash)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (
     Version,
     VersionRange,
  )
+import Model (UserActivity (..))
 import Network.HTTP.Types (
     Status,
     status400,
@@ -32,10 +34,13 @@ import Startlude (
     decodeUtf8,
     fromMaybe,
     fst,
+    getCurrentTime,
     isSpace,
+    liftIO,
     not,
     pure,
     readMaybe,
+    void,
     ($),
     (.),
     (<$>),
@@ -46,6 +51,9 @@ import Yesod (
     MonadHandler,
     RenderRoute (..),
     TypedContent (..),
+    YesodPersist (runDB),
+    insertRecord,
+    liftHandler,
     lookupGetParam,
     sendResponseStatus,
     toContent,
@@ -101,3 +109,12 @@ queryParamAs k p =
             Left e ->
                 sendResponseText status400 [i|Invalid Request! The query parameter '#{k}' failed to parse: #{e}|]
             Right a -> pure (Just a)
+
+
+tickleMAU :: Handler ()
+tickleMAU = do
+    lookupGetParam "server-id" >>= \case
+        Nothing -> pure ()
+        Just sid -> do
+            now <- liftIO getCurrentTime
+            void $ liftHandler $ runDB $ insertRecord $ UserActivity now sid

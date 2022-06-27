@@ -15,7 +15,7 @@ import Database.Esqueleto.Experimental (
  )
 import Foundation (Handler)
 import Handler.Package.V0.ReleaseNotes (ReleaseNotes (..))
-import Handler.Util (queryParamAs)
+import Handler.Util (queryParamAs, tickleMAU)
 import Lib.Types.Emver (Version, parseVersion)
 import Model (EntityField (..), OsVersion (..))
 import Orphans.Emver ()
@@ -56,6 +56,7 @@ getEosVersionR = do
                         filter (maybe (const True) (<) eosVersion . fst) $
                             ((osVersionNumber &&& osVersionReleaseNotes))
                                 <$> osV
+    tickleMAU
     pure . JSONResponse $
         mLatest <&> \latest ->
             EosRes

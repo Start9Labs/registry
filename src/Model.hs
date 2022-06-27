@@ -125,6 +125,10 @@ PkgDependency
     deriving Eq
     deriving Show
 
+UserActivity
+    createdAt UTCTime
+    serverId Text
+
 Admin
     Id Text
     createdAt UTCTime
