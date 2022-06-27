@@ -1,78 +1,51 @@
-## Database Setup
+# Start9 Registry/Publish
 
-After installing Postgres, run:
+This codebase is the reference implementation of the marketplace protocol.
 
-```
-createuser start9-registry --pwprompt --superuser
-# Enter password start9-registry when prompted
-createdb start9-registry
-createdb start9-registry_test
-```
+## Getting Started
 
-## Haskell Setup
+### Installing Haskell
 
-1. If you haven't already, [install Stack](https://haskell-lang.org/get-started)
-	* On POSIX systems, this is usually `curl -sSL https://get.haskellstack.org/ | sh`
-2. Install the `yesod` command line tool: `stack install yesod-bin --install-ghc`
-3. Build libraries: `stack build`
+- Go get [GHCup](https://www.haskell.org/ghcup/)
+- run `ghcup tui`
+- select the latest `Stack` and install with `i`
 
-If you have trouble, refer to the [Yesod Quickstart guide](https://www.yesodweb.com/page/quickstart) for additional detail.
+### Build the Registry
 
-## Development
+- `apt install libpq-dev`
+- run `make`
 
-Start a development server with:
+### Set up embassy-publish tool
 
-```
-stack exec -- yesod devel
-```
+- run `stack install embassy-publish`
+- run `embassy-publish init --bash` (or --zsh / --fish depending on your preferred shell)
+- run `embassy-publish reg add -l <URL> -n <NAME> -u <USER> -p <PASS>`
+- take the hash that is emitted by this command and submit it to the registry owner
 
-As your code changes, your site will be automatically recompiled and redeployed to localhost.
+### Setting up a registry dev environment
 
-### Development tools
+- set up a local database in postgresql
+- set the PG_DATABASE environment variable to that database
+- set PG_USER to the owner of that database
+- set PG_PASSWORD to the password for that user
+- set SSL_AUTO to false
+- set RESOURCES_PATH to an empty directory you wish to use as your package repository
+- install `embassy-sdk`
+- set STATIC_BIN to the path that contains `embassy-sdk`
 
-`ghcid "-c=stack ghci --test"`
+## APIs
 
-- Clone [HIE](https://github.com/haskell/haskell-ide-engine)
-- Checkout latest reslease ie. `git checkout tags/1.3`
-- Follow github instructions to install for specific GHC version ie. `stack ./install.hs hie`
-- Install VSCode Haskell Language Server Extension
+### EOS
 
-To create `hie.yaml` if it does not exist:
-- gather executables by running `stack ide targets`
-- see [here](https://github.com/haskell/haskell-ide-engine#project-configuration) for file setup details
+This API is exclusive to Start9, we do not publish this as part of the standard Marketplace protocol because Start9 does
+not intend for other organizations to host prebuilt OS binaries per the Non Commercial License
 
-## Tests
+### Package
 
-```
-stack test --flag start9-registry:library-only --flag start9-registry:dev
-```
+This API is a public API that can be implemented by any marketplace. This is how information about available packages
+and their relationships is queried by EOS.
 
-(Because `yesod devel` passes the `library-only` and `dev` flags, matching those flags means you don't need to recompile between tests and development, and it disables optimization to speed up your test compile times).
+### Admin
 
-## Builds
-
-`make`
-
-### Tests with HIE Setup
-- install hspec-discover globally `cabal install hspec-discover` (requires cabal installation)
-- Current [issue](https://github.com/haskell/haskell-ide-engine/issues/1564) open for error pertaining to obtaining flags for test files
-	- recommended to setup hie.yaml
-	- recommended to run `stack build --test --no-run-tests` *before* any test files are open and that test files compile without error 
-	- helps to debug a specific file: `hie --debug test/Main.hs`
-
-## Documentation
-
-* Read the [Yesod Book](https://www.yesodweb.com/book) online for free
-* Check [Stackage](http://stackage.org/) for documentation on the packages in your LTS Haskell version, or [search it using Hoogle](https://www.stackage.org/lts/hoogle?q=). Tip: Your LTS version is in your `stack.yaml` file.
-* For local documentation, use:
-	* `stack haddock --open` to generate Haddock documentation for your dependencies, and open that documentation in a browser
-	* `stack hoogle <function, module or type signature>` to generate a Hoogle database and search for your query
-* The [Yesod cookbook](https://github.com/yesodweb/yesod-cookbook) has sample code for various needs
-
-## Getting Help
-
-* Ask questions on [Stack Overflow, using the Yesod or Haskell tags](https://stackoverflow.com/questions/tagged/yesod+haskell)
-* Ask the [Yesod Google Group](https://groups.google.com/forum/#!forum/yesodweb)
-* There are several chatrooms you can ask for help:
-	* For IRC, try Freenode#yesod and Freenode#haskell
-	* [Functional Programming Slack](https://fpchat-invite.herokuapp.com/), in the #haskell, #haskell-beginners, or #yesod channels.
+This API is how we upload new packages to the marketplace. It requires authentication and is not intended to be implemented
+by other marketplaces
