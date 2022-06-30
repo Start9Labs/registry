@@ -1,26 +1,29 @@
 # Start9 Registry/Publish
 
-This codebase is the reference implementation of the marketplace protocol.
+This codebase is the reference implementation of the marketplace protocol. These steps assume you are running Linux (or macOS).
 
 ## Getting Started
 
 ### Installing Haskell
 
 - Go get [GHCup](https://www.haskell.org/ghcup/)
+-   select default options
+-   restart your session (terminal or OS)
 - run `ghcup tui`
 - select the latest `Stack` and install with `i`
 
 ### Build the Registry
 
-- `apt install libpq-dev`
+- `apt install libpq-dev` (on macOS - `brew install libpq`)
+- run `apt install postgresql` (on macOS - `brew install postgres`)
 - run `make`
 
 ### Set up embassy-publish tool
 
-- run `apt install libgmp-dev zlib1g-dev libtinfo-dev`
-- run `stack install`
+- run `apt install libgmp-dev zlib1g-dev libtinfo-dev` (on macOS `brew install libmpd zlib-ng libtiff`)
+- run `stack install` (recommended: include the installation path in your $PATH after running this command)
 - run `embassy-publish init --bash` (or --zsh / --fish depending on your preferred shell)
-- run `embassy-publish reg add -l <URL> -n <NAME> -u <USER> -p <PASS>`
+- run `embassy-publish reg add -l <URL> -n <NAME> -u <USER> -p <PASS>` (include https:// in your URL)
 - take the hash that is emitted by this command and submit it to the registry owner
 
 ### Setting up a registry dev environment
