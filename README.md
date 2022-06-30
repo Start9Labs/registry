@@ -17,6 +17,7 @@ This codebase is the reference implementation of the marketplace protocol.
 
 ### Set up embassy-publish tool
 
+- run `apt install libgmp-dev zlib1g-dev libtinfo-dev`
 - run `stack install`
 - run `embassy-publish init --bash` (or --zsh / --fish depending on your preferred shell)
 - run `embassy-publish reg add -l <URL> -n <NAME> -u <USER> -p <PASS>`
