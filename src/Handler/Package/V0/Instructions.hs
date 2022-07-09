@@ -12,7 +12,7 @@ import Data.String.Interpolate.IsString (
 import Foundation (Handler)
 import Handler.Package.V1.Index (getOsVersionQuery)
 import Handler.Util (
-    filterOsCompat,
+    fetchCompatiblePkgVersions,
     getVersionSpecFromQuery,
     orThrow,
     versionPriorityFromQueryIsMin,
@@ -25,6 +25,7 @@ import Lib.PkgRepository (
 import Lib.Types.Core (PkgId)
 import Network.HTTP.Types (status400)
 import Startlude (
+    pure,
     show,
     ($),
  )
@@ -42,10 +43,12 @@ getInstructionsR :: PkgId -> Handler TypedContent
 getInstructionsR pkg = do
     spec <- getVersionSpecFromQuery
     osVersion <- getOsVersionQuery
-    osCompatibleVersions <- filterOsCompat osVersion pkg
+    osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     preferMin <- versionPriorityFromQueryIsMin
     version <-
-        getBestVersion spec preferMin osCompatibleVersions
+        ( pure $
+                getBestVersion spec preferMin osCompatibleVersions
+            )
             `orThrow` sendResponseStatus status400 (NotFoundE [i|Instructions for #{pkg} satisfying #{spec}|])
     (len, src) <- getInstructions pkg version
     addHeader "Content-Length" (show len)

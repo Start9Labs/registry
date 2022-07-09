@@ -16,7 +16,7 @@ import Data.String.Interpolate.IsString (
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
-import Database.Queries (fetchAllAppVersions)
+import Database.Queries (fetchAllPkgVersions)
 import Foundation
 import Lib.PkgRepository (
     PkgRepo,
@@ -64,7 +64,6 @@ import Startlude (
  )
 import UnliftIO (MonadUnliftIO)
 import Yesod (
-    HandlerFor,
     MonadHandler,
     RenderRoute (..),
     TypedContent (..),
@@ -137,10 +136,10 @@ tickleMAU = do
             void $ liftHandler $ runDB $ insertRecord $ UserActivity now sid
 
 
-filterOsCompat :: Maybe VersionRange -> PkgId -> HandlerFor RegistryCtx [VersionRecord]
-filterOsCompat osVersion pkg = do
+fetchCompatiblePkgVersions :: Maybe VersionRange -> PkgId -> Handler [VersionRecord]
+fetchCompatiblePkgVersions osVersion pkg = do
     appConnPool <- appConnPool <$> getYesod
-    versionRecords <- runDB $ fetchAllAppVersions appConnPool pkg
+    versionRecords <- runDB $ fetchAllPkgVersions appConnPool pkg
     pure $ filter (osPredicate osVersion . versionRecordOsVersion) versionRecords
     where
         osPredicate osV = do

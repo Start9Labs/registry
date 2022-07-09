@@ -17,7 +17,7 @@ import GHC.Show (show)
 import Handler.Package.V1.Index (getOsVersionQuery)
 import Handler.Util (
     addPackageHeader,
-    filterOsCompat,
+    fetchCompatiblePkgVersions,
     getVersionSpecFromQuery,
     orThrow,
     versionPriorityFromQueryIsMin,
@@ -58,11 +58,11 @@ getAppR :: S9PK -> Handler TypedContent
 getAppR file = do
     let pkg = PkgId . T.pack $ takeBaseName (show file)
     osVersion <- getOsVersionQuery
-    osCompatibleVersions <- filterOsCompat osVersion pkg
+    osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     versionSpec <- getVersionSpecFromQuery
     preferMin <- versionPriorityFromQueryIsMin
     version <-
-        getBestVersion versionSpec preferMin osCompatibleVersions
+        (pure $ getBestVersion versionSpec preferMin osCompatibleVersions)
             `orThrow` sendResponseStatus status404 (NotFoundE [i|#{pkg} satisfying #{versionSpec}|])
     addPackageHeader pkg version
     void $ recordMetrics pkg version

@@ -12,7 +12,7 @@ import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
 import Foundation (Handler)
 import Handler.Package.V1.Index (getOsVersionQuery)
-import Handler.Util (filterOsCompat)
+import Handler.Util (fetchCompatiblePkgVersions)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version)
 import Model (VersionRecord (..))
@@ -50,7 +50,7 @@ instance ToTypedContent ReleaseNotes where
 getReleaseNotesR :: PkgId -> Handler ReleaseNotes
 getReleaseNotesR pkg = do
     osVersion <- getOsVersionQuery
-    osCompatibleVersions <- filterOsCompat osVersion pkg
+    osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     pure $ constructReleaseNotesApiRes osCompatibleVersions
     where
         constructReleaseNotesApiRes :: [VersionRecord] -> ReleaseNotes

@@ -13,7 +13,7 @@ import Data.String.Interpolate.IsString (
 import Foundation (Handler)
 import Handler.Package.V1.Index (getOsVersionQuery)
 import Handler.Util (
-    filterOsCompat,
+    fetchCompatiblePkgVersions,
     getVersionSpecFromQuery,
     orThrow,
     versionPriorityFromQueryIsMin,
@@ -27,6 +27,8 @@ import Startlude (
     Eq,
     Maybe,
     Show,
+    pure,
+    ($),
     (.),
     (<$>),
  )
@@ -60,10 +62,10 @@ instance ToTypedContent (Maybe AppVersionRes) where
 getPkgVersionR :: PkgId -> Handler AppVersionRes
 getPkgVersionR pkg = do
     osVersion <- getOsVersionQuery
-    osCompatibleVersions <- filterOsCompat osVersion pkg
+    osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     spec <- getVersionSpecFromQuery
     preferMin <- versionPriorityFromQueryIsMin
-    AppVersionRes <$> getBestVersion spec preferMin osCompatibleVersions
+    AppVersionRes <$> (pure $ getBestVersion spec preferMin osCompatibleVersions)
         `orThrow` sendResponseStatus
             status404
             (NotFoundE [i|Version for #{pkg} satisfying #{spec}|])

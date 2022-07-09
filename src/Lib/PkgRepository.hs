@@ -215,12 +215,11 @@ getViableVersions spec vrs = filter (`satisfies` spec) (versionRecordNumber <$> 
 
 
 getBestVersion ::
-    (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m) =>
     VersionRange ->
     Bool ->
     [VersionRecord] ->
-    m (Maybe Version)
-getBestVersion spec preferMin vrs = headMay . sortBy comparator <$> (pure $ getViableVersions spec vrs)
+    (Maybe Version)
+getBestVersion spec preferMin vrs = headMay $ sortBy comparator $ getViableVersions spec vrs
     where
         comparator = if preferMin then compare else compare `on` Down
 

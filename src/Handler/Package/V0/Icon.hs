@@ -12,7 +12,7 @@ import Data.String.Interpolate.IsString (
 import Foundation (Handler)
 import Handler.Package.V1.Index (getOsVersionQuery)
 import Handler.Util (
-    filterOsCompat,
+    fetchCompatiblePkgVersions,
     getVersionSpecFromQuery,
     orThrow,
     versionPriorityFromQueryIsMin,
@@ -25,6 +25,7 @@ import Lib.PkgRepository (
 import Lib.Types.Core (PkgId)
 import Network.HTTP.Types (status400)
 import Startlude (
+    pure,
     show,
     ($),
  )
@@ -40,11 +41,11 @@ import Yesod (
 getIconsR :: PkgId -> Handler TypedContent
 getIconsR pkg = do
     osVersion <- getOsVersionQuery
-    osCompatibleVersions <- filterOsCompat osVersion pkg
+    osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     spec <- getVersionSpecFromQuery
     preferMin <- versionPriorityFromQueryIsMin
     version <-
-        getBestVersion spec preferMin osCompatibleVersions
+        (pure $ getBestVersion spec preferMin osCompatibleVersions)
             `orThrow` sendResponseStatus status400 (NotFoundE [i|Icon for #{pkg} satisfying #{spec}|])
     (ct, len, src) <- getIcon pkg version
     addHeader "Content-Length" (show len)

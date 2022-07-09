@@ -13,7 +13,7 @@ import Foundation (Handler)
 import Handler.Package.V1.Index (getOsVersionQuery)
 import Handler.Util (
     addPackageHeader,
-    filterOsCompat,
+    fetchCompatiblePkgVersions,
     getVersionSpecFromQuery,
     orThrow,
     versionPriorityFromQueryIsMin,
@@ -26,6 +26,7 @@ import Lib.PkgRepository (
 import Lib.Types.Core (PkgId)
 import Network.HTTP.Types (status404)
 import Startlude (
+    pure,
     show,
     ($),
  )
@@ -42,11 +43,11 @@ import Yesod (
 getAppManifestR :: PkgId -> Handler TypedContent
 getAppManifestR pkg = do
     osVersion <- getOsVersionQuery
-    osCompatibleVersions <- filterOsCompat osVersion pkg
+    osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     versionSpec <- getVersionSpecFromQuery
     preferMin <- versionPriorityFromQueryIsMin
     version <-
-        getBestVersion versionSpec preferMin osCompatibleVersions
+        (pure $ getBestVersion versionSpec preferMin osCompatibleVersions)
             `orThrow` sendResponseStatus status404 (NotFoundE [i|#{pkg} satisfying #{versionSpec}|])
     addPackageHeader pkg version
     (len, src) <- getManifest pkg version
