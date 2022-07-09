@@ -68,22 +68,24 @@ import Database.Persist.Sql (
 import Database.PostgreSQL.Simple (SqlError (sqlState))
 import Lib.Error (S9Error (NotFoundE))
 import Lib.External.AppMgr qualified as AppMgr
-import Lib.Types.Core (
-    PkgId (..),
- )
+import Lib.Types.Core (PkgId (..))
 import Lib.Types.Emver (
     Version,
     VersionRange,
     parseVersion,
     satisfies,
  )
-import Lib.Types.Manifest (PackageDependency (..), PackageManifest (..))
+import Lib.Types.Manifest (
+    PackageDependency (..),
+    PackageManifest (..),
+ )
 import Model (
     EntityField (EosHashHash, PkgRecordUpdatedAt),
     EosHash (EosHash),
     Key (PkgRecordKey),
     PkgDependency (PkgDependency),
     PkgRecord (PkgRecord),
+    VersionRecord (versionRecordNumber),
  )
 import Startlude (
     Bool (..),
@@ -208,17 +210,17 @@ getVersionsFor pkg = do
         else pure []
 
 
-getViableVersions :: (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m) => PkgId -> VersionRange -> m [Version]
-getViableVersions pkg spec = filter (`satisfies` spec) <$> getVersionsFor pkg
+getViableVersions :: VersionRange -> [VersionRecord] -> [Version]
+getViableVersions spec vrs = filter (`satisfies` spec) (versionRecordNumber <$> vrs)
 
 
 getBestVersion ::
     (MonadIO m, MonadReader r m, Has PkgRepo r, MonadLogger m) =>
-    PkgId ->
     VersionRange ->
     Bool ->
+    [VersionRecord] ->
     m (Maybe Version)
-getBestVersion pkg spec preferMin = headMay . sortBy comparator <$> getViableVersions pkg spec
+getBestVersion spec preferMin vrs = headMay . sortBy comparator <$> (pure $ getViableVersions spec vrs)
     where
         comparator = if preferMin then compare else compare `on` Down
 

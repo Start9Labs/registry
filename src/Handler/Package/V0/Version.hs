@@ -2,10 +2,18 @@
 
 module Handler.Package.V0.Version where
 
-import Data.Aeson (ToJSON, object, (.=))
-import Data.String.Interpolate.IsString (i)
+import Data.Aeson (
+    ToJSON,
+    object,
+    (.=),
+ )
+import Data.String.Interpolate.IsString (
+    i,
+ )
 import Foundation (Handler)
+import Handler.Package.V1.Index (getOsVersionQuery)
 import Handler.Util (
+    filterOsCompat,
     getVersionSpecFromQuery,
     orThrow,
     versionPriorityFromQueryIsMin,
@@ -15,9 +23,22 @@ import Lib.PkgRepository (getBestVersion)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version (..))
 import Network.HTTP.Types (status404)
-import Startlude (Eq, Maybe, Show, (.), (<$>))
-import Yesod (ToContent (..), ToTypedContent, sendResponseStatus)
-import Yesod.Core (ToJSON (..), ToTypedContent (..))
+import Startlude (
+    Eq,
+    Maybe,
+    Show,
+    (.),
+    (<$>),
+ )
+import Yesod (
+    ToContent (..),
+    ToTypedContent,
+    sendResponseStatus,
+ )
+import Yesod.Core (
+    ToJSON (..),
+    ToTypedContent (..),
+ )
 
 
 newtype AppVersionRes = AppVersionRes
@@ -38,9 +59,11 @@ instance ToTypedContent (Maybe AppVersionRes) where
 
 getPkgVersionR :: PkgId -> Handler AppVersionRes
 getPkgVersionR pkg = do
+    osVersion <- getOsVersionQuery
+    osCompatibleVersions <- filterOsCompat osVersion pkg
     spec <- getVersionSpecFromQuery
     preferMin <- versionPriorityFromQueryIsMin
-    AppVersionRes <$> getBestVersion pkg spec preferMin
+    AppVersionRes <$> getBestVersion spec preferMin osCompatibleVersions
         `orThrow` sendResponseStatus
             status404
             (NotFoundE [i|Version for #{pkg} satisfying #{spec}|])
