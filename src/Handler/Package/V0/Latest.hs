@@ -1,11 +1,12 @@
 module Handler.Package.V0.Latest where
 
-import Conduit (mapC, runConduit, sinkList, (.|))
+import Conduit (concatMapC, mapC, runConduit, sinkList, (.|))
 import Data.Aeson (ToJSON (..), eitherDecode)
 import Data.ByteString.Lazy qualified as LBS
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
 import Data.List (lookup, sortOn)
+import Data.List.NonEmpty.Extra qualified as NE
 import Data.Tuple.Extra (second)
 import Database.Queries (collateVersions, getPkgDataSource)
 import Foundation (Handler)
@@ -15,7 +16,7 @@ import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, satisfies)
 import Model (VersionRecord (..))
 import Network.HTTP.Types (status400)
-import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), Show, const, encodeUtf8, filter, flip, headMay, pure, ($), (.), (<$>), (<&>))
+import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, headMay, nonEmpty, pure, ($), (.), (<$>), (<&>))
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), YesodRequest (reqGetParams), getRequest, sendResponseStatus)
 
 
@@ -51,13 +52,14 @@ getVersionLatestR = do
                                 -- filter out versions of apps that are incompatible with the OS predicate
                                 .| mapC (second (filter (osPredicate' . versionRecordOsVersion)))
                                 -- prune empty version sets
+                                .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
                                 -- grab the latest matching version if it exists
-                                .| mapC (\(a, b) -> (a, (selectLatestVersion b)))
+                                .| mapC (\(a, b) -> (a, (Just $ selectLatestVersion b)))
                                 .| sinkList
                 -- if the requested package does not have available versions, return it as a key with a null value
                 pure $
                     VersionLatestRes $
                         HM.union (HM.fromList $ filteredPackages) (HM.fromList packageList)
     where
-        selectLatestVersion :: [VersionRecord] -> Maybe Version
-        selectLatestVersion vs = headMay $ (versionRecordNumber <$>) $ sortOn (Down . versionRecordNumber) $ vs
+        selectLatestVersion :: NonEmpty VersionRecord -> Version
+        selectLatestVersion vs = NE.head $ (versionRecordNumber <$>) $ NE.sortOn (Down . versionRecordNumber) $ vs
