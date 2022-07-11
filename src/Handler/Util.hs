@@ -139,7 +139,7 @@ tickleMAU = do
 fetchCompatiblePkgVersions :: Maybe VersionRange -> PkgId -> Handler [VersionRecord]
 fetchCompatiblePkgVersions osVersion pkg = do
     appConnPool <- appConnPool <$> getYesod
-    versionRecords <- runDB $ fetchAllPkgVersions appConnPool pkg
+    versionRecords <- fetchAllPkgVersions appConnPool pkg
     pure $ filter (osPredicate osVersion . versionRecordOsVersion) versionRecords
     where
         osPredicate osV = do
