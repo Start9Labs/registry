@@ -6,19 +6,32 @@ import Control.Monad.Reader.Has (
     Has,
     MonadReader,
  )
-import Data.Attoparsec.Text (Parser, parseOnly)
-import Data.String.Interpolate.IsString (i)
+import Data.Attoparsec.Text (
+    Parser,
+    parseOnly,
+ )
+import Data.String.Interpolate.IsString (
+    i,
+ )
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
+import Database.Queries (fetchAllPkgVersions)
 import Foundation
-import Lib.PkgRepository (PkgRepo, getHash)
+import Lib.PkgRepository (
+    PkgRepo,
+    getHash,
+ )
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (
     Version,
     VersionRange,
+    satisfies,
  )
-import Model (UserActivity (..))
+import Model (
+    UserActivity (..),
+    VersionRecord (versionRecordOsVersion),
+ )
 import Network.HTTP.Types (
     Status,
     status400,
@@ -31,7 +44,10 @@ import Startlude (
     Monoid (..),
     Semigroup ((<>)),
     Text,
+    const,
     decodeUtf8,
+    filter,
+    flip,
     fromMaybe,
     fst,
     getCurrentTime,
@@ -52,6 +68,7 @@ import Yesod (
     RenderRoute (..),
     TypedContent (..),
     YesodPersist (runDB),
+    getYesod,
     insertRecord,
     liftHandler,
     lookupGetParam,
@@ -106,8 +123,7 @@ queryParamAs k p =
     lookupGetParam k >>= \case
         Nothing -> pure Nothing
         Just x -> case parseOnly p x of
-            Left e ->
-                sendResponseText status400 [i|Invalid Request! The query parameter '#{k}' failed to parse: #{e}|]
+            Left e -> sendResponseText status400 [i|Invalid Request! The query parameter '#{k}' failed to parse: #{e}|]
             Right a -> pure (Just a)
 
 
@@ -118,3 +134,15 @@ tickleMAU = do
         Just sid -> do
             now <- liftIO getCurrentTime
             void $ liftHandler $ runDB $ insertRecord $ UserActivity now sid
+
+
+fetchCompatiblePkgVersions :: Maybe VersionRange -> PkgId -> Handler [VersionRecord]
+fetchCompatiblePkgVersions osVersion pkg = do
+    appConnPool <- appConnPool <$> getYesod
+    versionRecords <- fetchAllPkgVersions appConnPool pkg
+    pure $ filter (osPredicate osVersion . versionRecordOsVersion) versionRecords
+    where
+        osPredicate osV = do
+            case osV of
+                Nothing -> const True
+                Just v -> flip satisfies v

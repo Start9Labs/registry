@@ -4,30 +4,65 @@
 
 module Handler.Package.V0.S9PK where
 
-import Data.String.Interpolate.IsString (i)
+import Data.String.Interpolate.IsString (
+    i,
+ )
 import Data.Text qualified as T
-import Database.Queries (createMetric, fetchAppVersion)
+import Database.Queries (
+    createMetric,
+    fetchAppVersion,
+ )
 import Foundation (Handler)
 import GHC.Show (show)
-import Handler.Util (addPackageHeader, getVersionSpecFromQuery, orThrow, versionPriorityFromQueryIsMin)
+import Handler.Package.V1.Index (getOsVersionQuery)
+import Handler.Util (
+    addPackageHeader,
+    fetchCompatiblePkgVersions,
+    getVersionSpecFromQuery,
+    orThrow,
+    versionPriorityFromQueryIsMin,
+ )
 import Lib.Error (S9Error (..))
-import Lib.PkgRepository (getBestVersion, getPackage)
-import Lib.Types.Core (PkgId (..), S9PK)
+import Lib.PkgRepository (
+    getBestVersion,
+    getPackage,
+ )
+import Lib.Types.Core (
+    PkgId (..),
+    S9PK,
+ )
 import Lib.Types.Emver (Version (..))
 import Network.HTTP.Types (status404)
-import Startlude (Maybe (..), pure, void, ($), (.), (>>=))
+import Startlude (
+    Maybe (..),
+    pure,
+    void,
+    ($),
+    (.),
+    (>>=),
+ )
 import System.FilePath (takeBaseName)
-import Yesod (Content (..), TypedContent, YesodPersist (runDB), notFound, respond, sendResponseStatus, typeOctet)
+import Yesod (
+    Content (..),
+    TypedContent,
+    YesodPersist (runDB),
+    notFound,
+    respond,
+    sendResponseStatus,
+    typeOctet,
+ )
 import Yesod.Core (logError)
 
 
 getAppR :: S9PK -> Handler TypedContent
 getAppR file = do
     let pkg = PkgId . T.pack $ takeBaseName (show file)
+    osVersion <- getOsVersionQuery
+    osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     versionSpec <- getVersionSpecFromQuery
     preferMin <- versionPriorityFromQueryIsMin
     version <-
-        getBestVersion pkg versionSpec preferMin
+        (pure $ getBestVersion versionSpec preferMin osCompatibleVersions)
             `orThrow` sendResponseStatus status404 (NotFoundE [i|#{pkg} satisfying #{versionSpec}|])
     addPackageHeader pkg version
     void $ recordMetrics pkg version
@@ -42,8 +77,7 @@ recordMetrics :: PkgId -> Version -> Handler ()
 recordMetrics pkg appVersion = do
     existingVersion <- runDB $ fetchAppVersion pkg appVersion
     case existingVersion of
-        Nothing ->
-            do
-                $logError [i|#{pkg}@#{appVersion} not found in database|]
-                notFound
+        Nothing -> do
+            $logError [i|#{pkg}@#{appVersion} not found in database|]
+            notFound
         Just _ -> runDB $ createMetric pkg appVersion

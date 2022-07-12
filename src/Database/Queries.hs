@@ -229,8 +229,8 @@ getDependencyVersions pkgDepRecord = do
     pure $ entityVal <$> depVers
 
 
-fetchAllAppVersions :: MonadUnliftIO m => ConnectionPool -> PkgId -> m [VersionRecord]
-fetchAllAppVersions appConnPool appId = do
+fetchAllPkgVersions :: MonadUnliftIO m => ConnectionPool -> PkgId -> m [VersionRecord]
+fetchAllPkgVersions appConnPool appId = do
     entityAppVersions <- runSqlPool (P.selectList [VersionRecordPkgId P.==. PkgRecordKey appId] []) appConnPool
     pure $ entityVal <$> entityAppVersions
 
