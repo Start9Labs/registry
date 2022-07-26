@@ -25,8 +25,10 @@ import Startlude (
     (&),
     (.),
     (<$>),
+    UTCTime,
  )
 import Yesod
+import Data.Time.Format.ISO8601 (iso8601Show)
 
 
 dataUrl :: (ContentType, ByteString) -> Text
@@ -48,6 +50,7 @@ data PackageRes = PackageRes
     , packageResLicense :: !Text
     , packageResVersions :: !(NonEmpty Version)
     , packageResDependencies :: !(HashMap PkgId DependencyRes)
+    , packageResPublishedAt :: !UTCTime
     }
     deriving (Show, Generic)
 
@@ -66,6 +69,7 @@ instance ApiResponse PackageRes where
             , "categories" .= packageResCategories
             , "versions" .= packageResVersions
             , "dependency-metadata" .= (apiEncode v <$> packageResDependencies)
+            , "published-at" .= (iso8601Show packageResPublishedAt)
             ]
 
 

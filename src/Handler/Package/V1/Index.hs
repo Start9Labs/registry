@@ -81,6 +81,7 @@ import Startlude (
     (<&>),
     (<>),
     (=<<),
+    liftA2,
  )
 import UnliftIO (Concurrently (..), mapConcurrently)
 import Yesod (
@@ -92,6 +93,7 @@ import Yesod (
     sendResponseStatus,
  )
 import Yesod.Core (logWarn)
+import Data.List.NonEmpty (head)
 
 
 data PackageReq = PackageReq
@@ -230,6 +232,7 @@ constructPackageListApiRes PackageMetadata{..} dependencies = do
             , packageResLicense = basicRender $ LicenseR V0 pkgId
             , packageResVersions = versionRecordNumber <$> pkgVersions
             , packageResDependencies = dependencies
+            , packageResPublishedAt = ((liftA2 fromMaybe) versionRecordCreatedAt versionRecordUpdatedAt) (head pkgVersions)
             }
 
 
