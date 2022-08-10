@@ -63,6 +63,7 @@ import Startlude (
     fromMaybe,
     headMay,
     id,
+    liftA2,
     mappend,
     maximumOn,
     nonEmpty,
@@ -216,6 +217,8 @@ constructPackageListApiRes PackageMetadata{..} dependencies = do
     let pkgCategories = packageMetadataPkgCategories
     let pkgVersions = packageMetadataPkgVersionRecords
     let pkgVersion = packageMetadataPkgVersion
+    -- get the version record for the version being returned - the version will always be in this list ie. it will always be not empty
+    let versionRecord = NE.head $ NE.fromList $ NE.filter (\v -> versionRecordNumber v == pkgVersion) pkgVersions
     manifest <-
         flip runReaderT settings $
             (snd <$> getManifest pkgId pkgVersion) >>= \bs ->
@@ -230,6 +233,7 @@ constructPackageListApiRes PackageMetadata{..} dependencies = do
             , packageResLicense = basicRender $ LicenseR V0 pkgId
             , packageResVersions = versionRecordNumber <$> pkgVersions
             , packageResDependencies = dependencies
+            , packageResPublishedAt = ((liftA2 fromMaybe) versionRecordCreatedAt versionRecordUpdatedAt) versionRecord
             }
 
 
