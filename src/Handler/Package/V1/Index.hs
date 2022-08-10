@@ -14,7 +14,6 @@ import Data.Conduit.List qualified as CL
 import Data.HashMap.Internal.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
 import Data.List (lookup)
-import Data.List.NonEmpty (head)
 import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
 import Database.Persist.Sql (SqlBackend)
