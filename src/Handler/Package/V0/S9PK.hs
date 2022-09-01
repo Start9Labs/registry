@@ -32,11 +32,41 @@ import Lib.Types.Core (
     S9PK,
  )
 import Lib.Types.Emver (Version (..))
-import Network.HTTP.Types (ByteRange (..), hRange, parseByteRanges, status404, status416)
-import Startlude (Applicative (..), Maybe (..), Num ((-)), Text, fmap, foldr, for, liftIO, pure, void, ($), (.), (>>=))
+import Network.HTTP.Types (
+    ByteRange (..),
+    hRange,
+    parseByteRanges,
+    status404,
+    status416,
+ )
+import Startlude (
+    Applicative (..),
+    Maybe (..),
+    Num ((-)),
+    Text,
+    fmap,
+    foldr,
+    for,
+    liftIO,
+    pure,
+    void,
+    ($),
+    (.),
+    (>>=),
+ )
 import System.Directory (getFileSize)
 import System.FilePath (takeBaseName)
-import Yesod (Content (..), TypedContent, YesodPersist (runDB), lookupHeader, notFound, respond, sendChunkBS, sendResponseStatus, typeOctet)
+import Yesod (
+    Content (..),
+    TypedContent,
+    YesodPersist (runDB),
+    lookupHeader,
+    notFound,
+    respond,
+    sendChunkBS,
+    sendResponseStatus,
+    typeOctet,
+ )
 import Yesod.Core (logError)
 
 
