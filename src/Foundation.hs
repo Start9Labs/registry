@@ -150,6 +150,7 @@ import Yesod.Persist.Core (
     YesodPersistRunner (..),
     defaultGetDBRunner,
  )
+import Foundation (Route(EosUploadR))
 
 
 -- | The foundation datatype for your application. This can be a good place to
@@ -287,6 +288,7 @@ instance Yesod RegistryCtx where
 
     maximumContentLengthIO :: RegistryCtx -> Maybe (Route RegistryCtx) -> IO (Maybe Word64)
     maximumContentLengthIO _ (Just PkgUploadR) = pure Nothing
+    maximumContentLengthIO _ (Just EosUploadR) = pure Nothing
     maximumContentLengthIO _ _ = pure $ Just 2097152 -- the original default
 
 

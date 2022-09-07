@@ -432,9 +432,9 @@ parsePkgCat = subparser $ command "categorize" (info cat $ progDesc "Add or remo
 parseEosPublish :: Parser EosUpload
 parseEosPublish =
     subparser $
-        command "upload" (info go $ progDesc "Publishes a .s9pk to a remote registry")
+        command "eos-upload" (info go $ progDesc "Publishes a .img to a remote registry")
             <> metavar
-                "upload"
+                "eos-upload"
     where
         go =
             liftA3
