@@ -150,7 +150,6 @@ import Yesod.Persist.Core (
     YesodPersistRunner (..),
     defaultGetDBRunner,
  )
-import Foundation (Route(EosUploadR))
 
 
 -- | The foundation datatype for your application. This can be a good place to
