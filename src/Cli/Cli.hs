@@ -440,7 +440,7 @@ parseEosPublish =
             liftA3
                 EosUpload
                 (strOption (short 't' <> long "target" <> metavar "NAME" <> help "Name of registry in publish.dhall"))
-                (strOption (short 'p' <> long "package" <> metavar "S9PK" <> help "File path of the image to publish"))
+                (strOption (short 'i' <> long "image" <> metavar "EOS_IMG" <> help "File path of the image to publish"))
                 (strOption (short 'v' <> long "version" <> help "Version of the image"))
 
 
