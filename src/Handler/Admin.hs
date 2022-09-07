@@ -10,7 +10,6 @@ import Conduit (
     sinkFile,
     (.|),
  )
-import Control.Exception (ErrorCall (ErrorCall))
 import Control.Monad.Reader.Has (ask)
 import Control.Monad.Trans.Maybe (MaybeT (..))
 import Data.Aeson (
@@ -43,7 +42,8 @@ import Database.Persist (
     PersistUniqueWrite (deleteBy, insertUnique, upsert),
     entityVal,
     insert_,
-    selectList, (=.)
+    selectList,
+    (=.),
  )
 import Database.Persist.Postgresql (runSqlPoolNoTransaction)
 import Database.Queries (upsertPackageVersion)
@@ -52,8 +52,10 @@ import Foundation (
     RegistryCtx (..),
  )
 import Handler.Util (
+    getHashFromQuery,
+    getVersionFromQuery,
     orThrow,
-    sendResponseText, getVersionFromQuery, getHashFromQuery
+    sendResponseText,
  )
 import Lib.PkgRepository (
     PkgRepo (PkgRepo, pkgRepoFileRoot),
@@ -69,18 +71,20 @@ import Lib.Types.Emver (Version (..))
 import Lib.Types.Manifest (PackageManifest (..))
 import Model (
     Category (..),
+    EntityField (EosHashHash),
+    EosHash (EosHash),
     Key (AdminKey, PkgRecordKey, VersionRecordKey),
     PkgCategory (PkgCategory),
     Unique (UniqueName, UniquePkgCategory),
     Upload (..),
     VersionRecord (versionRecordNumber, versionRecordPkgId),
-    unPkgRecordKey, EosHash (EosHash), EntityField (EosHashHash)
+    unPkgRecordKey,
  )
 import Network.HTTP.Types (
+    status400,
     status403,
     status404,
     status500,
-    status400
  )
 import Settings
 import Startlude (
@@ -104,7 +108,6 @@ import Startlude (
     not,
     replicate,
     show,
-    throwIO,
     toS,
     traverse,
     void,
@@ -139,7 +142,8 @@ import Yesod (
     logError,
     rawRequestBody,
     requireCheckJsonBody,
-    runDB, sendResponseStatus
+    runDB,
+    sendResponseStatus,
  )
 import Yesod.Auth (YesodAuth (maybeAuthId))
 import Yesod.Core.Types (JSONResponse (JSONResponse))
@@ -168,15 +172,15 @@ postPkgUploadR = do
         renameDirectory dir targetPath
         maybeAuthId >>= \case
             Nothing -> do
-                -- TODO: Send this to Matrix
                 $logError
                     "The Impossible has happened, an unauthenticated user has managed to upload a pacakge to this registry"
-                throwIO $ ErrorCall "Unauthenticated user has uploaded package to registry!!!"
+                pure ()
             Just name -> do
                 now <- liftIO getCurrentTime
                 runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
     where
         retry m = runMaybeT . asum $ replicate 3 (MaybeT $ hush <$> try @_ @SomeException m)
+
 
 postEosUploadR :: Handler ()
 postEosUploadR = do
