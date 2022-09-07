@@ -43,7 +43,7 @@ import Database.Persist (
     PersistUniqueWrite (deleteBy, insertUnique, upsert),
     entityVal,
     insert_,
-    selectList,
+    selectList, (=.)
  )
 import Database.Persist.Postgresql (runSqlPoolNoTransaction)
 import Database.Queries (upsertPackageVersion)
@@ -53,7 +53,7 @@ import Foundation (
  )
 import Handler.Util (
     orThrow,
-    sendResponseText,
+    sendResponseText, getVersionFromQuery, getHashFromQuery
  )
 import Lib.PkgRepository (
     PkgRepo (PkgRepo, pkgRepoFileRoot),
@@ -74,12 +74,13 @@ import Model (
     Unique (UniqueName, UniquePkgCategory),
     Upload (..),
     VersionRecord (versionRecordNumber, versionRecordPkgId),
-    unPkgRecordKey,
+    unPkgRecordKey, EosHash (EosHash), EntityField (EosHashHash)
  )
 import Network.HTTP.Types (
     status403,
     status404,
     status500,
+    status400
  )
 import Settings
 import Startlude (
@@ -138,7 +139,7 @@ import Yesod (
     logError,
     rawRequestBody,
     requireCheckJsonBody,
-    runDB,
+    runDB, sendResponseStatus
  )
 import Yesod.Auth (YesodAuth (maybeAuthId))
 import Yesod.Core.Types (JSONResponse (JSONResponse))
@@ -176,6 +177,28 @@ postPkgUploadR = do
                 runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
     where
         retry m = runMaybeT . asum $ replicate 3 (MaybeT $ hush <$> try @_ @SomeException m)
+
+postEosUploadR :: Handler ()
+postEosUploadR = do
+    root <- getsYesod $ (</> "eos") . resourcesDir . appSettings
+    maybeVersion <- getVersionFromQuery
+    version <- case maybeVersion of
+        Nothing -> sendResponseStatus status400 ("Missing Version" :: Text)
+        Just v -> pure v
+    maybeHash <- getHashFromQuery
+    hash <- case maybeHash of
+        Nothing -> sendResponseStatus status400 ("Missing Hash" :: Text)
+        Just h -> pure h
+    resourcesTemp <- getsYesod $ (</> "temp") . resourcesDir . appSettings
+    createDirectoryIfMissing True resourcesTemp
+    withTempDirectory resourcesTemp "neweos" $ \dir -> do
+        let path = dir </> "eos" <.> "img"
+        runConduit $ rawRequestBody .| sinkFile path
+        _ <- runDB $ upsert (EosHash version hash) [EosHashHash =. hash]
+        let targetPath = root </> show version
+        removePathForcibly targetPath
+        createDirectoryIfMissing True targetPath
+        renameDirectory dir targetPath
 
 
 data IndexPkgReq = IndexPkgReq

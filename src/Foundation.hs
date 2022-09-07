@@ -162,7 +162,6 @@ data RegistryCtx = RegistryCtx
     , appWebServerThreadId :: MVar (ThreadId, ThreadId)
     , appShouldRestartWeb :: MVar Bool
     , appConnPool :: ConnectionPool
-    , appStopFsNotifyEos :: IO Bool
     }
 
 

@@ -16,6 +16,7 @@
 
 -- ADMIN API V0
 /admin/v0/upload                           PkgUploadR         POST !admin
+/admin/v0/eos-upload                       EosUploadR         POST !admin
 /admin/v0/index                            PkgIndexR          POST !admin
 /admin/v0/deindex                          PkgDeindexR        GET POST !admin
 /admin/v0/category/#Text                   CategoryR          POST DELETE !admin
