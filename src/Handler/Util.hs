@@ -104,7 +104,7 @@ getVersionFromQuery = do
         Nothing -> pure Nothing
         Just v -> case readMaybe v of
             Nothing -> sendResponseStatus status400 ("Invalid Version" :: Text)
-            Just t -> pure t
+            Just t -> pure Just t
 
 getHashFromQuery :: MonadHandler m => m (Maybe Text)
 getHashFromQuery = lookupGetParam "hash"
