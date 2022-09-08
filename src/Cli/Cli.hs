@@ -90,7 +90,7 @@ import Network.HTTP.Simple (
     parseRequest,
     setRequestBody,
     setRequestBodyJSON,
-    setRequestHeaders,
+    setRequestHeaders, setRequestQueryString
  )
 import Network.HTTP.Types (status200)
 import Network.URI (
@@ -205,12 +205,20 @@ import Yesod (
     logError,
     logWarn,
  )
+import Crypto.Hash.Conduit (hashFile)
 
 
 data Upload = Upload
     { publishRepoName :: !String
     , publishPkg :: !(Maybe FilePath)
     , publishIndex :: !Bool
+    }
+    deriving (Show)
+
+data EosUpload = EosUpload
+    { eosRepoName :: !String
+    , eosPath :: !FilePath
+    , eosVersion :: !Version
     }
     deriving (Show)
 
@@ -260,6 +268,7 @@ data Command
     | CmdCatDel !String !String
     | CmdPkgCatAdd !String !PkgId !String
     | CmdPkgCatDel !String !PkgId !String
+    | CmdEosUpload !EosUpload
     deriving (Show)
 
 
@@ -373,6 +382,7 @@ parseCommand =
         <|> (CmdListUnindexed <$> parseListUnindexed)
         <|> parseCat
         <|> parsePkgCat
+        <|> (CmdEosUpload <$> parseEosPublish)
     where
         reg = parseRepoAdd <|> (CmdRegDel <$> parseRepoDel) <|> (parseRepoList $> CmdRegList)
 
@@ -419,6 +429,20 @@ parsePkgCat = subparser $ command "categorize" (info cat $ progDesc "Add or remo
                     <*> strArgument (metavar "PACKAGE_ID")
                     <*> strArgument (metavar "CATEGORY")
 
+parseEosPublish :: Parser EosUpload
+parseEosPublish =
+    subparser $
+        command "eos-upload" (info go $ progDesc "Publishes a .img to a remote registry")
+            <> metavar
+                "eos-upload"
+    where
+        go =
+            liftA3
+                EosUpload
+                (strOption (short 't' <> long "target" <> metavar "NAME" <> help "Name of registry in publish.dhall"))
+                (strOption (short 'i' <> long "image" <> metavar "EOS_IMG" <> help "File path of the image to publish"))
+                (strOption (short 'v' <> long "version" <> help "Version of the image"))
+
 
 opts :: ParserInfo Command
 opts = info (parseCommand <**> helper) (fullDesc <> progDesc "Publish tool for Embassy Packages")
@@ -438,6 +462,7 @@ cliMain =
         CmdCatDel target cat -> catDel target cat
         CmdPkgCatAdd target pkg cat -> pkgCatAdd target pkg cat
         CmdPkgCatDel target pkg cat -> pkgCatDel target pkg cat
+        CmdEosUpload up -> eosUpload up
 
 
 init :: Maybe Shell -> IO ()
@@ -547,6 +572,31 @@ upload (Upload name mpkg shouldIndex) = do
         sfs2prog :: StreamFileStatus -> Progress ()
         sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
 
+eosUpload :: EosUpload -> IO ()
+eosUpload (EosUpload name img version) = do
+    PublishCfgRepo{..} <- findNameInCfg name
+    noBody <-
+        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/eos-upload")
+            <&> setRequestHeaders [("accept", "text/plain")]
+            <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
+    size <- getFileSize img
+    hash <- hashFile @_ @SHA256 img
+    bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
+    body <- observedStreamFile (updateProgress bar . const . sfs2prog) img
+    let withBody = setRequestBody body noBody
+    let withQParams = setRequestQueryString [("version", Just $ show version), ("hash", Just $ convertToBase Base16 hash)] withBody
+    manager <- newTlsManager
+    res <- runReaderT (httpLbs withQParams) manager
+    if getResponseStatus res == status200
+        then -- no output is successful
+            pure ()
+        else do
+            $logError (decodeUtf8 . LB.toStrict $ getResponseBody res)
+            exitWith $ ExitFailure 1
+    putChunkLn $ fromString ("Successfully uploaded " <> img) & fore green
+    where
+        sfs2prog :: StreamFileStatus -> Progress ()
+        sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
 
 index :: String -> String -> Version -> IO ()
 index name pkg v = performHttp name "POST" [i|/admin/v0/index|] (IndexPkgReq (PkgId $ toS pkg) v)

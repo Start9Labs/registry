@@ -31,15 +31,8 @@ import Control.Monad.Reader.Has (
     ask,
     asks,
  )
-import Crypto.Hash (SHA256)
-import Crypto.Hash.Conduit (hashFile)
 import Data.Aeson (eitherDecodeFileStrict')
-import Data.Attoparsec.Text (parseOnly)
 import Data.Attoparsec.Text qualified as Atto
-import Data.ByteArray.Encoding (
-    Base (Base16),
-    convertToBase,
- )
 import Data.ByteString (
     readFile,
     writeFile,
@@ -58,7 +51,6 @@ import Database.Esqueleto.Experimental (
 import Database.Persist (
     insertKey,
     update,
-    upsert,
     (=.),
  )
 import Database.Persist.Sql (
@@ -80,8 +72,7 @@ import Lib.Types.Manifest (
     PackageManifest (..),
  )
 import Model (
-    EntityField (EosHashHash, PkgRecordUpdatedAt),
-    EosHash (EosHash),
+    EntityField (PkgRecordUpdatedAt),
     Key (PkgRecordKey),
     PkgDependency (PkgDependency),
     PkgRecord (PkgRecord),
@@ -95,7 +86,6 @@ import Startlude (
     Eq ((==)),
     Exception,
     FilePath,
-    IO,
     Integer,
     Maybe (..),
     MonadIO (liftIO),
@@ -103,7 +93,6 @@ import Startlude (
     Ord (compare),
     Show,
     SomeException (..),
-    decodeUtf8,
     filter,
     find,
     first,
@@ -111,7 +100,6 @@ import Startlude (
     for_,
     fst,
     headMay,
-    not,
     on,
     partitionEithers,
     pure,
@@ -120,40 +108,26 @@ import Startlude (
     sortBy,
     throwIO,
     toS,
-    void,
     ($),
-    (&&),
     (.),
     (/=),
     (<$>),
  )
-import System.FSNotify (
-    ActionPredicate,
-    Event (..),
-    eventPath,
-    watchTree,
-    withManager,
- )
+
 import System.FilePath (
     takeBaseName,
     takeDirectory,
     takeExtension,
-    takeFileName,
     (<.>),
     (</>),
  )
 import UnliftIO (
     MonadUnliftIO,
-    askRunInIO,
     async,
     catch,
     mapConcurrently_,
-    newEmptyMVar,
-    takeMVar,
-    tryPutMVar,
     wait,
  )
-import UnliftIO.Concurrent (forkIO)
 import UnliftIO.Directory (
     doesDirectoryExist,
     doesPathExist,
@@ -297,40 +271,6 @@ extractPkg pool fp = handle @_ @SomeException cleanup $ do
             let toRemove = filter ((/=) ".s9pk" . takeExtension) fs
             mapConcurrently_ (removeFile . (pkgRoot </>)) toRemove
             throwIO e
-
-
-watchEosRepoRoot :: (MonadUnliftIO m, MonadReader r m, Has EosRepo r, MonadLoggerIO m) => ConnectionPool -> m (IO Bool)
-watchEosRepoRoot pool = do
-    $logInfo "Starting FSNotify Watch Manager: EOS"
-    root <- asks eosRepoFileRoot
-    runInIO <- askRunInIO
-    box <- newEmptyMVar @_ @()
-    _ <- forkIO $
-        liftIO $
-            withManager $ \watchManager -> do
-                stop <- watchTree watchManager root shouldIndex $ \evt -> do
-                    let os = eventPath evt
-                    void . forkIO $
-                        runInIO $ do
-                            indexOs pool os
-                takeMVar box
-                stop
-    pure $ tryPutMVar box ()
-    where
-        shouldIndex :: ActionPredicate
-        shouldIndex (Added path _ isDir) = not isDir && takeExtension path == ".img"
-        shouldIndex (Modified path _ isDir) = not isDir && takeExtension path == ".img"
-        shouldIndex _ = False
-        indexOs :: (MonadUnliftIO m, MonadLoggerIO m) => ConnectionPool -> FilePath -> m ()
-        indexOs pool path = do
-            hash <- hashFile @_ @SHA256 path
-            let hashText = decodeUtf8 $ convertToBase Base16 hash
-            let vText = takeFileName (takeDirectory path)
-            let eVersion = parseOnly parseVersion . T.pack $ vText
-            case eVersion of
-                Left e -> $logError [i|Invalid Version Number (#{vText}): #{e}|]
-                Right version ->
-                    void $ flip runSqlPool pool $ upsert (EosHash version hashText) [EosHashHash =. hashText]
 
 
 getManifestLocation :: (MonadReader r m, Has PkgRepo r) => PkgId -> Version -> m FilePath

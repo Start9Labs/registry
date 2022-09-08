@@ -5,7 +5,7 @@ import Data.Aeson (ToJSON (..), eitherDecode)
 import Data.ByteString.Lazy qualified as LBS
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
-import Data.List (lookup, sortOn)
+import Data.List (lookup)
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Tuple.Extra (second)
 import Database.Queries (collateVersions, getPkgDataSource)
@@ -16,7 +16,7 @@ import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, satisfies)
 import Model (VersionRecord (..))
 import Network.HTTP.Types (status400)
-import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, headMay, nonEmpty, pure, ($), (.), (<$>), (<&>))
+import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, nonEmpty, pure, ($), (.), (<$>), (<&>))
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), YesodRequest (reqGetParams), getRequest, sendResponseStatus)
 
 

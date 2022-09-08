@@ -162,7 +162,6 @@ data RegistryCtx = RegistryCtx
     , appWebServerThreadId :: MVar (ThreadId, ThreadId)
     , appShouldRestartWeb :: MVar Bool
     , appConnPool :: ConnectionPool
-    , appStopFsNotifyEos :: IO Bool
     }
 
 
@@ -288,6 +287,7 @@ instance Yesod RegistryCtx where
 
     maximumContentLengthIO :: RegistryCtx -> Maybe (Route RegistryCtx) -> IO (Maybe Word64)
     maximumContentLengthIO _ (Just PkgUploadR) = pure Nothing
+    maximumContentLengthIO _ (Just EosUploadR) = pure Nothing
     maximumContentLengthIO _ _ = pure $ Just 2097152 -- the original default
 
 
