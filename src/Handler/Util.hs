@@ -97,6 +97,7 @@ getVersionSpecFromQuery = do
         Nothing -> sendResponseStatus status400 ("Invalid App Version Specification" :: Text)
         Just t -> pure t
 
+
 getVersionFromQuery :: MonadHandler m => m (Maybe Version)
 getVersionFromQuery = do
     versionString <- lookupGetParam "version"
@@ -106,8 +107,10 @@ getVersionFromQuery = do
             Nothing -> sendResponseStatus status400 ("Invalid Version" :: Text)
             Just t -> pure (Just t)
 
+
 getHashFromQuery :: MonadHandler m => m (Maybe Text)
 getHashFromQuery = lookupGetParam "hash"
+
 
 versionPriorityFromQueryIsMin :: MonadHandler m => m Bool
 versionPriorityFromQueryIsMin = do

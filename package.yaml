@@ -74,6 +74,7 @@ dependencies:
   - yesod-auth-basic
   - yesod-core
   - yesod-persistent
+  - zip-stream
 
 library:
   source-dirs: src

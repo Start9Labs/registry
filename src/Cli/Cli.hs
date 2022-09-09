@@ -29,6 +29,7 @@ import Crypto.Hash (
     SHA256 (SHA256),
     hashWith,
  )
+import Crypto.Hash.Conduit (hashFile)
 import Data.Aeson (
     ToJSON,
     eitherDecodeStrict,
@@ -70,9 +71,7 @@ import Handler.Admin (
     PackageList (..),
  )
 import Lib.External.AppMgr (sourceManifest)
-import Lib.Types.Core (
-    PkgId (..),
- )
+import Lib.Types.Core (PkgId (..))
 import Lib.Types.Emver (Version (..))
 import Lib.Types.Manifest (PackageManifest (..))
 import Network.HTTP.Client.Conduit (
@@ -90,7 +89,8 @@ import Network.HTTP.Simple (
     parseRequest,
     setRequestBody,
     setRequestBodyJSON,
-    setRequestHeaders, setRequestQueryString
+    setRequestHeaders,
+    setRequestQueryString,
  )
 import Network.HTTP.Types (status200)
 import Network.URI (
@@ -150,6 +150,7 @@ import Startlude (
     IsString (..),
     Maybe (..),
     Monad ((>>=)),
+    Num (fromInteger),
     ReaderT (runReaderT),
     Semigroup ((<>)),
     Show,
@@ -205,7 +206,6 @@ import Yesod (
     logError,
     logWarn,
  )
-import Crypto.Hash.Conduit (hashFile)
 
 
 data Upload = Upload
@@ -214,6 +214,7 @@ data Upload = Upload
     , publishIndex :: !Bool
     }
     deriving (Show)
+
 
 data EosUpload = EosUpload
     { eosRepoName :: !String
@@ -429,6 +430,7 @@ parsePkgCat = subparser $ command "categorize" (info cat $ progDesc "Add or remo
                     <*> strArgument (metavar "PACKAGE_ID")
                     <*> strArgument (metavar "CATEGORY")
 
+
 parseEosPublish :: Parser EosUpload
 parseEosPublish =
     subparser $
@@ -572,19 +574,25 @@ upload (Upload name mpkg shouldIndex) = do
         sfs2prog :: StreamFileStatus -> Progress ()
         sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
 
+
 eosUpload :: EosUpload -> IO ()
 eosUpload (EosUpload name img version) = do
     PublishCfgRepo{..} <- findNameInCfg name
+    size <- fromInteger <$> getFileSize img
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/eos-upload")
             <&> setRequestHeaders [("accept", "text/plain")]
+            <&> setRequestHeaders [("Content-Encoding", "gzip")]
+            <&> setRequestHeaders [("Content-Length", show size)]
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
-    size <- getFileSize img
     hash <- hashFile @_ @SHA256 img
     bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
     body <- observedStreamFile (updateProgress bar . const . sfs2prog) img
     let withBody = setRequestBody body noBody
-    let withQParams = setRequestQueryString [("version", Just $ show version), ("hash", Just $ convertToBase Base16 hash)] withBody
+    let withQParams =
+            setRequestQueryString
+                [("version", Just $ show version), ("hash", Just $ convertToBase Base16 hash)]
+                withBody
     manager <- newTlsManager
     res <- runReaderT (httpLbs withQParams) manager
     if getResponseStatus res == status200
@@ -597,6 +605,7 @@ eosUpload (EosUpload name img version) = do
     where
         sfs2prog :: StreamFileStatus -> Progress ()
         sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
+
 
 index :: String -> String -> Version -> IO ()
 index name pkg v = performHttp name "POST" [i|/admin/v0/index|] (IndexPkgReq (PkgId $ toS pkg) v)

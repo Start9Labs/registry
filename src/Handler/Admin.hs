@@ -5,11 +5,30 @@
 
 module Handler.Admin where
 
+import Codec.Archive.Zip.Conduit.Zip (
+    ZipData (ZipDataSource),
+    ZipEntry (
+        ZipEntry,
+        zipEntryExternalAttributes,
+        zipEntryName,
+        zipEntrySize,
+        zipEntryTime
+    ),
+    ZipInfo (..),
+    ZipOptions (..),
+    zipStream,
+ )
 import Conduit (
+    ConduitT,
+    MonadUnliftIO,
+    fuseBoth,
     runConduit,
     sinkFile,
+    sinkFileBS,
+    yield,
     (.|),
  )
+import Control.Monad.Extra
 import Control.Monad.Reader.Has (ask)
 import Control.Monad.Trans.Maybe (MaybeT (..))
 import Data.Aeson (
@@ -22,6 +41,7 @@ import Data.Aeson (
     (.:?),
     (.=),
  )
+import Data.ByteString (ByteString)
 import Data.HashMap.Internal.Strict (
     HashMap,
     differenceWith,
@@ -35,6 +55,7 @@ import Data.List (
 import Data.String.Interpolate.IsString (
     i,
  )
+import Data.Time
 import Database.Persist (
     Entity (entityKey),
     PersistStoreRead (get),
@@ -64,9 +85,7 @@ import Lib.PkgRepository (
     getPackages,
     getVersionsFor,
  )
-import Lib.Types.Core (
-    PkgId (unPkgId),
- )
+import Lib.Types.Core (PkgId (unPkgId))
 import Lib.Types.Emver (Version (..))
 import Lib.Types.Manifest (PackageManifest (..))
 import Model (
@@ -90,28 +109,29 @@ import Settings
 import Startlude (
     Applicative (pure),
     Bool (..),
+    Either (Right),
     Eq,
+    FilePath,
     Int,
     Maybe (..),
-    Monad ((>>=)),
     Show,
     SomeException (..),
     Text,
+    Word64,
     asum,
-    fmap,
+    decodeUtf8,
+    encodeUtf8,
     fromMaybe,
-    getCurrentTime,
     guarded,
     hush,
     isNothing,
     liftIO,
     not,
+    readMaybe,
     replicate,
     show,
     toS,
     traverse,
-    void,
-    when,
     zip,
     ($),
     (&&&),
@@ -140,6 +160,7 @@ import Yesod (
     delete,
     getsYesod,
     logError,
+    lookupHeader,
     rawRequestBody,
     requireCheckJsonBody,
     runDB,
@@ -193,16 +214,41 @@ postEosUploadR = do
     hash <- case maybeHash of
         Nothing -> sendResponseStatus status400 ("Missing Hash" :: Text)
         Just h -> pure h
+    (maybeSize :: Maybe Word64) <- maybeM (pure Nothing) (pure . readMaybe . decodeUtf8) (lookupHeader "Content-Length")
     resourcesTemp <- getsYesod $ (</> "temp") . resourcesDir . appSettings
     createDirectoryIfMissing True resourcesTemp
     withTempDirectory resourcesTemp "neweos" $ \dir -> do
         let path = dir </> "eos" <.> "img"
-        runConduit $ rawRequestBody .| sinkFile path
-        _ <- runDB $ upsert (EosHash version hash) [EosHashHash =. hash]
+        void . runConduit $ createZipEntry path maybeSize rawRequestBody .| (zipStream zipOptions `fuseBoth` sinkFileBS path)
+        void . runDB $ upsert (EosHash version hash) [EosHashHash =. hash]
         let targetPath = root </> show version
         removePathForcibly targetPath
         createDirectoryIfMissing True targetPath
         renameDirectory dir targetPath
+    where
+        zipOptions =
+            ZipOptions
+                { zipOpt64 = True
+                , zipOptCompressLevel = -1
+                , zipOptInfo = ZipInfo{zipComment = encodeUtf8 "zipped eos image"}
+                }
+        createZipEntry ::
+            (MonadUnliftIO m) =>
+            FilePath ->
+            Maybe Word64 ->
+            ConduitT () ByteString m () ->
+            ConduitT () (ZipEntry, ZipData m) m ()
+        createZipEntry path size dataSource = do
+            utcTime <- liftIO getCurrentTime
+            localTimeZone <- liftIO $ getTimeZone utcTime
+            let zipEntry =
+                    ZipEntry
+                        { zipEntryName = Right $ encodeUtf8 $ show path
+                        , zipEntryTime = utcToLocalTime localTimeZone utcTime
+                        , zipEntrySize = size
+                        , zipEntryExternalAttributes = Nothing
+                        }
+            yield (zipEntry, ZipDataSource dataSource)
 
 
 data IndexPkgReq = IndexPkgReq
