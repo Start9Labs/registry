@@ -578,15 +578,14 @@ upload (Upload name mpkg shouldIndex) = do
 eosUpload :: EosUpload -> IO ()
 eosUpload (EosUpload name img version) = do
     PublishCfgRepo{..} <- findNameInCfg name
-    size <- fromInteger <$> getFileSize img
+    size <- getFileSize img
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/eos-upload")
             <&> setRequestHeaders [("accept", "text/plain")]
             <&> setRequestHeaders [("Content-Encoding", "gzip")]
-            <&> setRequestHeaders [("Content-Length", show size)]
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     hash <- hashFile @_ @SHA256 img
-    bar <- newProgressBar defStyle 30 (Progress 0 size ())
+    bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
     body <- observedStreamFile (updateProgress bar . const . sfs2prog) img
     let withBody = setRequestBody body noBody
     let withQParams =
