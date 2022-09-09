@@ -586,7 +586,7 @@ eosUpload (EosUpload name img version) = do
             <&> setRequestHeaders [("Content-Length", show size)]
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     hash <- hashFile @_ @SHA256 img
-    bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
+    bar <- newProgressBar defStyle 30 (Progress 0 size ())
     body <- observedStreamFile (updateProgress bar . const . sfs2prog) img
     let withBody = setRequestBody body noBody
     let withQParams =
