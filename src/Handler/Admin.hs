@@ -21,7 +21,7 @@ import Codec.Archive.Zip.Conduit.Zip (
 import Conduit (
     ConduitT,
     MonadUnliftIO,
-    fuseBoth,
+    fuseUpstream,
     runConduit,
     sinkFile,
     sinkFileBS,
@@ -214,12 +214,13 @@ postEosUploadR = do
     hash <- case maybeHash of
         Nothing -> sendResponseStatus status400 ("Missing Hash" :: Text)
         Just h -> pure h
-    (maybeSize :: Maybe Word64) <- maybeM (pure Nothing) (pure . readMaybe . decodeUtf8) (lookupHeader "Content-Length")
+    -- (maybeSize :: Maybe Word64) <- maybeM (pure Nothing) (pure . readMaybe . decodeUtf8) (lookupHeader "Content-Length")
     resourcesTemp <- getsYesod $ (</> "temp") . resourcesDir . appSettings
     createDirectoryIfMissing True resourcesTemp
     withTempDirectory resourcesTemp "neweos" $ \dir -> do
         let path = dir </> "eos" <.> "img"
-        void . runConduit $ createZipEntry path maybeSize rawRequestBody .| (zipStream zipOptions `fuseBoth` sinkFileBS path)
+        runConduit $ rawRequestBody .| sinkFile path
+        -- void . runConduit $ createZipEntry path maybeSize rawRequestBody .| (zipStream zipOptions `fuseUpstream` sinkFileBS path)
         void . runDB $ upsert (EosHash version hash) [EosHashHash =. hash]
         let targetPath = root </> show version
         removePathForcibly targetPath

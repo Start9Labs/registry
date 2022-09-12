@@ -12,9 +12,18 @@ module Cli.Cli (
     cliMain,
 ) where
 
+import Codec.Archive.Zip.Conduit.Types
+import Codec.Archive.Zip.Conduit.Zip (ZipOptions (..), zipFileData, zipStream)
 import Conduit (
+    ConduitT,
+    MonadResource,
+    awaitForever,
     foldC,
     runConduit,
+    runResourceT,
+    sinkHandle,
+    sinkNull,
+    yield,
     (.|),
  )
 import Control.Monad.Logger (
@@ -55,6 +64,7 @@ import Data.String.Interpolate.IsString (
     i,
  )
 import Data.Text (toLower)
+import Data.Time (getTimeZone, utcToLocalTime)
 import Dhall (
     Encoder (embed),
     FromDhall (..),
@@ -89,6 +99,7 @@ import Network.HTTP.Simple (
     parseRequest,
     setRequestBody,
     setRequestBodyJSON,
+    setRequestBodySource,
     setRequestHeaders,
     setRequestQueryString,
  )
@@ -150,14 +161,15 @@ import Startlude (
     IsString (..),
     Maybe (..),
     Monad ((>>=)),
-    Num (fromInteger),
     ReaderT (runReaderT),
     Semigroup ((<>)),
     Show,
     String,
+    Word64,
     appendFile,
     const,
     decodeUtf8,
+    encodeUtf8,
     exitWith,
     filter,
     flip,
@@ -167,11 +179,14 @@ import Startlude (
     fromIntegral,
     fromMaybe,
     fst,
+    getCurrentTime,
     headMay,
+    liftIO,
     not,
     panic,
     show,
     snd,
+    stdout,
     unlessM,
     void,
     when,
@@ -587,13 +602,16 @@ eosUpload (EosUpload name img version) = do
     hash <- hashFile @_ @SHA256 img
     bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
     body <- observedStreamFile (updateProgress bar . const . sfs2prog) img
+    let r = liftIO $ runResourceT $ runConduit $ (createZipEntry img (Just $ fromIntegral size) .| void (zipStream zipOptions)) .| sinkHandle stdout
+
     let withBody = setRequestBody body noBody
     let withQParams =
             setRequestQueryString
                 [("version", Just $ show version), ("hash", Just $ convertToBase Base16 hash)]
                 withBody
+    let withSource = setRequestBodySource (fromIntegral size) (r) withQParams
     manager <- newTlsManager
-    res <- runReaderT (httpLbs withQParams) manager
+    res <- runReaderT (httpLbs withSource) manager
     if getResponseStatus res == status200
         then -- no output is successful
             pure ()
@@ -604,6 +622,34 @@ eosUpload (EosUpload name img version) = do
     where
         sfs2prog :: StreamFileStatus -> Progress ()
         sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
+        zipOptions =
+            ZipOptions
+                { zipOpt64 = True
+                , zipOptCompressLevel = 0
+                , zipOptInfo = ZipInfo{zipComment = encodeUtf8 "zipped eos image"}
+                }
+        createZipEntry ::
+            MonadResource m =>
+            FilePath ->
+            Maybe Word64 ->
+            ConduitT () (ZipEntry, ZipData m) m ()
+        createZipEntry path size = do
+            let d = zipFileData img
+            utcTime <- liftIO getCurrentTime
+            localTimeZone <- liftIO $ getTimeZone utcTime
+            let zipEntry =
+                    ZipEntry
+                        { zipEntryName = Right $ encodeUtf8 $ show path
+                        , zipEntryTime = utcToLocalTime localTimeZone utcTime
+                        , zipEntrySize = size
+                        , zipEntryExternalAttributes = Nothing
+                        }
+            yield (zipEntry, d)
+
+
+_yieldFinal :: Monad m => ConduitT (ZipEntry, ZipData m) B8.ByteString m Word64 -> ConduitT () B8.ByteString m ()
+_yieldFinal consumer = awaitForever $ \_ -> do
+    yield consumer .| sinkNull
 
 
 index :: String -> String -> Version -> IO ()
