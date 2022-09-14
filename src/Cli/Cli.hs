@@ -163,7 +163,7 @@ import Startlude (
     ReaderT (runReaderT),
     Semigroup ((<>)),
     Show,
-    SomeException (SomeException),
+    SomeException,
     String,
     appendFile,
     const,
@@ -212,8 +212,10 @@ import System.FilePath (
 import System.ProgressBar (
     Progress (..),
     ProgressBar,
+    Style (stylePrefix),
     defStyle,
     incProgress,
+    msg,
     newProgressBar,
     updateProgress,
  )
@@ -602,18 +604,18 @@ eosUpload (EosUpload name img version) = handle @_ @SomeException cleanup $ do
             <&> setRequestHeaders [("Content-Encoding", "gzip")]
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     size <- getFileSize img
-    hashBar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
+    hashBar <- newProgressBar defStyle{stylePrefix = msg "Hashing"} 30 (Progress 0 (fromIntegral size) ())
     runConduitRes $ sourceFile img .| transByteCounter hashBar .| sinkHash @_ @SHA256
     hash <- hashFile @_ @SHA256 img
     let compressedFilePath = "/tmp/eos.img.gz"
-    zipBar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
+    zipBar <- newProgressBar defStyle{stylePrefix = msg "Gzipping"} 30 (Progress 0 (fromIntegral size) ())
     runConduitRes $
         sourceFile img
-            .| gzip
             .| transByteCounter zipBar
+            .| gzip
             .| sinkFileCautious compressedFilePath
     compressedSize <- getFileSize compressedFilePath
-    fileBar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral compressedSize) ())
+    fileBar <- newProgressBar defStyle{stylePrefix = msg "Uploading"} 30 (Progress 0 (fromIntegral compressedSize) ())
     body <- observedStreamFile (updateProgress fileBar . const . sfs2prog) $ compressedFilePath
     let withBody = setRequestBody body noBody
     let withQParams =
