@@ -614,8 +614,8 @@ eosUpload (EosUpload name img version) = do
             sourceFile img
                 .| gzip
                 .| sinkFileCautious compressedFilePath
-    gSize <- getFileSize compressedFilePath
-    bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral gSize) ())
+    compressedSize <- getFileSize compressedFilePath
+    bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral compressedSize) ())
     body <- observedStreamFile (updateProgress bar . const . sfs2prog) $ compressedFilePath
     let withBody = setRequestBody body noBody
     let withQParams =
@@ -623,9 +623,9 @@ eosUpload (EosUpload name img version) = do
                 [("version", Just $ show version), ("hash", Just $ convertToBase Base16 hash)]
                 withBody
     -- let withSource = setRequestBodySource (fromIntegral size) _ withQParams
-    let req = setRequestBodyFile compressedFilePath withQParams
+    -- let req = setRequestBodyFile compressedFilePath withQParams
     manager <- newTlsManager
-    res <- runReaderT (httpLbs req) manager
+    res <- runReaderT (httpLbs withQParams) manager
     removeFile $ compressedFilePath
     if getResponseStatus res == status200
         then -- no output is successful

@@ -23,6 +23,7 @@ import Data.Aeson (
     (.:?),
     (.=),
  )
+import Data.Conduit.Zlib (ungzip)
 import Data.HashMap.Internal.Strict (
     HashMap,
     differenceWith,
@@ -150,7 +151,7 @@ postPkgUploadR = do
     createDirectoryIfMissing True resourcesTemp
     withTempDirectory resourcesTemp "newpkg" $ \dir -> do
         let path = dir </> "temp" <.> "s9pk"
-        runConduit $ rawRequestBody .| sinkFile path
+        runConduit $ rawRequestBody .| ungzip .| sinkFile path
         pool <- getsYesod appConnPool
         PkgRepo{..} <- ask
         res <- retry $ extractPkg pool path
