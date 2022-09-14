@@ -23,7 +23,6 @@ import Data.Aeson (
     (.:?),
     (.=),
  )
-import Data.Conduit.Zlib (ungzip)
 import Data.HashMap.Internal.Strict (
     HashMap,
     differenceWith,
