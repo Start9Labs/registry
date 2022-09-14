@@ -378,7 +378,7 @@ makeAuthWare _ app req res = next
 -- | Warp settings for the given foundation value.
 warpSettings :: AppPort -> RegistryCtx -> Settings
 warpSettings port foundation =
-    setTimeout 120 $
+    setTimeout 90 $
         setPort (fromIntegral port) $
             setHost (appHost $ appSettings foundation) $
                 setOnException

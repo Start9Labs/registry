@@ -12,14 +12,13 @@ module Cli.Cli (
     cliMain,
 ) where
 
-import Codec.Archive.Zip.Conduit.Types
-import Codec.Archive.Zip.Conduit.Zip (ZipOptions (..), zipFileData, zipStream)
 import Conduit (
     ConduitT,
-    MonadResource,
+    MonadIO,
+    awaitForever,
     foldC,
     runConduit,
-    runResourceT,
+    runConduitRes,
     sinkFileCautious,
     sourceFile,
     yield,
@@ -37,7 +36,7 @@ import Crypto.Hash (
     SHA256 (SHA256),
     hashWith,
  )
-import Crypto.Hash.Conduit (hashFile)
+import Crypto.Hash.Conduit (hashFile, sinkHash)
 import Data.Aeson (
     ToJSON,
     eitherDecodeStrict,
@@ -64,8 +63,6 @@ import Data.String.Interpolate.IsString (
     i,
  )
 import Data.Text (toLower)
-import Data.Text qualified as T
-import Data.Time (getTimeZone, utcToLocalTime)
 import Dhall (
     Encoder (embed),
     FromDhall (..),
@@ -92,6 +89,7 @@ import Network.HTTP.Client.Conduit (
     observedStreamFile,
  )
 import Network.HTTP.Client.TLS (newTlsManager)
+import Network.HTTP.Conduit (responseTimeoutMicro)
 import Network.HTTP.Simple (
     getResponseBody,
     getResponseStatus,
@@ -99,11 +97,10 @@ import Network.HTTP.Simple (
     httpLBS,
     parseRequest,
     setRequestBody,
-    setRequestBodyFile,
     setRequestBodyJSON,
-    setRequestBodySource,
     setRequestHeaders,
     setRequestQueryString,
+    setRequestResponseTimeout,
  )
 import Network.HTTP.Types (status200)
 import Network.URI (
@@ -166,12 +163,11 @@ import Startlude (
     ReaderT (runReaderT),
     Semigroup ((<>)),
     Show,
+    SomeException (SomeException),
     String,
-    Word64,
     appendFile,
     const,
     decodeUtf8,
-    encodeUtf8,
     exitWith,
     filter,
     flip,
@@ -181,13 +177,13 @@ import Startlude (
     fromIntegral,
     fromMaybe,
     fst,
-    getCurrentTime,
     headMay,
     liftIO,
     not,
     panic,
     show,
     snd,
+    throwIO,
     unlessM,
     void,
     when,
@@ -211,15 +207,17 @@ import System.Directory (
 import System.FilePath (
     takeDirectory,
     takeExtension,
-    (<.>),
     (</>),
  )
 import System.ProgressBar (
     Progress (..),
+    ProgressBar,
     defStyle,
+    incProgress,
     newProgressBar,
     updateProgress,
  )
+import UnliftIO.Exception (handle)
 import Yesod (
     logError,
     logWarn,
@@ -563,6 +561,7 @@ upload (Upload name mpkg shouldIndex) = do
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/upload")
             <&> setRequestHeaders [("accept", "text/plain")]
+            <&> setRequestResponseTimeout (responseTimeoutMicro (90_000_000)) -- 90 seconds
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     size <- getFileSize pkg
     bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
@@ -593,40 +592,37 @@ upload (Upload name mpkg shouldIndex) = do
         sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
 
 
--- stream read file
--- stream zip file
--- stream zip into request body
--- store on server uncomressed?
--- nice to have: progress for hashing
 eosUpload :: EosUpload -> IO ()
-eosUpload (EosUpload name img version) = do
+eosUpload (EosUpload name img version) = handle @_ @SomeException cleanup $ do
     PublishCfgRepo{..} <- findNameInCfg name
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/eos-upload")
             <&> setRequestHeaders [("accept", "text/plain")]
-            -- <&> setRequestHeaders [("Content-Type", "application/octet-stream")]
+            <&> setRequestResponseTimeout (responseTimeoutMicro (90_000_000)) -- 90 seconds
             <&> setRequestHeaders [("Content-Encoding", "gzip")]
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
+    size <- getFileSize img
+    hashBar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
+    runConduitRes $ sourceFile img .| transByteCounter hashBar .| sinkHash @_ @SHA256
     hash <- hashFile @_ @SHA256 img
-    -- let z = (createZipEntry img (Just $ fromIntegral size) .| (zipStream zipOptions))
-    let compressedFilePath = img <.> "gz"
-    runResourceT $
-        runConduit $
-            sourceFile img
-                .| gzip
-                .| sinkFileCautious compressedFilePath
+    let compressedFilePath = "/tmp/eos.img.gz"
+    zipBar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
+    runConduitRes $
+        sourceFile img
+            .| gzip
+            .| transByteCounter zipBar
+            .| sinkFileCautious compressedFilePath
     compressedSize <- getFileSize compressedFilePath
-    bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral compressedSize) ())
-    body <- observedStreamFile (updateProgress bar . const . sfs2prog) $ compressedFilePath
+    fileBar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral compressedSize) ())
+    body <- observedStreamFile (updateProgress fileBar . const . sfs2prog) $ compressedFilePath
     let withBody = setRequestBody body noBody
     let withQParams =
             setRequestQueryString
                 [("version", Just $ show version), ("hash", Just $ convertToBase Base16 hash)]
                 withBody
-    -- let withSource = setRequestBodySource (fromIntegral size) _ withQParams
     manager <- newTlsManager
     res <- runReaderT (httpLbs withQParams) manager
-    removeFile $ compressedFilePath
+    removeFile compressedFilePath
     if getResponseStatus res == status200
         then -- no output is successful
             pure ()
@@ -637,30 +633,15 @@ eosUpload (EosUpload name img version) = do
     where
         sfs2prog :: StreamFileStatus -> Progress ()
         sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
-        zipOptions =
-            ZipOptions
-                { zipOpt64 = True
-                , zipOptCompressLevel = 6
-                , zipOptInfo = ZipInfo{zipComment = encodeUtf8 "zipped eos image"}
-                }
-        createZipEntry ::
-            MonadResource m =>
-            FilePath ->
-            Maybe Word64 ->
-            -- ZipData m ->
-            ConduitT () (ZipEntry, ZipData m) m ()
-        createZipEntry path size = do
-            let d = zipFileData img
-            utcTime <- liftIO getCurrentTime
-            localTimeZone <- liftIO $ getTimeZone utcTime
-            let zipEntry =
-                    ZipEntry
-                        { zipEntryName = Left $ T.pack "eos.img.gz"
-                        , zipEntryTime = utcToLocalTime localTimeZone utcTime
-                        , zipEntrySize = size
-                        , zipEntryExternalAttributes = Nothing
-                        }
-            yield (zipEntry, d)
+        transByteCounter :: MonadIO m => ProgressBar a -> ConduitT B8.ByteString B8.ByteString m ()
+        transByteCounter bar = awaitForever $ \bs -> do
+            let len = B8.length bs
+            liftIO $ incProgress bar len
+            yield bs
+        cleanup e = do
+            $logError $ show e
+            removeFile "/tmp/eos.img.gz"
+            throwIO e
 
 
 index :: String -> String -> Version -> IO ()
