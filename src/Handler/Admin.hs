@@ -151,7 +151,7 @@ postPkgUploadR = do
     createDirectoryIfMissing True resourcesTemp
     withTempDirectory resourcesTemp "newpkg" $ \dir -> do
         let path = dir </> "temp" <.> "s9pk"
-        runConduit $ rawRequestBody .| ungzip .| sinkFile path
+        runConduit $ rawRequestBody .| sinkFile path
         pool <- getsYesod appConnPool
         PkgRepo{..} <- ask
         res <- retry $ extractPkg pool path
@@ -193,7 +193,7 @@ postEosUploadR = do
     createDirectoryIfMissing True resourcesTemp
     withTempDirectory resourcesTemp "neweos" $ \dir -> do
         let path = dir </> "eos" <.> "img"
-        runConduit $ rawRequestBody .| sinkFile path
+        runConduit $ rawRequestBody .| ungzip .| sinkFile path
         void . runDB $ upsert (EosHash version hash) [EosHashHash =. hash]
         let targetPath = root </> show version
         removePathForcibly targetPath

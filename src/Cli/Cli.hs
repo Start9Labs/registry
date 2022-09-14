@@ -597,13 +597,14 @@ upload (Upload name mpkg shouldIndex) = do
 -- stream zip file
 -- stream zip into request body
 -- store on server uncomressed?
+-- nice to have: progress for hashing
 eosUpload :: EosUpload -> IO ()
 eosUpload (EosUpload name img version) = do
     PublishCfgRepo{..} <- findNameInCfg name
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/eos-upload")
             <&> setRequestHeaders [("accept", "text/plain")]
-            <&> setRequestHeaders [("Content-Type", "application/octet-stream")]
+            -- <&> setRequestHeaders [("Content-Type", "application/octet-stream")]
             <&> setRequestHeaders [("Content-Encoding", "gzip")]
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     hash <- hashFile @_ @SHA256 img
@@ -623,7 +624,6 @@ eosUpload (EosUpload name img version) = do
                 [("version", Just $ show version), ("hash", Just $ convertToBase Base16 hash)]
                 withBody
     -- let withSource = setRequestBodySource (fromIntegral size) _ withQParams
-    -- let req = setRequestBodyFile compressedFilePath withQParams
     manager <- newTlsManager
     res <- runReaderT (httpLbs withQParams) manager
     removeFile $ compressedFilePath
