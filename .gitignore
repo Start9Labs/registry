@@ -38,3 +38,4 @@ start9-registry.aux
 start9-registry.ps
 shell.nix
 testdata/
+lbuild.sh

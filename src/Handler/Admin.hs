@@ -5,27 +5,9 @@
 
 module Handler.Admin where
 
-import Codec.Archive.Zip.Conduit.Zip (
-    ZipData (ZipDataSource),
-    ZipEntry (
-        ZipEntry,
-        zipEntryExternalAttributes,
-        zipEntryName,
-        zipEntrySize,
-        zipEntryTime
-    ),
-    ZipInfo (..),
-    ZipOptions (..),
-    zipStream,
- )
 import Conduit (
-    ConduitT,
-    MonadUnliftIO,
-    fuseUpstream,
     runConduit,
     sinkFile,
-    sinkFileBS,
-    yield,
     (.|),
  )
 import Control.Monad.Extra
@@ -41,7 +23,6 @@ import Data.Aeson (
     (.:?),
     (.=),
  )
-import Data.ByteString (ByteString)
 import Data.HashMap.Internal.Strict (
     HashMap,
     differenceWith,
@@ -109,25 +90,19 @@ import Settings
 import Startlude (
     Applicative (pure),
     Bool (..),
-    Either (Right),
     Eq,
-    FilePath,
     Int,
     Maybe (..),
     Show,
     SomeException (..),
     Text,
-    Word64,
     asum,
-    decodeUtf8,
-    encodeUtf8,
     fromMaybe,
     guarded,
     hush,
     isNothing,
     liftIO,
     not,
-    readMaybe,
     replicate,
     show,
     toS,
@@ -160,7 +135,6 @@ import Yesod (
     delete,
     getsYesod,
     logError,
-    lookupHeader,
     rawRequestBody,
     requireCheckJsonBody,
     runDB,
@@ -214,42 +188,16 @@ postEosUploadR = do
     hash <- case maybeHash of
         Nothing -> sendResponseStatus status400 ("Missing Hash" :: Text)
         Just h -> pure h
-    -- (maybeSize :: Maybe Word64) <- maybeM (pure Nothing) (pure . readMaybe . decodeUtf8) (lookupHeader "Content-Length")
     resourcesTemp <- getsYesod $ (</> "temp") . resourcesDir . appSettings
     createDirectoryIfMissing True resourcesTemp
     withTempDirectory resourcesTemp "neweos" $ \dir -> do
         let path = dir </> "eos" <.> "img"
         runConduit $ rawRequestBody .| sinkFile path
-        -- void . runConduit $ createZipEntry path maybeSize rawRequestBody .| (zipStream zipOptions `fuseUpstream` sinkFileBS path)
         void . runDB $ upsert (EosHash version hash) [EosHashHash =. hash]
         let targetPath = root </> show version
         removePathForcibly targetPath
         createDirectoryIfMissing True targetPath
         renameDirectory dir targetPath
-    where
-        zipOptions =
-            ZipOptions
-                { zipOpt64 = True
-                , zipOptCompressLevel = -1
-                , zipOptInfo = ZipInfo{zipComment = encodeUtf8 "zipped eos image"}
-                }
-        createZipEntry ::
-            (MonadUnliftIO m) =>
-            FilePath ->
-            Maybe Word64 ->
-            ConduitT () ByteString m () ->
-            ConduitT () (ZipEntry, ZipData m) m ()
-        createZipEntry path size dataSource = do
-            utcTime <- liftIO getCurrentTime
-            localTimeZone <- liftIO $ getTimeZone utcTime
-            let zipEntry =
-                    ZipEntry
-                        { zipEntryName = Right $ encodeUtf8 $ show path
-                        , zipEntryTime = utcToLocalTime localTimeZone utcTime
-                        , zipEntrySize = size
-                        , zipEntryExternalAttributes = Nothing
-                        }
-            yield (zipEntry, ZipDataSource dataSource)
 
 
 data IndexPkgReq = IndexPkgReq

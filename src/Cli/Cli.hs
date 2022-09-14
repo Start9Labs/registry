@@ -17,12 +17,11 @@ import Codec.Archive.Zip.Conduit.Zip (ZipOptions (..), zipFileData, zipStream)
 import Conduit (
     ConduitT,
     MonadResource,
-    awaitForever,
     foldC,
     runConduit,
     runResourceT,
-    sinkHandle,
-    sinkNull,
+    sinkFileCautious,
+    sourceFile,
     yield,
     (.|),
  )
@@ -50,6 +49,7 @@ import Data.ByteArray.Encoding (
 import Data.ByteString.Char8 qualified as B8
 import Data.ByteString.Lazy qualified as LB
 import Data.Conduit.Process (readProcess)
+import Data.Conduit.Zlib (gzip)
 import Data.Default
 import Data.Functor.Contravariant (contramap)
 import Data.HashMap.Internal.Strict (
@@ -64,6 +64,7 @@ import Data.String.Interpolate.IsString (
     i,
  )
 import Data.Text (toLower)
+import Data.Text qualified as T
 import Data.Time (getTimeZone, utcToLocalTime)
 import Dhall (
     Encoder (embed),
@@ -98,6 +99,7 @@ import Network.HTTP.Simple (
     httpLBS,
     parseRequest,
     setRequestBody,
+    setRequestBodyFile,
     setRequestBodyJSON,
     setRequestBodySource,
     setRequestHeaders,
@@ -186,7 +188,6 @@ import Startlude (
     panic,
     show,
     snd,
-    stdout,
     unlessM,
     void,
     when,
@@ -205,10 +206,12 @@ import System.Directory (
     getFileSize,
     getHomeDirectory,
     listDirectory,
+    removeFile,
  )
 import System.FilePath (
     takeDirectory,
     takeExtension,
+    (<.>),
     (</>),
  )
 import System.ProgressBar (
@@ -590,28 +593,40 @@ upload (Upload name mpkg shouldIndex) = do
         sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
 
 
+-- stream read file
+-- stream zip file
+-- stream zip into request body
+-- store on server uncomressed?
 eosUpload :: EosUpload -> IO ()
 eosUpload (EosUpload name img version) = do
     PublishCfgRepo{..} <- findNameInCfg name
-    size <- getFileSize img
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/eos-upload")
             <&> setRequestHeaders [("accept", "text/plain")]
+            <&> setRequestHeaders [("Content-Type", "application/octet-stream")]
             <&> setRequestHeaders [("Content-Encoding", "gzip")]
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     hash <- hashFile @_ @SHA256 img
-    bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
-    body <- observedStreamFile (updateProgress bar . const . sfs2prog) img
-    let r = liftIO $ runResourceT $ runConduit $ (createZipEntry img (Just $ fromIntegral size) .| void (zipStream zipOptions)) .| sinkHandle stdout
-
+    -- let z = (createZipEntry img (Just $ fromIntegral size) .| (zipStream zipOptions))
+    let compressedFilePath = img <.> "gz"
+    runResourceT $
+        runConduit $
+            sourceFile img
+                .| gzip
+                .| sinkFileCautious compressedFilePath
+    gSize <- getFileSize compressedFilePath
+    bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral gSize) ())
+    body <- observedStreamFile (updateProgress bar . const . sfs2prog) $ compressedFilePath
     let withBody = setRequestBody body noBody
     let withQParams =
             setRequestQueryString
                 [("version", Just $ show version), ("hash", Just $ convertToBase Base16 hash)]
                 withBody
-    let withSource = setRequestBodySource (fromIntegral size) (r) withQParams
+    -- let withSource = setRequestBodySource (fromIntegral size) _ withQParams
+    let req = setRequestBodyFile compressedFilePath withQParams
     manager <- newTlsManager
-    res <- runReaderT (httpLbs withSource) manager
+    res <- runReaderT (httpLbs req) manager
+    removeFile $ compressedFilePath
     if getResponseStatus res == status200
         then -- no output is successful
             pure ()
@@ -625,13 +640,14 @@ eosUpload (EosUpload name img version) = do
         zipOptions =
             ZipOptions
                 { zipOpt64 = True
-                , zipOptCompressLevel = 0
+                , zipOptCompressLevel = 6
                 , zipOptInfo = ZipInfo{zipComment = encodeUtf8 "zipped eos image"}
                 }
         createZipEntry ::
             MonadResource m =>
             FilePath ->
             Maybe Word64 ->
+            -- ZipData m ->
             ConduitT () (ZipEntry, ZipData m) m ()
         createZipEntry path size = do
             let d = zipFileData img
@@ -639,17 +655,12 @@ eosUpload (EosUpload name img version) = do
             localTimeZone <- liftIO $ getTimeZone utcTime
             let zipEntry =
                     ZipEntry
-                        { zipEntryName = Right $ encodeUtf8 $ show path
+                        { zipEntryName = Left $ T.pack "eos.img.gz"
                         , zipEntryTime = utcToLocalTime localTimeZone utcTime
                         , zipEntrySize = size
                         , zipEntryExternalAttributes = Nothing
                         }
             yield (zipEntry, d)
-
-
-_yieldFinal :: Monad m => ConduitT (ZipEntry, ZipData m) B8.ByteString m Word64 -> ConduitT () B8.ByteString m ()
-_yieldFinal consumer = awaitForever $ \_ -> do
-    yield consumer .| sinkNull
 
 
 index :: String -> String -> Version -> IO ()
