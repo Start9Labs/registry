@@ -23,6 +23,7 @@ import Data.Aeson (
     (.:?),
     (.=),
  )
+import Data.Conduit.Zlib (ungzip)
 import Data.HashMap.Internal.Strict (
     HashMap,
     differenceWith,
@@ -192,7 +193,7 @@ postEosUploadR = do
     createDirectoryIfMissing True resourcesTemp
     withTempDirectory resourcesTemp "neweos" $ \dir -> do
         let path = dir </> "eos" <.> "img"
-        runConduit $ rawRequestBody .| sinkFile path
+        runConduit $ rawRequestBody .| ungzip .| sinkFile path
         void . runDB $ upsert (EosHash version hash) [EosHashHash =. hash]
         let targetPath = root </> show version
         removePathForcibly targetPath
