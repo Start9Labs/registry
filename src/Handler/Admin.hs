@@ -10,6 +10,7 @@ import Conduit (
     sinkFile,
     (.|),
  )
+import Control.Monad.Extra
 import Control.Monad.Reader.Has (ask)
 import Control.Monad.Trans.Maybe (MaybeT (..))
 import Data.Aeson (
@@ -22,6 +23,7 @@ import Data.Aeson (
     (.:?),
     (.=),
  )
+import Data.Conduit.Zlib (ungzip)
 import Data.HashMap.Internal.Strict (
     HashMap,
     differenceWith,
@@ -35,6 +37,7 @@ import Data.List (
 import Data.String.Interpolate.IsString (
     i,
  )
+import Data.Time
 import Database.Persist (
     Entity (entityKey),
     PersistStoreRead (get),
@@ -64,9 +67,7 @@ import Lib.PkgRepository (
     getPackages,
     getVersionsFor,
  )
-import Lib.Types.Core (
-    PkgId (unPkgId),
- )
+import Lib.Types.Core (PkgId (unPkgId))
 import Lib.Types.Emver (Version (..))
 import Lib.Types.Manifest (PackageManifest (..))
 import Model (
@@ -93,14 +94,11 @@ import Startlude (
     Eq,
     Int,
     Maybe (..),
-    Monad ((>>=)),
     Show,
     SomeException (..),
     Text,
     asum,
-    fmap,
     fromMaybe,
-    getCurrentTime,
     guarded,
     hush,
     isNothing,
@@ -110,8 +108,6 @@ import Startlude (
     show,
     toS,
     traverse,
-    void,
-    when,
     zip,
     ($),
     (&&&),
@@ -197,8 +193,8 @@ postEosUploadR = do
     createDirectoryIfMissing True resourcesTemp
     withTempDirectory resourcesTemp "neweos" $ \dir -> do
         let path = dir </> "eos" <.> "img"
-        runConduit $ rawRequestBody .| sinkFile path
-        _ <- runDB $ upsert (EosHash version hash) [EosHashHash =. hash]
+        runConduit $ rawRequestBody .| ungzip .| sinkFile path
+        void . runDB $ upsert (EosHash version hash) [EosHashHash =. hash]
         let targetPath = root </> show version
         removePathForcibly targetPath
         createDirectoryIfMissing True targetPath
