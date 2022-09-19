@@ -85,6 +85,7 @@ data AppSettings = AppSettings
     , staticBinDir              :: !FilePath
     , errorLogRoot              :: !FilePath
     , marketplaceName           :: !Text
+    , marketplaceDescription    :: !Text
     }
 instance Has PkgRepo AppSettings where
     extract = liftA2 PkgRepo ((</> "apps") . resourcesDir) staticBinDir
@@ -113,13 +114,13 @@ instance FromJSON AppSettings where
         torPort                   <- o .: "tor-port"
         staticBinDir              <- o .: "static-bin-dir"
         errorLogRoot              <- o .: "error-log-root"
+        marketplaceName           <- o .: "marketplace-name"
+        marketplaceDescription    <- o .: "marketplace-description"
 
         let sslKeyLocation  = sslPath </> "key.pem"
         let sslCsrLocation  = sslPath </> "certificate.csr"
         let sslCertLocation = sslPath </> "certificate.pem"
         let registryVersion = fromJust . parseMaybe parseJSON . String . toS . showVersion $ version
-
-        marketplaceName <- o .: "marketplace-name"
 
         return AppSettings { .. }
 

@@ -6,13 +6,14 @@ import Foundation (Handler, RegistryCtx (..))
 import Handler.Util (tickleMAU)
 import Model (Category (..), EntityField (..))
 import Settings (AppSettings (..))
-import Startlude (Generic, Show, Text, pure, ($), (.), (<$>))
+import Startlude (Generic, Show, Text, pure, ($), (.), (<$>), (&&&))
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), getsYesod)
 import Yesod.Core.Types (JSONResponse (..))
 
 
 data InfoRes = InfoRes
     { name :: !Text
+    , description:: !Text
     , categories :: ![Text]
     }
     deriving (Show, Generic)
@@ -25,11 +26,11 @@ instance ToTypedContent InfoRes where
 
 getInfoR :: Handler (JSONResponse InfoRes)
 getInfoR = do
-    name <- getsYesod $ marketplaceName . appSettings
+    (name, description) <- getsYesod $ (marketplaceName &&& marketplaceDescription) . appSettings
     allCategories <- runDB $
         select $ do
             cats <- from $ table @Category
             orderBy [asc (cats ^. CategoryPriority)]
             pure cats
     tickleMAU
-    pure $ JSONResponse $ InfoRes name $ categoryName . entityVal <$> allCategories
+    pure $ JSONResponse $ InfoRes name description $ categoryName . entityVal <$> allCategories

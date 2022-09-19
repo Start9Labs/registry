@@ -36,6 +36,7 @@ tor-port: "_env:TOR_PORT:447"
 static-bin-dir: "_env:STATIC_BIN:/usr/local/bin/"
 error-log-root: "_env:ERROR_LOG_ROOT:/var/log/embassy-os/"
 marketplace-name: "_env:MARKETPLACE_NAME:CHANGE ME"
+marketplace-description: "_env:MARKETPLACE_NAME:IMA DESCRIPTION"
 
 database:
   database: "_env:PG_DATABASE:start9_registry"
