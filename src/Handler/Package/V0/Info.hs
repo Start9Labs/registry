@@ -6,14 +6,14 @@ import Foundation (Handler, RegistryCtx (..))
 import Handler.Util (tickleMAU)
 import Model (Category (..), EntityField (..))
 import Settings (AppSettings (..))
-import Startlude (Generic, Show, Text, pure, ($), (.), (<$>), (&&&))
+import Startlude (Generic, Show, Text, pure, ($), (.), (<$>), (&&&), Maybe)
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), getsYesod)
 import Yesod.Core.Types (JSONResponse (..))
 
 
 data InfoRes = InfoRes
     { name :: !Text
-    , description:: !Text
+    , description:: !(Maybe Text)
     , categories :: ![Text]
     }
     deriving (Show, Generic)

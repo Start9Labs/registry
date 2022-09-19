@@ -39,7 +39,7 @@ import           Data.Aeson                     ( (.!=)
                                                 )
 import           Data.Aeson.Types               ( parseMaybe )
 import           Data.FileEmbed                 ( embedFile )
-import           Data.Maybe                     ( fromJust )
+import           Data.Maybe                     ( fromJust, Maybe )
 import           Data.Version                   ( showVersion )
 import           Data.Yaml                      ( decodeEither' )
 import           Data.Yaml.Config               ( applyEnvValue )
@@ -85,7 +85,7 @@ data AppSettings = AppSettings
     , staticBinDir              :: !FilePath
     , errorLogRoot              :: !FilePath
     , marketplaceName           :: !Text
-    , marketplaceDescription    :: !Text
+    , marketplaceDescription    :: !(Maybe Text)
     }
 instance Has PkgRepo AppSettings where
     extract = liftA2 PkgRepo ((</> "apps") . resourcesDir) staticBinDir
@@ -115,7 +115,7 @@ instance FromJSON AppSettings where
         staticBinDir              <- o .: "static-bin-dir"
         errorLogRoot              <- o .: "error-log-root"
         marketplaceName           <- o .: "marketplace-name"
-        marketplaceDescription    <- o .: "marketplace-description"
+        marketplaceDescription    <- o .:? "marketplace-description"
 
         let sslKeyLocation  = sslPath </> "key.pem"
         let sslCsrLocation  = sslPath </> "certificate.csr"
