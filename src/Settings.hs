@@ -76,9 +76,11 @@ data AppSettings = AppSettings
     , iconPath                  :: !FilePath
     , errorLogRoot              :: !FilePath
     , marketplaceName           :: !Text
+    , maxEosVersion             :: !Version
     , registryHostname          :: !Text
     , registryVersion           :: !Version
     , resourcesDir              :: !FilePath
+    , needsMigration              :: !Bool
     , sslAuto                   :: !Bool
     , sslCertLocation           :: !FilePath
     , sslCsrLocation            :: !FilePath
@@ -110,8 +112,10 @@ instance FromJSON AppSettings where
         errorLogRoot              <- o .: "error-log-root"
         iconPath                  <- o .: "icon-path"
         marketplaceName           <- o .: "marketplace-name"
+        maxEosVersion             <- o .: "max-eos-version"
         registryHostname          <- o .: "registry-hostname"
         resourcesDir              <- o .: "resources-path"
+        needsMigration            <- o .: "run-migration"
         sslAuto                   <- o .: "ssl-auto"
         sslPath                   <- o .: "ssl-path"
         staticBinDir              <- o .: "static-bin-dir"
