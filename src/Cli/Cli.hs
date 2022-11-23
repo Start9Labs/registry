@@ -563,7 +563,7 @@ upload (Upload name mpkg shouldIndex) = do
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/upload")
             <&> setRequestHeaders [("accept", "text/plain")]
-            <&> setRequestResponseTimeout (responseTimeoutMicro (90_000_000)) -- 90 seconds
+            <&> setRequestResponseTimeout (responseTimeoutMicro (180_000_000)) -- 3 minutes
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     size <- getFileSize pkg
     bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
@@ -600,7 +600,7 @@ eosUpload (EosUpload name img version) = handle @_ @SomeException cleanup $ do
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/eos-upload")
             <&> setRequestHeaders [("accept", "text/plain")]
-            <&> setRequestResponseTimeout (responseTimeoutMicro (90_000_000)) -- 90 seconds
+            <&> setRequestResponseTimeout (responseTimeoutMicro (180_000_000)) -- 3 minutes
             <&> setRequestHeaders [("Content-Encoding", "gzip")]
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     size <- getFileSize img
