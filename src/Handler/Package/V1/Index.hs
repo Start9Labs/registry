@@ -28,13 +28,11 @@ import Database.Queries (
 import Foundation (Handler, Route (InstructionsR, LicenseR))
 import Handler.Package.Api (DependencyRes (..), PackageListRes (..), PackageRes (..))
 import Handler.Types.Api (ApiVersion (..))
-import Handler.Util (basicRender)
-import Lib.Error (S9Error (..))
+import Handler.Util (basicRender, parseQueryParam)
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies, (<||))
 import Model (Category (..), Key (..), PkgDependency (..), VersionRecord (..))
-import Network.HTTP.Types (status400)
 import Protolude.Unsafe (unsafeFromJust)
 import Settings (AppSettings)
 import Startlude (
@@ -44,7 +42,6 @@ import Startlude (
     ByteString,
     ConvertText (toS),
     Down (..),
-    Either (..),
     Eq (..),
     Int,
     Maybe (..),
@@ -80,7 +77,6 @@ import Startlude (
     (.*),
     (<$>),
     (<&>),
-    (<>),
     (=<<),
  )
 import UnliftIO (Concurrently (..), mapConcurrently)
@@ -90,9 +86,7 @@ import Yesod (
     MonadResource,
     YesodPersist (runDB),
     lookupGetParam,
-    sendResponseStatus,
  )
-import Yesod.Core (logWarn)
 
 
 data PackageReq = PackageReq
@@ -154,19 +148,6 @@ getPackageIndexR = do
     -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
     pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
     PackageListRes <$> runConcurrently (zipWithM (Concurrently .* constructPackageListApiRes) filteredPackages pkgsWithDependencies)
-
-
-parseQueryParam :: Text -> (Text -> Either Text a) -> Handler (Maybe a)
-parseQueryParam param parser = do
-    lookupGetParam param >>= \case
-        Nothing -> pure Nothing
-        Just x -> case parser x of
-            Left e -> do
-                let err = InvalidParamsE ("get:" <> param) x
-                $logWarn e
-                sendResponseStatus status400 err
-            Right a -> pure (Just a)
-
 
 getPkgIdsQuery :: Handler (Maybe [PackageReq])
 getPkgIdsQuery = parseQueryParam "ids" (first toS . eitherDecodeStrict . encodeUtf8)
