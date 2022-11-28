@@ -23,7 +23,7 @@ import Lib.PkgRepository (
     PkgRepo,
     getHash,
  )
-import Lib.Types.Core (PkgId)
+import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (
     Version,
     VersionRange,
@@ -177,5 +177,5 @@ fetchCompatiblePkgVersions osVersion pkg = do
                 Nothing -> const True
                 Just v -> flip satisfies v
 
-getArchQuery :: Handler (Maybe Text)
+getArchQuery :: Handler (Maybe OsArch)
 getArchQuery = parseQueryParam "arch" ((flip $ note . mappend "Invalid 'arch': ") =<< readMaybe)

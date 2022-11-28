@@ -22,7 +22,7 @@ import Database.Persist.TH (
     share,
     sqlSettings,
  )
-import Lib.Types.Core (PkgId (PkgId))
+import Lib.Types.Core (PkgId (PkgId), OsArch)
 import Lib.Types.Emver (
     Version,
     VersionRange,
@@ -71,6 +71,7 @@ OsVersion
     number Version
     headline Text
     releaseNotes Text
+    arch OsArch Maybe
     deriving Eq
     deriving Show
 
@@ -129,7 +130,7 @@ UserActivity
     createdAt UTCTime
     serverId Text
     osVersion Version
-    arch Text
+    arch OsArch
 
 Admin
     Id Text

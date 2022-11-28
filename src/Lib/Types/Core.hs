@@ -57,6 +57,7 @@ import Web.HttpApiData (
     ToHttpApiData,
  )
 import Yesod (PathPiece (..))
+import Prelude (read)
 
 
 newtype PkgId = PkgId {unPkgId :: Text}
@@ -88,6 +89,23 @@ instance PathPiece PkgId where
     fromPathPiece = fmap PkgId . fromPathPiece
     toPathPiece = unPkgId
 
+data OsArch = X86_64 | AARCH64 | RASPBERRYPI
+    deriving (Eq, Ord)
+instance Show OsArch where
+    show X86_64 = "x86_64"
+    show AARCH64 = "aarch64"
+    show RASPBERRYPI = "raspberrypi"
+instance Read OsArch where
+    readsPrec _ "x86_64" = [(X86_64, "")]
+    readsPrec _ "aarch64" = [(AARCH64, "")]
+    readsPrec _ "raspberrypi" = [(RASPBERRYPI, "")]
+    readsPrec _ _ = []
+instance PersistField OsArch where
+    toPersistValue = PersistText . show
+    fromPersistValue (PersistText t) = Right $ read $ toS t
+    fromPersistValue other = Left [i|Invalid OsArch: #{other}|]
+instance PersistFieldSql OsArch where
+    sqlType _ = SqlString
 
 newtype Extension (a :: Symbol) = Extension String deriving (Eq)
 type S9PK = Extension "s9pk"
