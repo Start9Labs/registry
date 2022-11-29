@@ -49,7 +49,7 @@ import Database.Persist (
     (=.),
  )
 import Database.Persist.Postgresql (runSqlPoolNoTransaction)
-import Database.Queries (upsertPackageVersion)
+import Database.Queries (upsertPackageVersion, upsertPackageVersionPlatform)
 import Foundation (
     Handler,
     RegistryCtx (..),
@@ -226,7 +226,7 @@ postPkgIndexR = do
                 [i|Could not locate manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
     pool <- getsYesod appConnPool
     runSqlPoolNoTransaction (upsertPackageVersion man) pool Nothing
-
+    runSqlPoolNoTransaction (upsertPackageVersionPlatform man) pool Nothing
 
 postPkgDeindexR :: Handler ()
 postPkgDeindexR = do

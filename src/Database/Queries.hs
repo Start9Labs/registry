@@ -7,11 +7,11 @@ module Database.Queries where
 
 import Database.Persist.Sql (
     PersistStoreRead (get),
-    PersistStoreWrite (insertKey, insert_, repsert),
+    PersistStoreWrite (insertKey, insert_, insertMany_, repsert),
     SqlBackend,
  )
 import Lib.Types.Core (
-    PkgId, OsArch,
+    PkgId, OsArch (X86_64, AARCH64),
  )
 import Lib.Types.Emver (Version)
 import Model (
@@ -19,7 +19,7 @@ import Model (
     Metric (Metric),
     PkgDependency (..),
     PkgRecord (PkgRecord),
-    VersionRecord (VersionRecord), VersionPlatform, EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch),
+    VersionRecord (VersionRecord), VersionPlatform (VersionPlatform), EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch),
  )
 import Orphans.Emver ()
 import Startlude (
@@ -317,3 +317,17 @@ upsertPackageVersion PackageManifest{..} = do
                 packageManifestEosVersion
     _res <- try @_ @SomeException $ insertKey pkgId (PkgRecord now (Just now))
     repsert (VersionRecordKey pkgId packageManifestVersion) ins
+
+upsertPackageVersionPlatform :: (MonadUnliftIO m) => PackageManifest -> ReaderT SqlBackend m ()
+upsertPackageVersionPlatform PackageManifest{..} = do
+    now <- liftIO getCurrentTime
+    let pkgId = PkgRecordKey packageManifestId
+    let arches = [X86_64, AARCH64]
+    let records = createVersionPlatformRecord now pkgId packageManifestVersion <$> arches
+    insertMany_ records
+    where
+        createVersionPlatformRecord time id version = VersionPlatform
+            time
+            (Just time)
+            id
+            version
