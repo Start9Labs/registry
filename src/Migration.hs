@@ -17,7 +17,10 @@ import           Startlude                      ( ($)
                                                 )
 
 manualMigration :: Migration
-manualMigration = [(0, 1) := migration_0_2_0, (1, 2) := migration_0_2_1]
+manualMigration = [(0, 1) := migration_0_2_0, (1, 2) := migration_0_2_1, (2, 3) := migration_0_2_2]
+
+migration_0_2_2 :: [Operation]
+migration_0_2_2 = [DropColumn ("version", "arch")]
 
 migration_0_2_1 :: [Operation]
 migration_0_2_1 = [DropColumn ("category", "parent")]
