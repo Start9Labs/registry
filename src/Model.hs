@@ -138,8 +138,8 @@ PkgDependency
 UserActivity
     createdAt UTCTime
     serverId Text
-    osVersion Version
-    arch OsArch
+    osVersion Version Maybe
+    arch OsArch Maybe
 
 Admin
     Id Text

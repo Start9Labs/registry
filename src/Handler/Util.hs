@@ -163,7 +163,7 @@ tickleMAU = do
                         Nothing -> pure ()
                         Just arch -> do
                             now <- liftIO getCurrentTime
-                            void $ liftHandler $ runDB $ insertRecord $ UserActivity now sid currentEosVersion arch
+                            void $ liftHandler $ runDB $ insertRecord $ UserActivity now sid (Just currentEosVersion) $ Just arch
 
 
 fetchCompatiblePkgVersions :: Maybe VersionRange -> PkgId -> Handler [VersionRecord]
