@@ -123,7 +123,7 @@ serviceQuerySource ::
     (MonadResource m, MonadIO m) =>
     Maybe Text ->
     Text ->
-    OsArch ->
+    Maybe OsArch ->
     ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
 serviceQuerySource mCat query osArch = selectSource $ do
     service <- case mCat of
@@ -162,7 +162,7 @@ queryInMetadata query service =
         ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
 
 
-getPkgDataSource :: (MonadResource m, MonadIO m) => [PkgId] -> OsArch -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
+getPkgDataSource :: (MonadResource m, MonadIO m) => [PkgId] -> Maybe OsArch -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
 getPkgDataSource pkgs osArch = selectSource $ do
     (pkgData :& vp) <- from $ table @VersionRecord
         `innerJoin` table @VersionPlatform `on` (\(service :& vp) -> (VersionPlatformPkgId === VersionRecordPkgId) (vp :& service))

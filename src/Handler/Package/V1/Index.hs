@@ -118,41 +118,40 @@ getPackageIndexR = do
         getOsVersionQuery <&> \case
             Nothing -> const True
             Just v -> flip satisfies v
-    getArchQuery >>= \case 
-        Nothing ->  sendResponseStatus status400 (InvalidParamsE "Param is required" "arch")
-        Just osArch -> do
-            pkgIds <- getPkgIdsQuery
-            category <- getCategoryQuery
-            page <- fromMaybe 1 <$> getPageQuery
-            limit' <- fromMaybe 20 <$> getLimitQuery
-            query <- T.strip . fromMaybe "" <$> lookupGetParam "query"
-            let (source, packageRanges) = case pkgIds of
-                    Nothing -> (serviceQuerySource category query osArch, const Any)
-                    Just packages ->
-                        let s = getPkgDataSource (packageReqId <$> packages) osArch
-                            r = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages)
-                        in (s, r)
-            filteredPackages <-
-                runDB $
-                    runConduit $
-                        source
-                            -- group conduit pipeline by pkg id
-                            .| collateVersions
-                            -- filter out versions of apps that are incompatible with the OS predicate
-                            .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
-                            -- prune empty version sets
-                            .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
-                            -- grab the latest matching version if it exists
-                            .| concatMapC (\(a, b) -> (a,b,) <$> (selectLatestVersionFromSpec packageRanges b))
-                            -- construct
-                            .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> getCategoriesFor a)
-                            -- pages start at 1 for some reason. TODO: make pages start at 0
-                            .| (dropC (limit' * (page - 1)) *> takeC limit')
-                            .| sinkList
+    osArch <- getArchQuery 
+    do
+        pkgIds <- getPkgIdsQuery
+        category <- getCategoryQuery
+        page <- fromMaybe 1 <$> getPageQuery
+        limit' <- fromMaybe 20 <$> getLimitQuery
+        query <- T.strip . fromMaybe "" <$> lookupGetParam "query"
+        let (source, packageRanges) = case pkgIds of
+                Nothing -> (serviceQuerySource category query osArch, const Any)
+                Just packages ->
+                    let s = getPkgDataSource (packageReqId <$> packages) osArch
+                        r = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages)
+                    in (s, r)
+        filteredPackages <-
+            runDB $
+                runConduit $
+                    source
+                        -- group conduit pipeline by pkg id
+                        .| collateVersions
+                        -- filter out versions of apps that are incompatible with the OS predicate
+                        .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
+                        -- prune empty version sets
+                        .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
+                        -- grab the latest matching version if it exists
+                        .| concatMapC (\(a, b) -> (a,b,) <$> (selectLatestVersionFromSpec packageRanges b))
+                        -- construct
+                        .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> getCategoriesFor a)
+                        -- pages start at 1 for some reason. TODO: make pages start at 0
+                        .| (dropC (limit' * (page - 1)) *> takeC limit')
+                        .| sinkList
 
-            -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
-            pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
-            PackageListRes <$> runConcurrently (zipWithM (Concurrently .* constructPackageListApiRes) filteredPackages pkgsWithDependencies)
+        -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
+        pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
+        PackageListRes <$> runConcurrently (zipWithM (Concurrently .* constructPackageListApiRes) filteredPackages pkgsWithDependencies)
 
 getPkgIdsQuery :: Handler (Maybe [PackageReq])
 getPkgIdsQuery = parseQueryParam "ids" (first toS . eitherDecodeStrict . encodeUtf8)
