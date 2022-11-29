@@ -60,7 +60,6 @@ VersionRecord sql=version
     iconType Text
     releaseNotes Text
     osVersion Version
-    arch Text Maybe
     Primary pkgId number
     deriving Eq
     deriving Show

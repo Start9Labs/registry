@@ -284,6 +284,5 @@ upsertPackageVersion PackageManifest{..} = do
                 iconType
                 packageManifestReleaseNotes
                 packageManifestEosVersion
-                Nothing
     _res <- try @_ @SomeException $ insertKey pkgId (PkgRecord now (Just now))
     repsert (VersionRecordKey pkgId packageManifestVersion) ins
