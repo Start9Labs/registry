@@ -36,7 +36,6 @@ tor-port: "_env:TOR_PORT:447"
 static-bin-dir: "_env:STATIC_BIN:/usr/local/bin/"
 error-log-root: "_env:ERROR_LOG_ROOT:/var/log/registry/"
 marketplace-name: "_env:MARKETPLACE_NAME:CHANGE ME"
-icon-path: "_env:ICON_PATH:/var/www/html/resources"
 max-eos-version: "_env:MAX_VERSION:0.3.3.0"
 run-migration: "_env:RUN_MIGRATION:false"
 

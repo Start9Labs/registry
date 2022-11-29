@@ -6,19 +6,13 @@ import Foundation (Handler, RegistryCtx (..))
 import Handler.Util (tickleMAU)
 import Model (Category (..), EntityField (..))
 import Settings (AppSettings (..))
-import Startlude (Generic, Show, Text, pure, ($), (.), (<$>), MonadIO (liftIO), decodeUtf8, Maybe)
+import Startlude (Generic, Show, Text, pure, ($), (.), (<$>))
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), getsYesod)
 import Yesod.Core.Types (JSONResponse (..))
-import System.FilePath ((</>))
-import Data.ByteString (readFile)
-import System.Directory (doesFileExist)
-import Data.Maybe (Maybe(..))
-
 
 data InfoRes = InfoRes
     { name :: !Text
     , categories :: ![Text]
-    , icon :: Maybe Text -- base64
     }
     deriving (Show, Generic)
 instance ToJSON InfoRes
@@ -31,17 +25,10 @@ instance ToTypedContent InfoRes where
 getInfoR :: Handler (JSONResponse InfoRes)
 getInfoR = do
     name <- getsYesod $ marketplaceName . appSettings
-    iconFile <- getsYesod $ (</> "icon") . iconPath . appSettings
-    existingIcon <- liftIO $ doesFileExist iconFile
-    icon <- if existingIcon
-                then do
-                    icon' <- liftIO $ readFile iconFile
-                    pure $ Just $ decodeUtf8 icon'
-                else pure $ Nothing
     allCategories <- runDB $
         select $ do
             cats <- from $ table @Category
             orderBy [asc (cats ^. CategoryPriority)]
             pure cats
     tickleMAU
-    pure $ JSONResponse $ InfoRes name (categoryName . entityVal <$> allCategories) icon
+    pure $ JSONResponse $ InfoRes name (categoryName . entityVal <$> allCategories)

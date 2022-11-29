@@ -73,7 +73,6 @@ data AppSettings = AppSettings
     -- behind a reverse proxy.
     , appShouldLogAll           :: !Bool
     -- ^ Should all log messages be displayed?
-    , iconPath                  :: !FilePath
     , errorLogRoot              :: !FilePath
     , marketplaceName           :: !Text
     , maxEosVersion             :: !Version
@@ -110,7 +109,6 @@ instance FromJSON AppSettings where
         appPort                   <- o .: "port"
         appShouldLogAll           <- o .:? "should-log-all" .!= False
         errorLogRoot              <- o .: "error-log-root"
-        iconPath                  <- o .: "icon-path"
         marketplaceName           <- o .: "marketplace-name"
         maxEosVersion             <- o .: "max-eos-version"
         registryHostname          <- o .: "registry-hostname"
