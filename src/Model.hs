@@ -69,7 +69,7 @@ VersionPlatform
     updatedAt UTCTime Maybe
     pkgId PkgRecordId
     versionNumber Version
-    arch OsArch Maybe
+    arch OsArch
     Primary pkgId versionNumber
     deriving Eq
     deriving Show
