@@ -11,7 +11,7 @@ import Database.Persist.Sql (
     SqlBackend,
  )
 import Lib.Types.Core (
-    PkgId,
+    PkgId, OsArch,
  )
 import Lib.Types.Emver (Version)
 import Model (
@@ -19,7 +19,7 @@ import Model (
     Metric (Metric),
     PkgDependency (..),
     PkgRecord (PkgRecord),
-    VersionRecord (VersionRecord),
+    VersionRecord (VersionRecord), VersionPlatform, EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch, VersionPlatformId, VersionRecordId),
  )
 import Orphans.Emver ()
 import Startlude (
@@ -123,22 +123,29 @@ serviceQuerySource ::
     (MonadResource m, MonadIO m) =>
     Maybe Text ->
     Text ->
+    OsArch ->
     ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
-serviceQuerySource mCat query = selectSource $ do
+serviceQuerySource mCat query osArch = selectSource $ do
     service <- case mCat of
         Nothing -> do
-            service <- from $ table @VersionRecord
+            (service :& vp) <- from $ table @VersionRecord 
+                `innerJoin` table @VersionPlatform `on` (\(service :& vp) -> (VersionPlatformPkgId === VersionRecordPkgId) (vp :& service))
+            where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
+            where_ (vp ^. VersionPlatformArch ==. val osArch)
             where_ $ queryInMetadata query service
             pure service
         Just category -> do
-            (service :& _ :& cat) <-
+            (service :& _ :& cat :& vp) <-
                 from $
                     table @VersionRecord
                         `innerJoin` table @PkgCategory `on` (VersionRecordPkgId === PkgCategoryPkgId)
                         `innerJoin` table @Category `on` (\(_ :& a :& b) -> (PkgCategoryCategoryId === CategoryId) (a :& b))
+                        `innerJoin` table @VersionPlatform `on` (\(service :& _ :& _ :& vp) -> (VersionPlatformPkgId === VersionRecordPkgId) (vp :& service))
             -- if there is a cateogry, only search in category
             -- weight title, short, long (bitcoin should equal Bitcoin Core)
             where_ $ cat ^. CategoryName ==. val category &&. queryInMetadata query service
+            where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
+            where_ (vp ^. VersionPlatformArch ==. val osArch)
             pure service
     groupBy (service ^. VersionRecordPkgId, service ^. VersionRecordNumber)
     orderBy
@@ -148,7 +155,6 @@ serviceQuerySource mCat query = selectSource $ do
         ]
     pure service
 
-
 queryInMetadata :: Text -> SqlExpr (Entity VersionRecord) -> (SqlExpr (Value Bool))
 queryInMetadata query service =
     (service ^. VersionRecordDescShort `ilike` (%) ++. val query ++. (%))
@@ -156,9 +162,12 @@ queryInMetadata query service =
         ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
 
 
-getPkgDataSource :: (MonadResource m, MonadIO m) => [PkgId] -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
-getPkgDataSource pkgs = selectSource $ do
-    pkgData <- from $ table @VersionRecord
+getPkgDataSource :: (MonadResource m, MonadIO m) => [PkgId] -> OsArch -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
+getPkgDataSource pkgs osArch = selectSource $ do
+    (pkgData :& vp) <- from $ table @VersionRecord
+        `innerJoin` table @VersionPlatform `on` (\(service :& vp) -> (VersionPlatformPkgId === VersionRecordPkgId) (vp :& service))
+    where_ (pkgData ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
+    where_ (vp ^. VersionPlatformArch ==. val osArch)
     where_ (pkgData ^. VersionRecordPkgId `in_` valList (PkgRecordKey <$> pkgs))
     pure pkgData
 

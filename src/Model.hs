@@ -65,6 +65,16 @@ VersionRecord sql=version
     deriving Eq
     deriving Show
 
+VersionPlatform 
+    createdAt UTCTime
+    updatedAt UTCTime Maybe
+    pkgId PkgRecordId
+    versionNumber Version
+    arch OsArch
+    Primary pkgId versionNumber
+    deriving Eq
+    deriving Show
+
 OsVersion
     createdAt UTCTime
     updatedAt UTCTime
