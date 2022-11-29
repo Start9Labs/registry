@@ -87,9 +87,6 @@ import Yesod (
     YesodPersist (runDB),
     lookupGetParam,
  )
-import Yesod.Core.Handler (sendResponseStatus)
-import Network.HTTP.Types (status400)
-import Lib.Error (S9Error(InvalidParamsE))
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId

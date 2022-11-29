@@ -19,7 +19,7 @@ import Model (
     Metric (Metric),
     PkgDependency (..),
     PkgRecord (PkgRecord),
-    VersionRecord (VersionRecord), VersionPlatform, EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch, VersionPlatformId, VersionRecordId),
+    VersionRecord (VersionRecord), VersionPlatform, EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch),
  )
 import Orphans.Emver ()
 import Startlude (
