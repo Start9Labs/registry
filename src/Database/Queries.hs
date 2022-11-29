@@ -7,7 +7,7 @@ module Database.Queries where
 
 import Database.Persist.Sql (
     PersistStoreRead (get),
-    PersistStoreWrite (insertKey, insert_, insertMany_, repsert),
+    PersistStoreWrite (insertKey, insert_, repsertMany, repsert),
     SqlBackend,
  )
 import Lib.Types.Core (
@@ -15,7 +15,7 @@ import Lib.Types.Core (
  )
 import Lib.Types.Emver (Version)
 import Model (
-    Key (PkgRecordKey, VersionRecordKey),
+    Key (PkgRecordKey, VersionRecordKey, VersionPlatformKey),
     Metric (Metric),
     PkgDependency (..),
     PkgRecord (PkgRecord),
@@ -324,10 +324,11 @@ upsertPackageVersionPlatform PackageManifest{..} = do
     let pkgId = PkgRecordKey packageManifestId
     let arches = [X86_64, AARCH64]
     let records = createVersionPlatformRecord now pkgId packageManifestVersion <$> arches
-    insertMany_ records
+    repsertMany records
     where
-        createVersionPlatformRecord time id version = VersionPlatform
+        createVersionPlatformRecord time id version arch = ((VersionPlatformKey id version arch), VersionPlatform
             time
             (Just time)
             id
             version
+            arch)

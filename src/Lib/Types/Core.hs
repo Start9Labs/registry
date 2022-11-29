@@ -106,6 +106,10 @@ instance PersistField OsArch where
     fromPersistValue other = Left [i|Invalid OsArch: #{other}|]
 instance PersistFieldSql OsArch where
     sqlType _ = SqlString
+instance FromJSON OsArch where
+    parseJSON = parseJSON
+instance ToJSON OsArch where
+    toJSON = toJSON
 
 newtype Extension (a :: Symbol) = Extension String deriving (Eq)
 type S9PK = Extension "s9pk"

@@ -70,7 +70,7 @@ VersionPlatform
     pkgId PkgRecordId
     versionNumber Version
     arch OsArch
-    Primary pkgId versionNumber
+    Primary pkgId versionNumber arch
     deriving Eq
     deriving Show
 
