@@ -71,7 +71,6 @@ getEosVersionR = do
                                         filter (maybe (const True) (<) currentEosVersion . fst) $
                                             ((osVersionNumber &&& osVersionReleaseNotes))
                                                 <$> osV
-                    tickleMAU
                     pure . JSONResponse $
                         mLatest <&> \latest ->
                             EosRes
