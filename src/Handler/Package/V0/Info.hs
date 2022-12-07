@@ -10,7 +10,6 @@ import Startlude (Generic, Show, Text, pure, ($), (.), (<$>))
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), getsYesod)
 import Yesod.Core.Types (JSONResponse (..))
 
-
 data InfoRes = InfoRes
     { name :: !Text
     , categories :: ![Text]
@@ -32,4 +31,4 @@ getInfoR = do
             orderBy [asc (cats ^. CategoryPriority)]
             pure cats
     tickleMAU
-    pure $ JSONResponse $ InfoRes name $ categoryName . entityVal <$> allCategories
+    pure $ JSONResponse $ InfoRes name (categoryName . entityVal <$> allCategories)

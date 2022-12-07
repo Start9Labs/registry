@@ -49,7 +49,7 @@ import Database.Persist (
     (=.),
  )
 import Database.Persist.Postgresql (runSqlPoolNoTransaction)
-import Database.Queries (upsertPackageVersion)
+import Database.Queries (upsertPackageVersion, upsertPackageVersionPlatform)
 import Foundation (
     Handler,
     RegistryCtx (..),
@@ -143,6 +143,7 @@ import Yesod (
  )
 import Yesod.Auth (YesodAuth (maybeAuthId))
 import Yesod.Core.Types (JSONResponse (JSONResponse))
+import Database.Persist.Sql (runSqlPool)
 
 
 postPkgUploadR :: Handler ()
@@ -226,7 +227,7 @@ postPkgIndexR = do
                 [i|Could not locate manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
     pool <- getsYesod appConnPool
     runSqlPoolNoTransaction (upsertPackageVersion man) pool Nothing
-
+    runSqlPool (upsertPackageVersionPlatform man) pool
 
 postPkgDeindexR :: Handler ()
 postPkgDeindexR = do

@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Handler.Util where
 
@@ -22,11 +23,11 @@ import Lib.PkgRepository (
     PkgRepo,
     getHash,
  )
-import Lib.Types.Core (PkgId)
+import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (
     Version,
     VersionRange,
-    satisfies,
+    satisfies, parseVersion
  )
 import Model (
     UserActivity (..),
@@ -60,7 +61,7 @@ import Startlude (
     ($),
     (.),
     (<$>),
-    (>>=),
+    (>>=), note, (=<<)
  )
 import UnliftIO (MonadUnliftIO)
 import Yesod (
@@ -76,8 +77,8 @@ import Yesod (
     toContent,
     typePlain,
  )
-import Yesod.Core (addHeader)
-
+import Yesod.Core (addHeader, logWarn)
+import Lib.Error (S9Error (..))
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other =
@@ -111,7 +112,6 @@ getVersionFromQuery = do
 getHashFromQuery :: MonadHandler m => m (Maybe Text)
 getHashFromQuery = lookupGetParam "hash"
 
-
 versionPriorityFromQueryIsMin :: MonadHandler m => m Bool
 versionPriorityFromQueryIsMin = do
     priorityString <- lookupGetParam "version-priority"
@@ -140,14 +140,26 @@ queryParamAs k p =
             Left e -> sendResponseText status400 [i|Invalid Request! The query parameter '#{k}' failed to parse: #{e}|]
             Right a -> pure (Just a)
 
+parseQueryParam :: Text -> (Text -> Either Text a) -> Handler (Maybe a)
+parseQueryParam param parser = do
+    lookupGetParam param >>= \case
+        Nothing -> pure Nothing
+        Just x -> case parser x of
+            Left e -> do
+                let err = InvalidParamsE ("get:" <> param) x
+                $logWarn e
+                sendResponseStatus status400 err
+            Right a -> pure (Just a)
 
 tickleMAU :: Handler ()
 tickleMAU = do
     lookupGetParam "server-id" >>= \case
         Nothing -> pure ()
         Just sid -> do
+            currentEosVersion <- queryParamAs "eos-version" parseVersion
+            arch <- getArchQuery
             now <- liftIO getCurrentTime
-            void $ liftHandler $ runDB $ insertRecord $ UserActivity now sid
+            void $ liftHandler $ runDB $ insertRecord $ UserActivity now sid currentEosVersion arch
 
 
 fetchCompatiblePkgVersions :: Maybe VersionRange -> PkgId -> Handler [VersionRecord]
@@ -160,3 +172,6 @@ fetchCompatiblePkgVersions osVersion pkg = do
             case osV of
                 Nothing -> const True
                 Just v -> flip satisfies v
+
+getArchQuery :: Handler (Maybe OsArch)
+getArchQuery = parseQueryParam "arch" ((flip $ note . mappend "Invalid 'arch': ") =<< readMaybe)

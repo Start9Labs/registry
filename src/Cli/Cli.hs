@@ -13,15 +13,8 @@ module Cli.Cli (
 ) where
 
 import Conduit (
-    ConduitT,
-    MonadIO,
-    awaitForever,
     foldC,
     runConduit,
-    runConduitRes,
-    sinkFileCautious,
-    sourceFile,
-    yield,
     (.|),
  )
 import Control.Monad.Logger (
@@ -36,7 +29,6 @@ import Crypto.Hash (
     SHA256 (SHA256),
     hashWith,
  )
-import Crypto.Hash.Conduit (hashFile, sinkHash)
 import Data.Aeson (
     ToJSON,
     eitherDecodeStrict,
@@ -48,7 +40,6 @@ import Data.ByteArray.Encoding (
 import Data.ByteString.Char8 qualified as B8
 import Data.ByteString.Lazy qualified as LB
 import Data.Conduit.Process (readProcess)
-import Data.Conduit.Zlib (gzip)
 import Data.Default
 import Data.Functor.Contravariant (contramap)
 import Data.HashMap.Internal.Strict (
@@ -99,7 +90,6 @@ import Network.HTTP.Simple (
     setRequestBody,
     setRequestBodyJSON,
     setRequestHeaders,
-    setRequestQueryString,
     setRequestResponseTimeout,
  )
 import Network.HTTP.Types (status200)
@@ -163,7 +153,6 @@ import Startlude (
     ReaderT (runReaderT),
     Semigroup ((<>)),
     Show,
-    SomeException,
     String,
     appendFile,
     const,
@@ -178,12 +167,10 @@ import Startlude (
     fromMaybe,
     fst,
     headMay,
-    liftIO,
     not,
     panic,
     show,
     snd,
-    throwIO,
     unlessM,
     void,
     when,
@@ -202,7 +189,6 @@ import System.Directory (
     getFileSize,
     getHomeDirectory,
     listDirectory,
-    removeFile,
  )
 import System.FilePath (
     takeDirectory,
@@ -211,15 +197,10 @@ import System.FilePath (
  )
 import System.ProgressBar (
     Progress (..),
-    ProgressBar,
-    Style (stylePrefix),
     defStyle,
-    incProgress,
-    msg,
     newProgressBar,
     updateProgress,
  )
-import UnliftIO.Exception (handle)
 import Yesod (
     logError,
     logWarn,
@@ -232,15 +213,6 @@ data Upload = Upload
     , publishIndex :: !Bool
     }
     deriving (Show)
-
-
-data EosUpload = EosUpload
-    { eosRepoName :: !String
-    , eosPath :: !FilePath
-    , eosVersion :: !Version
-    }
-    deriving (Show)
-
 
 newtype PublishCfg = PublishCfg
     { publishCfgRepos :: HashMap String PublishCfgRepo
@@ -287,7 +259,6 @@ data Command
     | CmdCatDel !String !String
     | CmdPkgCatAdd !String !PkgId !String
     | CmdPkgCatDel !String !PkgId !String
-    | CmdEosUpload !EosUpload
     deriving (Show)
 
 
@@ -401,7 +372,6 @@ parseCommand =
         <|> (CmdListUnindexed <$> parseListUnindexed)
         <|> parseCat
         <|> parsePkgCat
-        <|> (CmdEosUpload <$> parseEosPublish)
     where
         reg = parseRepoAdd <|> (CmdRegDel <$> parseRepoDel) <|> (parseRepoList $> CmdRegList)
 
@@ -448,22 +418,6 @@ parsePkgCat = subparser $ command "categorize" (info cat $ progDesc "Add or remo
                     <*> strArgument (metavar "PACKAGE_ID")
                     <*> strArgument (metavar "CATEGORY")
 
-
-parseEosPublish :: Parser EosUpload
-parseEosPublish =
-    subparser $
-        command "eos-upload" (info go $ progDesc "Publishes a .img to a remote registry")
-            <> metavar
-                "eos-upload"
-    where
-        go =
-            liftA3
-                EosUpload
-                (strOption (short 't' <> long "target" <> metavar "NAME" <> help "Name of registry in publish.dhall"))
-                (strOption (short 'i' <> long "image" <> metavar "EOS_IMG" <> help "File path of the image to publish"))
-                (strOption (short 'v' <> long "version" <> help "Version of the image"))
-
-
 opts :: ParserInfo Command
 opts = info (parseCommand <**> helper) (fullDesc <> progDesc "Publish tool for Embassy Packages")
 
@@ -482,8 +436,6 @@ cliMain =
         CmdCatDel target cat -> catDel target cat
         CmdPkgCatAdd target pkg cat -> pkgCatAdd target pkg cat
         CmdPkgCatDel target pkg cat -> pkgCatDel target pkg cat
-        CmdEosUpload up -> eosUpload up
-
 
 init :: Maybe Shell -> IO ()
 init sh = do
@@ -563,7 +515,7 @@ upload (Upload name mpkg shouldIndex) = do
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/upload")
             <&> setRequestHeaders [("accept", "text/plain")]
-            <&> setRequestResponseTimeout (responseTimeoutMicro (90_000_000)) -- 90 seconds
+            <&> setRequestResponseTimeout (responseTimeoutMicro (600_000_000)) -- 10 minutes
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     size <- getFileSize pkg
     bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
@@ -592,59 +544,6 @@ upload (Upload name mpkg shouldIndex) = do
     where
         sfs2prog :: StreamFileStatus -> Progress ()
         sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
-
-
-eosUpload :: EosUpload -> IO ()
-eosUpload (EosUpload name img version) = handle @_ @SomeException cleanup $ do
-    PublishCfgRepo{..} <- findNameInCfg name
-    noBody <-
-        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/eos-upload")
-            <&> setRequestHeaders [("accept", "text/plain")]
-            <&> setRequestResponseTimeout (responseTimeoutMicro (90_000_000)) -- 90 seconds
-            <&> setRequestHeaders [("Content-Encoding", "gzip")]
-            <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
-    size <- getFileSize img
-    hashBar <- newProgressBar defStyle{stylePrefix = msg "Hashing"} 30 (Progress 0 (fromIntegral size) ())
-    runConduitRes $ sourceFile img .| transByteCounter hashBar .| sinkHash @_ @SHA256
-    hash <- hashFile @_ @SHA256 img
-    let compressedFilePath = "/tmp/eos.img.gz"
-    zipBar <- newProgressBar defStyle{stylePrefix = msg "Gzipping"} 30 (Progress 0 (fromIntegral size) ())
-    runConduitRes $
-        sourceFile img
-            .| transByteCounter zipBar
-            .| gzip
-            .| sinkFileCautious compressedFilePath
-    compressedSize <- getFileSize compressedFilePath
-    fileBar <- newProgressBar defStyle{stylePrefix = msg "Uploading"} 30 (Progress 0 (fromIntegral compressedSize) ())
-    body <- observedStreamFile (updateProgress fileBar . const . sfs2prog) $ compressedFilePath
-    let withBody = setRequestBody body noBody
-    let withQParams =
-            setRequestQueryString
-                [("version", Just $ show version), ("hash", Just $ convertToBase Base16 hash)]
-                withBody
-    manager <- newTlsManager
-    res <- runReaderT (httpLbs withQParams) manager
-    removeFile compressedFilePath
-    if getResponseStatus res == status200
-        then -- no output is successful
-            pure ()
-        else do
-            $logError (decodeUtf8 . LB.toStrict $ getResponseBody res)
-            exitWith $ ExitFailure 1
-    putChunkLn $ fromString ("Successfully uploaded " <> img) & fore green
-    where
-        sfs2prog :: StreamFileStatus -> Progress ()
-        sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
-        transByteCounter :: MonadIO m => ProgressBar a -> ConduitT B8.ByteString B8.ByteString m ()
-        transByteCounter bar = awaitForever $ \bs -> do
-            let len = B8.length bs
-            liftIO $ incProgress bar len
-            yield bs
-        cleanup e = do
-            $logError $ show e
-            removeFile "/tmp/eos.img.gz"
-            throwIO e
-
 
 index :: String -> String -> Version -> IO ()
 index name pkg v = performHttp name "POST" [i|/admin/v0/index|] (IndexPkgReq (PkgId $ toS pkg) v)

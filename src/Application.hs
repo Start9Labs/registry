@@ -254,11 +254,14 @@ makeFoundation appSettings = do
         flip runLoggingT logFunc $
             createPostgresqlPool (pgConnStr $ appDatabaseConf appSettings) (pgPoolSize . appDatabaseConf $ appSettings)
 
-    runSqlPool
-        (Database.Persist.Migration.Postgres.runMigration Database.Persist.Migration.defaultSettings manualMigration)
-        pool
-    -- Preform database migration using application logging settings
-    runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
+    if (needsMigration appSettings) 
+        then
+            runSqlPool
+                (Database.Persist.Migration.Postgres.runMigration Database.Persist.Migration.defaultSettings manualMigration)
+                pool
+        else 
+        -- Preform database migration using application logging settings
+        runLoggingT (runSqlPool (runMigration migrateAll) pool) logFunc
 
     -- Return the foundation
     return $ mkFoundation pool

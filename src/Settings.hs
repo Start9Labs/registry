@@ -62,29 +62,31 @@ import           Orphans.Emver                  ( )
 type AppPort = Word16
 data AppSettings = AppSettings
     { appDatabaseConf           :: !PostgresConf
-    , appHost                   :: !HostPreference
-    -- ^ Host/interface the server should bind to.
-    , appPort                   :: !AppPort
-    -- ^ Port to listen on
-    , appIpFromHeader           :: !Bool
-    -- ^ Get the IP address from the header when logging. Useful when sitting
-    -- behind a reverse proxy.
     , appDetailedRequestLogging :: !Bool
     -- ^ Use detailed request logging system
+    , appHost                   :: !HostPreference
+    -- ^ Host/interface the server should bind to.
+    , appIpFromHeader           :: !Bool
+    -- ^ Get the IP address from the header when logging. Useful when sitting
+    , appPort                   :: !AppPort
+    -- ^ Port to listen on
+    -- behind a reverse proxy.
     , appShouldLogAll           :: !Bool
     -- ^ Should all log messages be displayed?
-    , resourcesDir              :: !FilePath
-    , sslPath                   :: !FilePath
-    , sslAuto                   :: !Bool
-    , registryHostname          :: !Text
-    , registryVersion           :: !Version
-    , sslKeyLocation            :: !FilePath
-    , sslCsrLocation            :: !FilePath
-    , sslCertLocation           :: !FilePath
-    , torPort                   :: !AppPort
-    , staticBinDir              :: !FilePath
     , errorLogRoot              :: !FilePath
     , marketplaceName           :: !Text
+    , maxEosVersion             :: !Version
+    , registryHostname          :: !Text
+    , registryVersion           :: !Version
+    , resourcesDir              :: !FilePath
+    , needsMigration              :: !Bool
+    , sslAuto                   :: !Bool
+    , sslCertLocation           :: !FilePath
+    , sslCsrLocation            :: !FilePath
+    , sslKeyLocation            :: !FilePath
+    , sslPath                   :: !FilePath
+    , staticBinDir              :: !FilePath
+    , torPort                   :: !AppPort
     }
 instance Has PkgRepo AppSettings where
     extract = liftA2 PkgRepo ((</> "apps") . resourcesDir) staticBinDir
@@ -101,25 +103,26 @@ instance Has EosRepo AppSettings where
 instance FromJSON AppSettings where
     parseJSON = withObject "AppSettings" $ \o -> do
         appDatabaseConf           <- o .: "database"
-        appHost                   <- fromString <$> o .: "host"
-        appPort                   <- o .: "port"
-        appIpFromHeader           <- o .: "ip-from-header"
         appDetailedRequestLogging <- o .:? "detailed-logging" .!= True
+        appHost                   <- fromString <$> o .: "host"
+        appIpFromHeader           <- o .: "ip-from-header"
+        appPort                   <- o .: "port"
         appShouldLogAll           <- o .:? "should-log-all" .!= False
-        resourcesDir              <- o .: "resources-path"
-        sslPath                   <- o .: "ssl-path"
-        sslAuto                   <- o .: "ssl-auto"
-        registryHostname          <- o .: "registry-hostname"
-        torPort                   <- o .: "tor-port"
-        staticBinDir              <- o .: "static-bin-dir"
         errorLogRoot              <- o .: "error-log-root"
+        marketplaceName           <- o .: "marketplace-name"
+        maxEosVersion             <- o .: "max-eos-version"
+        registryHostname          <- o .: "registry-hostname"
+        resourcesDir              <- o .: "resources-path"
+        needsMigration            <- o .: "run-migration"
+        sslAuto                   <- o .: "ssl-auto"
+        sslPath                   <- o .: "ssl-path"
+        staticBinDir              <- o .: "static-bin-dir"
+        torPort                   <- o .: "tor-port"
 
         let sslKeyLocation  = sslPath </> "key.pem"
         let sslCsrLocation  = sslPath </> "certificate.csr"
         let sslCertLocation = sslPath </> "certificate.pem"
         let registryVersion = fromJust . parseMaybe parseJSON . String . toS . showVersion $ version
-
-        marketplaceName <- o .: "marketplace-name"
 
         return AppSettings { .. }
 

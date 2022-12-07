@@ -22,7 +22,7 @@ import Database.Persist.TH (
     share,
     sqlSettings,
  )
-import Lib.Types.Core (PkgId (PkgId))
+import Lib.Types.Core (PkgId (PkgId), OsArch)
 import Lib.Types.Emver (
     Version,
     VersionRange,
@@ -60,8 +60,17 @@ VersionRecord sql=version
     iconType Text
     releaseNotes Text
     osVersion Version
-    arch Text Maybe
     Primary pkgId number
+    deriving Eq
+    deriving Show
+
+VersionPlatform 
+    createdAt UTCTime
+    updatedAt UTCTime Maybe
+    pkgId PkgRecordId
+    versionNumber Version
+    arch OsArch
+    Primary pkgId versionNumber arch
     deriving Eq
     deriving Show
 
@@ -71,6 +80,7 @@ OsVersion
     number Version
     headline Text
     releaseNotes Text
+    arch OsArch Maybe
     deriving Eq
     deriving Show
 
@@ -128,6 +138,8 @@ PkgDependency
 UserActivity
     createdAt UTCTime
     serverId Text
+    osVersion Version Maybe
+    arch OsArch Maybe
 
 Admin
     Id Text

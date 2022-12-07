@@ -31,11 +31,13 @@ detailed-logging: true
 resources-path: "_env:RESOURCES_PATH:/var/www/html/resources"
 ssl-path: "_env:SSL_PATH:/var/ssl"
 ssl-auto: "_env:SSL_AUTO:true"
-registry-hostname: "_env:REGISTRY_HOSTNAME:alpha-registry.start9labs.com"
+registry-hostname: "_env:REGISTRY_HOSTNAME:alpha-registry-x.start9.com"
 tor-port: "_env:TOR_PORT:447"
 static-bin-dir: "_env:STATIC_BIN:/usr/local/bin/"
-error-log-root: "_env:ERROR_LOG_ROOT:/var/log/embassy-os/"
+error-log-root: "_env:ERROR_LOG_ROOT:/var/log/registry/"
 marketplace-name: "_env:MARKETPLACE_NAME:CHANGE ME"
+max-eos-version: "_env:MAX_VERSION:0.3.3.0"
+run-migration: "_env:RUN_MIGRATION:false"
 
 database:
   database: "_env:PG_DATABASE:start9_registry"
