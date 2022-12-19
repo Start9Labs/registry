@@ -23,12 +23,14 @@ import Handler.Util (queryParamAs, getArchQuery)
 import Lib.Types.Emver (Version, parseVersion)
 import Model (EntityField (..), OsVersion (..))
 import Orphans.Emver ()
-import Startlude (Bool (..), Down (..), Eq, Generic, Maybe (..), Ord ((<)), Show, Text, const, filter, fst, head, maybe, pure, sortOn, ($), (&&&), (.), (<$>), (<&>), (<=), (>>=))
+import Startlude (Bool (..), Down (..), Eq, Generic, Maybe (..), Ord ((<)), Show, Text, const, filter, fst, head, maybe, pure, sortOn, ($), (&&&), (.), (<$>), (<&>), (<=))
 import Yesod (ToContent (toContent), ToTypedContent (..), YesodPersist (runDB), getsYesod, sendResponseStatus)
 import Yesod.Core.Types (JSONResponse (..))
 import Settings (AppSettings(maxEosVersion))
 import Network.HTTP.Types (status400)
 import Lib.Error (S9Error(InvalidParamsE))
+import Lib.Types.Core (OsArch(RASPBERRYPI))
+import Data.Maybe (fromMaybe)
 
 
 data EosRes = EosRes
@@ -49,35 +51,33 @@ instance ToTypedContent EosRes where
 getEosVersionR :: Handler (JSONResponse (Maybe EosRes))
 getEosVersionR = do
     currentEosVersion <- queryParamAs "eos-version" parseVersion
-    getArchQuery >>= \case 
-        Nothing ->  sendResponseStatus status400 (InvalidParamsE "Param is required" "arch")
-        Just arch -> do
-            case currentEosVersion of
-                Nothing -> sendResponseStatus status400 (InvalidParamsE "Param is required" "eos-version")
-                Just currentEosVersion' -> do
-                    maxVersion <- getsYesod $ maxEosVersion . appSettings
-                    allEosVersions <- runDB $
-                        select $ do
-                            vers <- from $ table @OsVersion
-                            where_ (vers ^. OsVersionArch ==. val (Just arch))
-                            orderBy [desc (vers ^. OsVersionNumber)]
-                            pure vers
-                    let osV = determineMaxEosVersionAvailable maxVersion currentEosVersion' $ entityVal <$> allEosVersions
-                    let mLatest = head osV
-                    let mappedVersions =
-                            ReleaseNotes $
-                                HM.fromList $
-                                    sortOn (Down . fst) $
-                                        filter (maybe (const True) (<) currentEosVersion . fst) $
-                                            ((osVersionNumber &&& osVersionReleaseNotes))
-                                                <$> osV
-                    pure . JSONResponse $
-                        mLatest <&> \latest ->
-                            EosRes
-                                { eosResVersion = osVersionNumber latest
-                                , eosResHeadline = osVersionHeadline latest
-                                , eosResReleaseNotes = mappedVersions
-                                }
+    arch <- fromMaybe RASPBERRYPI <$> getArchQuery 
+    case currentEosVersion of
+        Nothing -> sendResponseStatus status400 (InvalidParamsE "Param is required" "eos-version")
+        Just currentEosVersion' -> do
+            maxVersion <- getsYesod $ maxEosVersion . appSettings
+            allEosVersions <- runDB $
+                select $ do
+                    vers <- from $ table @OsVersion
+                    where_ (vers ^. OsVersionArch ==. val (Just arch))
+                    orderBy [desc (vers ^. OsVersionNumber)]
+                    pure vers
+            let osV = determineMaxEosVersionAvailable maxVersion currentEosVersion' $ entityVal <$> allEosVersions
+            let mLatest = head osV
+            let mappedVersions =
+                    ReleaseNotes $
+                        HM.fromList $
+                            sortOn (Down . fst) $
+                                filter (maybe (const True) (<) currentEosVersion . fst) $
+                                    ((osVersionNumber &&& osVersionReleaseNotes))
+                                        <$> osV
+            pure . JSONResponse $
+                mLatest <&> \latest ->
+                    EosRes
+                        { eosResVersion = osVersionNumber latest
+                        , eosResHeadline = osVersionHeadline latest
+                        , eosResReleaseNotes = mappedVersions
+                        }
 
 determineMaxEosVersionAvailable ::  Version -> Version -> [OsVersion] -> [OsVersion]
 determineMaxEosVersionAvailable maxEosVersion currentEosVersion versions = do
