@@ -19,7 +19,7 @@ import Database.Esqueleto.Experimental (
  )
 import Foundation (Handler, RegistryCtx (appSettings))
 import Handler.Package.V0.ReleaseNotes (ReleaseNotes (..))
-import Handler.Util (queryParamAs, tickleMAU, getArchQuery)
+import Handler.Util (queryParamAs, getArchQuery)
 import Lib.Types.Emver (Version, parseVersion)
 import Model (EntityField (..), OsVersion (..))
 import Orphans.Emver ()

@@ -99,6 +99,7 @@ instance Read OsArch where
     readsPrec _ "x86_64" = [(X86_64, "")]
     readsPrec _ "aarch64" = [(AARCH64, "")]
     readsPrec _ "raspberrypi" = [(RASPBERRYPI, "")]
+    readsPrec _ "rasberrypi" = [(RASPBERRYPI, "")]
     readsPrec _ _ = []
 instance PersistField OsArch where
     toPersistValue = PersistText . show
