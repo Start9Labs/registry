@@ -36,6 +36,7 @@ import Startlude (
     Text,
     UTCTime,
     Word32,
+    Bool
  )
 
 
@@ -44,6 +45,7 @@ share
     [persistLowerCase|
 PkgRecord
     Id PkgId sql=pkg_id
+    isLocal Bool default=True
     createdAt UTCTime
     updatedAt UTCTime Maybe
     deriving Eq

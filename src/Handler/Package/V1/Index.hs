@@ -32,7 +32,7 @@ import Handler.Util (basicRender, parseQueryParam, getArchQuery)
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies, (<||))
-import Model (Category (..), Key (..), PkgDependency (..), VersionRecord (..))
+import Model (Category (..), Key (..), PkgDependency (..), VersionRecord (..), PkgRecord (pkgRecordIsLocal))
 import Protolude.Unsafe (unsafeFromJust)
 import Settings (AppSettings)
 import Startlude (
@@ -87,6 +87,9 @@ import Yesod (
     YesodPersist (runDB),
     lookupGetParam,
  )
+import Data.Tuple (fst)
+import Data.Tuple.Extra (both)
+import Database.Persist.Postgresql (entityVal)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
@@ -177,15 +180,16 @@ getPackageDependencies ::
     ReaderT SqlBackend m (HashMap PkgId DependencyRes)
 getPackageDependencies osPredicate PackageMetadata{packageMetadataPkgId = pkg, packageMetadataPkgVersion = pkgVersion} =
     do
-        pkgDepInfo <- getPkgDependencyData pkg pkgVersion
-        pkgDepInfoWithVersions <- traverse getDependencyVersions pkgDepInfo
+        pkgDepInfo' <- getPkgDependencyData pkg pkgVersion
+        let pkgDepInfo = fmap (\a -> (entityVal $ fst a, entityVal $ snd a)) pkgDepInfo'
+        pkgDepInfoWithVersions <- traverse getDependencyVersions (fst <$> pkgDepInfo)
         let compatiblePkgDepInfo = fmap (filter (osPredicate . versionRecordOsVersion)) pkgDepInfoWithVersions
         let depMetadata = catMaybes $ zipWith selectDependencyBestVersion pkgDepInfo compatiblePkgDepInfo
         lift $
             fmap HM.fromList $
-                for depMetadata $ \(depId, title, v) -> do
+                for depMetadata $ \(depId, title, v, isLocal) -> do
                     icon <- loadIcon depId v
-                    pure $ (depId, DependencyRes title icon)
+                    pure $ (depId, DependencyRes title icon isLocal)
 
 
 constructPackageListApiRes ::
@@ -237,11 +241,13 @@ selectLatestVersionFromSpec pkgRanges vs =
 
 
 -- get best version of the dependency based on what is specified in the db (ie. what is specified in the manifest for the package)
-selectDependencyBestVersion :: PkgDependency -> [VersionRecord] -> Maybe (PkgId, Text, Version)
-selectDependencyBestVersion pkgDepRecord depVersions = do
+selectDependencyBestVersion :: (PkgDependency, PkgRecord) -> [VersionRecord] -> Maybe (PkgId, Text, Version, Bool)
+selectDependencyBestVersion pkgDepInfo depVersions = do
+    let pkgDepRecord = fst pkgDepInfo
+    let isLocal = pkgRecordIsLocal $ snd pkgDepInfo
     let depId = pkgDependencyDepId pkgDepRecord
     let versionRequirement = pkgDependencyDepVersionRange pkgDepRecord
     let satisfactory = filter ((<|| versionRequirement) . versionRecordNumber) depVersions
     case maximumOn versionRecordNumber satisfactory of
-        Just bestVersion -> Just (unPkgRecordKey depId, versionRecordTitle bestVersion, versionRecordNumber bestVersion)
+        Just bestVersion -> Just (unPkgRecordKey depId, versionRecordTitle bestVersion, versionRecordNumber bestVersion, isLocal)
         Nothing -> Nothing
