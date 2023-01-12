@@ -31,7 +31,7 @@ import Startlude (
     getCurrentTime,
     maybe,
     ($),
-    (.), Bool (True),
+    (.), Bool (True, False),
  )
 import System.FilePath (takeExtension)
 import UnliftIO (
@@ -97,7 +97,7 @@ import Model (
         VersionRecordNumber,
         VersionRecordPkgId,
         VersionRecordTitle,
-        VersionRecordUpdatedAt, PkgRecordIsLocal
+        VersionRecordUpdatedAt, PkgRecordHidden
     ),
     Key (unPkgRecordKey),
     PkgCategory,
@@ -133,7 +133,7 @@ serviceQuerySource mCat query mOsArch = selectSource $ do
                         `innerJoin` table @PkgRecord `on` (\(v :& _ :& p) -> (PkgRecordId === VersionRecordPkgId) (p :& v))
                     where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
                     where_ (vp ^. VersionPlatformArch ==. val osArch)
-                    where_ (pr ^. PkgRecordIsLocal ==. val True)
+                    where_ (pr ^. PkgRecordHidden ==. val False)
                     where_ $ queryInMetadata query service
                     pure service
                 Just category -> do
@@ -149,7 +149,7 @@ serviceQuerySource mCat query mOsArch = selectSource $ do
                     where_ $ cat ^. CategoryName ==. val category &&. queryInMetadata query service
                     where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
                     where_ (vp ^. VersionPlatformArch ==. val osArch)
-                    where_ (pr ^. PkgRecordIsLocal ==. val True)
+                    where_ (pr ^. PkgRecordHidden ==. val False)
                     pure service
             groupBy (service ^. VersionRecordPkgId, service ^. VersionRecordNumber)
             orderBy
@@ -164,7 +164,7 @@ serviceQuerySource mCat query mOsArch = selectSource $ do
                     (service :& pr) <- from $ table @VersionRecord 
                                 `innerJoin` table @PkgRecord `on` (\(v :& p) -> (PkgRecordId === VersionRecordPkgId) (p :& v))
                     where_ $ queryInMetadata query service
-                    where_ (pr ^. PkgRecordIsLocal ==. val True)
+                    where_ (pr ^. PkgRecordHidden ==. val False)
                     pure service
                 Just category -> do
                     (service :& _ :& cat :& pr) <-
@@ -176,7 +176,7 @@ serviceQuerySource mCat query mOsArch = selectSource $ do
                     -- if there is a cateogry, only search in category
                     -- weight title, short, long (bitcoin should equal Bitcoin Core)
                     where_ $ cat ^. CategoryName ==. val category &&. queryInMetadata query service
-                    where_ (pr ^. PkgRecordIsLocal ==. val True)
+                    where_ (pr ^. PkgRecordHidden ==. val False)
                     pure service
             groupBy (service ^. VersionRecordPkgId, service ^. VersionRecordNumber)
             orderBy
@@ -322,7 +322,7 @@ upsertPackageVersion PackageManifest{..} = do
                 iconType
                 packageManifestReleaseNotes
                 packageManifestEosVersion
-    _res <- try @_ @SomeException $ insertKey pkgId (PkgRecord True now (Just now))
+    _res <- try @_ @SomeException $ insertKey pkgId (PkgRecord False now (Just now))
     repsert (VersionRecordKey pkgId packageManifestVersion) ins
 
 upsertPackageVersionPlatform :: (MonadUnliftIO m) => PackageManifest -> ReaderT SqlBackend m ()

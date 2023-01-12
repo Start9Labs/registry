@@ -32,7 +32,7 @@ import Handler.Util (basicRender, parseQueryParam, getArchQuery)
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies, (<||))
-import Model (Category (..), Key (..), PkgDependency (..), VersionRecord (..), PkgRecord (pkgRecordIsLocal))
+import Model (Category (..), Key (..), PkgDependency (..), VersionRecord (..), PkgRecord (pkgRecordHidden))
 import Protolude.Unsafe (unsafeFromJust)
 import Settings (AppSettings)
 import Startlude (
@@ -244,7 +244,7 @@ selectLatestVersionFromSpec pkgRanges vs =
 selectDependencyBestVersion :: (PkgDependency, PkgRecord) -> [VersionRecord] -> Maybe (PkgId, Text, Version, Bool)
 selectDependencyBestVersion pkgDepInfo depVersions = do
     let pkgDepRecord = fst pkgDepInfo
-    let isLocal = pkgRecordIsLocal $ snd pkgDepInfo
+    let isLocal = pkgRecordHidden $ snd pkgDepInfo
     let depId = pkgDependencyDepId pkgDepRecord
     let versionRequirement = pkgDependencyDepVersionRange pkgDepRecord
     let satisfactory = filter ((<|| versionRequirement) . versionRecordNumber) depVersions

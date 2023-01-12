@@ -45,7 +45,7 @@ share
     [persistLowerCase|
 PkgRecord
     Id PkgId sql=pkg_id
-    isLocal Bool default=True
+    hidden Bool default=False
     createdAt UTCTime
     updatedAt UTCTime Maybe
     deriving Eq

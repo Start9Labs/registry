@@ -206,7 +206,7 @@ loadPkgDependencies appConnPool manifest = do
     time <- liftIO getCurrentTime
     _ <-
         runWith appConnPool $
-            insertKey (PkgRecordKey pkgId) (PkgRecord True time Nothing) `catch` \(e :: SqlError) ->
+            insertKey (PkgRecordKey pkgId) (PkgRecord False time Nothing) `catch` \(e :: SqlError) ->
                 -- 23505 is "already exists"
                 if sqlState e == "23505" then update (PkgRecordKey pkgId) [PkgRecordUpdatedAt =. Just time] else throwIO e
     let deps' = first PkgRecordKey <$> HM.toList deps
@@ -215,7 +215,7 @@ loadPkgDependencies appConnPool manifest = do
         ( \d -> flip runSqlPool appConnPool $ do
             _ <-
                 runWith appConnPool $
-                    insertKey (fst d) (PkgRecord True time Nothing) `catch` \(e :: SqlError) ->
+                    insertKey (fst d) (PkgRecord False time Nothing) `catch` \(e :: SqlError) ->
                         -- 23505 is "already exists"
                         if sqlState e == "23505" then update (fst d) [PkgRecordUpdatedAt =. Just time] else throwIO e
             insertUnique $
