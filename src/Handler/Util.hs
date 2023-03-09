@@ -25,13 +25,13 @@ import Lib.PkgRepository (
  )
 import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (
-    Version,
+    Version (Version, unVersion),
     VersionRange,
     satisfies, parseVersion
  )
 import Model (
     UserActivity (..),
-    VersionRecord (versionRecordOsVersion),
+    VersionRecord (versionRecordOsVersion, versionRecordDeprecatedAt),
  )
 import Network.HTTP.Types (
     Status,
@@ -79,6 +79,7 @@ import Yesod (
  )
 import Yesod.Core (addHeader, logWarn)
 import Lib.Error (S9Error (..))
+import Data.Maybe (isJust)
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other =
@@ -175,3 +176,9 @@ fetchCompatiblePkgVersions osVersion pkg = do
 
 getArchQuery :: Handler (Maybe OsArch)
 getArchQuery = parseQueryParam "arch" ((flip $ note . mappend "Invalid 'arch': ") =<< readMaybe)
+
+filterDeprecatedVersions :: Version -> (Version -> Bool) -> [VersionRecord] -> [VersionRecord]
+filterDeprecatedVersions minOsVersion osPredicate vrs = do
+    if (osPredicate minOsVersion)
+        then filter (\v -> not $ isJust $ versionRecordDeprecatedAt v) $ vrs
+        else vrs

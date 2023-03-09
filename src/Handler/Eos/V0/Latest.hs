@@ -26,7 +26,7 @@ import Orphans.Emver ()
 import Startlude (Down (..), Eq, Generic, Maybe (..), Ord ((<)), Show, Text, filter, fst, head, pure, sortOn, ($), (&&&), (.), (<$>), (<&>), (<=))
 import Yesod (ToContent (toContent), ToTypedContent (..), YesodPersist (runDB), getsYesod)
 import Yesod.Core.Types (JSONResponse (..))
-import Settings (AppSettings(maxEosVersion))
+import Settings (AppSettings(maxOsVersion))
 import Lib.Types.Core (OsArch(RASPBERRYPI))
 import Data.Maybe (fromMaybe)
 
@@ -50,7 +50,7 @@ getEosVersionR :: Handler (JSONResponse (Maybe EosRes))
 getEosVersionR = do
     currentEosVersion <- fromMaybe Version { unVersion = (0,3,0,0) } <$> queryParamAs "eos-version" parseVersion
     arch <- fromMaybe RASPBERRYPI <$> getArchQuery 
-    maxVersion <- getsYesod $ maxEosVersion . appSettings
+    maxVersion <- getsYesod $ maxOsVersion . appSettings
     allEosVersions <- runDB $
         select $ do
             vers <- from $ table @OsVersion

@@ -31,7 +31,7 @@ import Startlude (
     getCurrentTime,
     maybe,
     ($),
-    (.), Bool (True, False),
+    (.), Bool (False),
  )
 import System.FilePath (takeExtension)
 import UnliftIO (
@@ -314,6 +314,7 @@ upsertPackageVersion PackageManifest{..} = do
             VersionRecord
                 now
                 (Just now)
+                Nothing
                 pkgId
                 packageManifestVersion
                 packageManifestTitle

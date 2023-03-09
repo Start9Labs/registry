@@ -25,16 +25,16 @@ import Database.Queries (
     getPkgDependencyData,
     serviceQuerySource,
  )
-import Foundation (Handler, Route (InstructionsR, LicenseR))
+import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings))
 import Handler.Package.Api (DependencyRes (..), PackageListRes (..), PackageRes (..))
 import Handler.Types.Api (ApiVersion (..))
-import Handler.Util (basicRender, parseQueryParam, getArchQuery)
+import Handler.Util (basicRender, parseQueryParam, getArchQuery, filterDeprecatedVersions)
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies, (<||))
 import Model (Category (..), Key (..), PkgDependency (..), VersionRecord (..), PkgRecord (pkgRecordHidden))
 import Protolude.Unsafe (unsafeFromJust)
-import Settings (AppSettings)
+import Settings (AppSettings (minOsVersion))
 import Startlude (
     Applicative ((*>)),
     Bifunctor (..),
@@ -88,8 +88,8 @@ import Yesod (
     lookupGetParam,
  )
 import Data.Tuple (fst)
-import Data.Tuple.Extra (both)
 import Database.Persist.Postgresql (entityVal)
+import Yesod.Core (getsYesod)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
@@ -118,7 +118,8 @@ getPackageIndexR = do
         getOsVersionQuery <&> \case
             Nothing -> const True
             Just v -> flip satisfies v
-    osArch <- getArchQuery 
+    osArch <- getArchQuery
+    minOsVersion <- getsYesod $ minOsVersion . appSettings
     do
         pkgIds <- getPkgIdsQuery
         category <- getCategoryQuery
@@ -139,6 +140,8 @@ getPackageIndexR = do
                         .| collateVersions
                         -- filter out versions of apps that are incompatible with the OS predicate
                         .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
+                        -- filter out deprecated service versions after a min os version
+                        .| mapC (second (filterDeprecatedVersions minOsVersion osPredicate))                        
                         -- prune empty version sets
                         .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
                         -- grab the latest matching version if it exists

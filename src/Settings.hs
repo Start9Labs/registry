@@ -75,7 +75,8 @@ data AppSettings = AppSettings
     -- ^ Should all log messages be displayed?
     , errorLogRoot              :: !FilePath
     , marketplaceName           :: !Text
-    , maxEosVersion             :: !Version
+    , maxOsVersion             :: !Version
+    , minOsVersion             :: !Version
     , registryHostname          :: !Text
     , registryVersion           :: !Version
     , resourcesDir              :: !FilePath
@@ -110,7 +111,8 @@ instance FromJSON AppSettings where
         appShouldLogAll           <- o .:? "should-log-all" .!= False
         errorLogRoot              <- o .: "error-log-root"
         marketplaceName           <- o .: "marketplace-name"
-        maxEosVersion             <- o .: "max-eos-version"
+        maxOsVersion             <- o .: "max-eos-version"
+        minOsVersion             <- o .: "min-eos-version"
         registryHostname          <- o .: "registry-hostname"
         resourcesDir              <- o .: "resources-path"
         needsMigration            <- o .: "run-migration"

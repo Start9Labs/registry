@@ -54,6 +54,7 @@ PkgRecord
 VersionRecord sql=version
     createdAt UTCTime
     updatedAt UTCTime Maybe
+    deprecatedAt UTCTime Maybe
     pkgId PkgRecordId
     number Version
     title Text

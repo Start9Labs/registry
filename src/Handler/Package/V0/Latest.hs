@@ -9,16 +9,18 @@ import Data.List (lookup)
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Tuple.Extra (second)
 import Database.Queries (collateVersions, getPkgDataSource)
-import Foundation (Handler)
+import Foundation (Handler, RegistryCtx (appSettings))
 import Handler.Package.V1.Index (getOsVersionQuery)
 import Lib.Error (S9Error (..))
 import Lib.Types.Core (PkgId)
-import Lib.Types.Emver (Version, satisfies)
+import Lib.Types.Emver (Version (..), satisfies)
 import Model (VersionRecord (..))
 import Network.HTTP.Types (status400)
 import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, nonEmpty, pure, ($), (.), (<$>), (<&>))
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), YesodRequest (reqGetParams), getRequest, sendResponseStatus)
-import Handler.Util (getArchQuery)
+import Handler.Util (getArchQuery, filterDeprecatedVersions)
+import Yesod.Core (getsYesod)
+import Settings (AppSettings(minOsVersion))
 
 
 newtype VersionLatestRes = VersionLatestRes (HashMap PkgId (Maybe Version))
@@ -38,6 +40,7 @@ getVersionLatestR = do
             Nothing -> const True
             Just v -> flip satisfies v
     osArch <- getArchQuery
+    minOsVersion <- getsYesod $ minOsVersion . appSettings
     do
         case lookup "ids" getParameters of
             Nothing -> sendResponseStatus status400 (InvalidParamsE "get:ids" "<MISSING>")
@@ -54,6 +57,8 @@ getVersionLatestR = do
                                     .| collateVersions
                                     -- filter out versions of apps that are incompatible with the OS predicate
                                     .| mapC (second (filter (osPredicate' . versionRecordOsVersion)))
+                                    -- filter out deprecated service versions after a min os version
+                                    .| mapC (second (filterDeprecatedVersions minOsVersion osPredicate'))
                                     -- prune empty version sets
                                     .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
                                     -- grab the latest matching version if it exists
