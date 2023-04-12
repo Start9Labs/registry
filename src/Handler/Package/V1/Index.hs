@@ -25,16 +25,16 @@ import Database.Queries (
     getPkgDependencyData,
     serviceQuerySource,
  )
-import Foundation (Handler, Route (InstructionsR, LicenseR))
+import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings))
 import Handler.Package.Api (DependencyRes (..), PackageListRes (..), PackageRes (..))
 import Handler.Types.Api (ApiVersion (..))
-import Handler.Util (basicRender, parseQueryParam, getArchQuery)
+import Handler.Util (basicRender, parseQueryParam, getArchQuery, filterDeprecatedVersions)
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies, (<||))
-import Model (Category (..), Key (..), PkgDependency (..), VersionRecord (..))
+import Model (Category (..), Key (..), PkgDependency (..), VersionRecord (..), PkgRecord (pkgRecordHidden))
 import Protolude.Unsafe (unsafeFromJust)
-import Settings (AppSettings)
+import Settings (AppSettings (minOsVersion))
 import Startlude (
     Applicative ((*>)),
     Bifunctor (..),
@@ -87,6 +87,9 @@ import Yesod (
     YesodPersist (runDB),
     lookupGetParam,
  )
+import Data.Tuple (fst)
+import Database.Persist.Postgresql (entityVal)
+import Yesod.Core (getsYesod)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
@@ -115,7 +118,8 @@ getPackageIndexR = do
         getOsVersionQuery <&> \case
             Nothing -> const True
             Just v -> flip satisfies v
-    osArch <- getArchQuery 
+    osArch <- getArchQuery
+    minOsVersion <- getsYesod $ minOsVersion . appSettings
     do
         pkgIds <- getPkgIdsQuery
         category <- getCategoryQuery
@@ -136,6 +140,8 @@ getPackageIndexR = do
                         .| collateVersions
                         -- filter out versions of apps that are incompatible with the OS predicate
                         .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
+                        -- filter out deprecated service versions after a min os version
+                        .| mapC (second (filterDeprecatedVersions minOsVersion osPredicate))                        
                         -- prune empty version sets
                         .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
                         -- grab the latest matching version if it exists
@@ -177,15 +183,16 @@ getPackageDependencies ::
     ReaderT SqlBackend m (HashMap PkgId DependencyRes)
 getPackageDependencies osPredicate PackageMetadata{packageMetadataPkgId = pkg, packageMetadataPkgVersion = pkgVersion} =
     do
-        pkgDepInfo <- getPkgDependencyData pkg pkgVersion
-        pkgDepInfoWithVersions <- traverse getDependencyVersions pkgDepInfo
+        pkgDepInfo' <- getPkgDependencyData pkg pkgVersion
+        let pkgDepInfo = fmap (\a -> (entityVal $ fst a, entityVal $ snd a)) pkgDepInfo'
+        pkgDepInfoWithVersions <- traverse getDependencyVersions (fst <$> pkgDepInfo)
         let compatiblePkgDepInfo = fmap (filter (osPredicate . versionRecordOsVersion)) pkgDepInfoWithVersions
         let depMetadata = catMaybes $ zipWith selectDependencyBestVersion pkgDepInfo compatiblePkgDepInfo
         lift $
             fmap HM.fromList $
-                for depMetadata $ \(depId, title, v) -> do
+                for depMetadata $ \(depId, title, v, isLocal) -> do
                     icon <- loadIcon depId v
-                    pure $ (depId, DependencyRes title icon)
+                    pure $ (depId, DependencyRes title icon isLocal)
 
 
 constructPackageListApiRes ::
@@ -237,11 +244,13 @@ selectLatestVersionFromSpec pkgRanges vs =
 
 
 -- get best version of the dependency based on what is specified in the db (ie. what is specified in the manifest for the package)
-selectDependencyBestVersion :: PkgDependency -> [VersionRecord] -> Maybe (PkgId, Text, Version)
-selectDependencyBestVersion pkgDepRecord depVersions = do
+selectDependencyBestVersion :: (PkgDependency, PkgRecord) -> [VersionRecord] -> Maybe (PkgId, Text, Version, Bool)
+selectDependencyBestVersion pkgDepInfo depVersions = do
+    let pkgDepRecord = fst pkgDepInfo
+    let isLocal = pkgRecordHidden $ snd pkgDepInfo
     let depId = pkgDependencyDepId pkgDepRecord
     let versionRequirement = pkgDependencyDepVersionRange pkgDepRecord
     let satisfactory = filter ((<|| versionRequirement) . versionRecordNumber) depVersions
     case maximumOn versionRecordNumber satisfactory of
-        Just bestVersion -> Just (unPkgRecordKey depId, versionRecordTitle bestVersion, versionRecordNumber bestVersion)
+        Just bestVersion -> Just (unPkgRecordKey depId, versionRecordTitle bestVersion, versionRecordNumber bestVersion, isLocal)
         Nothing -> Nothing

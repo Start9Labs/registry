@@ -17,6 +17,7 @@ import Startlude (
     ByteString,
     Eq,
     Generic,
+    Bool,
     NonEmpty,
     Show,
     Text,
@@ -76,10 +77,11 @@ instance ApiResponse PackageRes where
 data DependencyRes = DependencyRes
     { dependencyResTitle :: !Text
     , dependencyResIcon :: !(ContentType, ByteString)
+    , dependencyResHidden :: !Bool
     }
     deriving (Eq, Show)
 
 
 instance ApiResponse DependencyRes where
-    apiEncode V0 DependencyRes{..} = object ["icon" .= encodeBase64 (snd dependencyResIcon), "title" .= dependencyResTitle]
-    apiEncode V1 DependencyRes{..} = object ["icon" .= dataUrl dependencyResIcon, "title" .= dependencyResTitle]
+    apiEncode V0 DependencyRes{..} = object ["icon" .= encodeBase64 (snd dependencyResIcon), "title" .= dependencyResTitle, "hidden" .= dependencyResHidden]
+    apiEncode V1 DependencyRes{..} = object ["icon" .= dataUrl dependencyResIcon, "title" .= dependencyResTitle, "hidden" .= dependencyResHidden]

@@ -36,6 +36,7 @@ import Startlude (
     Text,
     UTCTime,
     Word32,
+    Bool
  )
 
 
@@ -44,6 +45,7 @@ share
     [persistLowerCase|
 PkgRecord
     Id PkgId sql=pkg_id
+    hidden Bool default=False
     createdAt UTCTime
     updatedAt UTCTime Maybe
     deriving Eq
@@ -52,6 +54,7 @@ PkgRecord
 VersionRecord sql=version
     createdAt UTCTime
     updatedAt UTCTime Maybe
+    deprecatedAt UTCTime Maybe
     pkgId PkgRecordId
     number Version
     title Text
