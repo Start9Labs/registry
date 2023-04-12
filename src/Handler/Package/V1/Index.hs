@@ -51,7 +51,6 @@ import Startlude (
     Show,
     Text,
     Traversable (traverse),
-    catMaybes,
     const,
     encodeUtf8,
     filter,

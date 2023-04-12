@@ -150,7 +150,7 @@ import Data.List (elem)
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
     resourcesTemp <- getsYesod $ (</> "temp") . resourcesDir . appSettings
-    blacklist <- getsYesod $ blacklist . appSettings
+    whitelist <- getsYesod $ whitelist . appSettings
     createDirectoryIfMissing True resourcesTemp
     withTempDirectory resourcesTemp "newpkg" $ \dir -> do
         let path = dir </> "temp" <.> "s9pk"
@@ -164,7 +164,7 @@ postPkgUploadR = do
         PackageManifest{..} <- do
             liftIO (decodeFileStrict (dir </> "manifest.json"))
                 `orThrow` sendResponseText status500 "Failed to parse manifest.json"
-        if (elem packageManifestId blacklist)
+        if (not $ elem packageManifestId whitelist)
          then sendResponseText status500 "Package does not belong on this registry."
          else do
             renameFile path (dir </> (toS . unPkgId) packageManifestId <.> "s9pk")

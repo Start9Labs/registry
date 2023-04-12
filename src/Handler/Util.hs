@@ -25,7 +25,7 @@ import Lib.PkgRepository (
  )
 import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (
-    Version (Version, unVersion),
+    Version,
     VersionRange,
     satisfies, parseVersion
  )

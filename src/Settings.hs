@@ -89,7 +89,7 @@ data AppSettings = AppSettings
     , sslPath                   :: !FilePath
     , staticBinDir              :: !FilePath
     , torPort                   :: !AppPort
-    , blacklist                 :: ![PkgId]
+    , whitelist                 :: ![PkgId]
     }
 instance Has PkgRepo AppSettings where
     extract = liftA2 PkgRepo ((</> "apps") . resourcesDir) staticBinDir
@@ -122,7 +122,7 @@ instance FromJSON AppSettings where
         sslPath                   <- o .: "ssl-path"
         staticBinDir              <- o .: "static-bin-dir"
         torPort                   <- o .: "tor-port"
-        blacklist                 <- o .: "blacklist"
+        whitelist                 <- o .: "whitelist"
 
         let sslKeyLocation  = sslPath </> "key.pem"
         let sslCsrLocation  = sslPath </> "certificate.csr"
