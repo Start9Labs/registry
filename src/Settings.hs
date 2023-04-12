@@ -17,7 +17,7 @@ import           Startlude                      ( ($)
                                                 , ByteString
                                                 , ConvertText(toS)
                                                 , FilePath
-                                                
+
                                                 , Monad(return)
                                                 , Monoid(mempty)
                                                 , Text
@@ -25,6 +25,7 @@ import           Startlude                      ( ($)
                                                 , either
                                                 , id
                                                 , panic
+                                                , map
                                                 )
 
 import qualified Control.Exception             as Exception
@@ -59,7 +60,7 @@ import           Orphans.Emver                  ( )
 import Lib.Types.Core (PkgId)
 import Data.String
 import Data.List.Extra (splitOn)
-import Prelude (map, read)
+import Text.Read (read)
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
 -- theoretically even a database.
@@ -149,6 +150,7 @@ compileTimeAppSettings = case fromJSON $ applyEnvValue False mempty configSettin
     Success settings -> settings
 
 parseCommaSeparatedList :: String -> [PkgId]
-parseCommaSeparatedList input = do
-    let strings = splitOn "," input
-    map read strings
+parseCommaSeparatedList input = 
+    case splitOn "," input of
+        [""] -> []
+        xs -> map read xs
