@@ -114,7 +114,7 @@ import Lib.PkgRepository (
 import Lib.Types.Core (PkgId, S9PK)
 import Model (
     Admin (..),
-    Key (AdminKey),
+    Key (AdminKey), EntityField (AdminId, AdminDeletedAt),
  )
 import Settings (AppSettings (appShouldLogAll))
 import System.Console.ANSI.Codes (
@@ -150,6 +150,9 @@ import Yesod.Persist.Core (
     YesodPersistRunner (..),
     defaultGetDBRunner,
  )
+import Database.Persist ((==.))
+import Database.Persist (selectFirst)
+import Database.Persist (entityVal)
 
 
 -- | The foundation datatype for your application. This can be a good place to
@@ -312,9 +315,11 @@ instance YesodAuth RegistryCtx where
         pool <- getsYesod appConnPool
         let checkCreds k s = flip runSqlPool pool $ do
                 let passHash = hashWith SHA256 . encodeUtf8 . ("start9_admin:" <>) $ decodeUtf8 s
-                get (AdminKey $ decodeUtf8 k) <&> \case
+                selectFirst [AdminDeletedAt ==. Nothing, AdminId ==. (AdminKey $ decodeUtf8 k)] [] <&> \case
                     Nothing -> False
-                    Just Admin{adminPassHash} -> adminPassHash == passHash
+                    Just adminEntity -> do 
+                        let Admin{adminPassHash} = entityVal adminEntity
+                        adminPassHash == passHash
 
         defaultMaybeBasicAuthId checkCreds defaultAuthSettings
     loginDest _ = PackageIndexR V1

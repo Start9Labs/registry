@@ -17,7 +17,7 @@ import           Startlude                      ( ($)
                                                 , ByteString
                                                 , ConvertText(toS)
                                                 , FilePath
-                                                , IsString(fromString)
+                                                
                                                 , Monad(return)
                                                 , Monoid(mempty)
                                                 , Text
@@ -59,10 +59,7 @@ import           Orphans.Emver                  ( )
 import Lib.Types.Core (PkgId)
 import Data.String
 import Data.List.Extra (splitOn)
-import Data.Maybe (Maybe)
-import Prelude (sequence, read)
-import Prelude (map)
-import Protolude (readMaybe)
+import Prelude (map, read)
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
 -- theoretically even a database.
