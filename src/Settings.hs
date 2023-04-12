@@ -111,8 +111,8 @@ instance FromJSON AppSettings where
         appShouldLogAll           <- o .:? "should-log-all" .!= False
         errorLogRoot              <- o .: "error-log-root"
         marketplaceName           <- o .: "marketplace-name"
-        maxOsVersion             <- o .: "max-eos-version"
-        minOsVersion             <- o .: "min-eos-version"
+        maxOsVersion              <- o .: "max-eos-version"
+        minOsVersion              <- o .: "min-eos-version"
         registryHostname          <- o .: "registry-hostname"
         resourcesDir              <- o .: "resources-path"
         needsMigration            <- o .: "run-migration"
