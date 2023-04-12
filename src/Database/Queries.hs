@@ -19,7 +19,7 @@ import Model (
     Metric (Metric),
     PkgDependency (..),
     PkgRecord (PkgRecord),
-    VersionRecord (VersionRecord), VersionPlatform (VersionPlatform), EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch),
+    VersionRecord (VersionRecord), VersionPlatform (VersionPlatform), EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch), PkgRecordId,
  )
 import Orphans.Emver ()
 import Startlude (
@@ -286,14 +286,14 @@ fetchAppVersion :: MonadIO m => PkgId -> Version -> ReaderT SqlBackend m (Maybe 
 fetchAppVersion pkgId version = get (VersionRecordKey (PkgRecordKey pkgId) version)
 
 
-fetchLatestApp :: MonadIO m => PkgId -> ReaderT SqlBackend m (Maybe (P.Entity PkgRecord, P.Entity VersionRecord))
+fetchLatestApp :: MonadIO m => PkgRecordId -> ReaderT SqlBackend m (Maybe (P.Entity PkgRecord, P.Entity VersionRecord))
 fetchLatestApp appId = fmap headMay . sortResults . select $ do
     (service :& version) <-
         from $
             table @PkgRecord
                 `innerJoin` table @VersionRecord
                 `on` (\(service :& version) -> service ^. PkgRecordId ==. version ^. VersionRecordPkgId)
-    where_ (service ^. PkgRecordId ==. val (PkgRecordKey appId))
+    where_ (service ^. PkgRecordId ==. val appId)
     pure (service, version)
     where
         sortResults = fmap $ sortOn (Down . versionRecordNumber . entityVal . snd)

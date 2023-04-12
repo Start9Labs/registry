@@ -144,11 +144,13 @@ import Yesod (
 import Yesod.Auth (YesodAuth (maybeAuthId))
 import Yesod.Core.Types (JSONResponse (JSONResponse))
 import Database.Persist.Sql (runSqlPool)
+import Data.List (elem)
 
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
     resourcesTemp <- getsYesod $ (</> "temp") . resourcesDir . appSettings
+    whitelist <- getsYesod $ whitelist . appSettings
     createDirectoryIfMissing True resourcesTemp
     withTempDirectory resourcesTemp "newpkg" $ \dir -> do
         let path = dir </> "temp" <.> "s9pk"
@@ -159,22 +161,25 @@ postPkgUploadR = do
         when (isNothing res) $ do
             $logError "Failed to extract package"
             sendResponseText status500 "Failed to extract package"
-        PackageManifest{..} <-
+        PackageManifest{..} <- do
             liftIO (decodeFileStrict (dir </> "manifest.json"))
                 `orThrow` sendResponseText status500 "Failed to parse manifest.json"
-        renameFile path (dir </> (toS . unPkgId) packageManifestId <.> "s9pk")
-        let targetPath = pkgRepoFileRoot </> show packageManifestId </> show packageManifestVersion
-        removePathForcibly targetPath
-        createDirectoryIfMissing True targetPath
-        renameDirectory dir targetPath
-        maybeAuthId >>= \case
-            Nothing -> do
-                $logError
-                    "The Impossible has happened, an unauthenticated user has managed to upload a pacakge to this registry"
-                pure ()
-            Just name -> do
-                now <- liftIO getCurrentTime
-                runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
+        if (not $ elem packageManifestId whitelist)
+         then sendResponseText status500 "Package does not belong on this registry."
+         else do
+            renameFile path (dir </> (toS . unPkgId) packageManifestId <.> "s9pk")
+            let targetPath = pkgRepoFileRoot </> show packageManifestId </> show packageManifestVersion
+            removePathForcibly targetPath
+            createDirectoryIfMissing True targetPath
+            renameDirectory dir targetPath
+            maybeAuthId >>= \case
+                Nothing -> do
+                    $logError
+                        "The Impossible has happened, an unauthenticated user has managed to upload a pacakge to this registry"
+                    pure ()
+                Just name -> do
+                    now <- liftIO getCurrentTime
+                    runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
     where
         retry m = runMaybeT . asum $ replicate 3 (MaybeT $ hush <$> try @_ @SomeException m)
 

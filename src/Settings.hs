@@ -17,7 +17,7 @@ import           Startlude                      ( ($)
                                                 , ByteString
                                                 , ConvertText(toS)
                                                 , FilePath
-                                                , IsString(fromString)
+                                                
                                                 , Monad(return)
                                                 , Monoid(mempty)
                                                 , Text
@@ -56,6 +56,10 @@ import           Lib.PkgRepository              ( EosRepo(EosRepo, eosRepoFileRo
                                                 )
 import           Lib.Types.Emver                ( Version )
 import           Orphans.Emver                  ( )
+import Lib.Types.Core (PkgId)
+import Data.String
+import Data.List.Extra (splitOn)
+import Prelude (map, read)
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
 -- theoretically even a database.
@@ -75,12 +79,12 @@ data AppSettings = AppSettings
     -- ^ Should all log messages be displayed?
     , errorLogRoot              :: !FilePath
     , marketplaceName           :: !Text
-    , maxOsVersion             :: !Version
-    , minOsVersion             :: !Version
+    , maxOsVersion              :: !Version
+    , minOsVersion              :: !Version
     , registryHostname          :: !Text
     , registryVersion           :: !Version
     , resourcesDir              :: !FilePath
-    , needsMigration              :: !Bool
+    , needsMigration            :: !Bool
     , sslAuto                   :: !Bool
     , sslCertLocation           :: !FilePath
     , sslCsrLocation            :: !FilePath
@@ -88,6 +92,7 @@ data AppSettings = AppSettings
     , sslPath                   :: !FilePath
     , staticBinDir              :: !FilePath
     , torPort                   :: !AppPort
+    , whitelist                 :: ![PkgId]
     }
 instance Has PkgRepo AppSettings where
     extract = liftA2 PkgRepo ((</> "apps") . resourcesDir) staticBinDir
@@ -111,8 +116,8 @@ instance FromJSON AppSettings where
         appShouldLogAll           <- o .:? "should-log-all" .!= False
         errorLogRoot              <- o .: "error-log-root"
         marketplaceName           <- o .: "marketplace-name"
-        maxOsVersion             <- o .: "max-eos-version"
-        minOsVersion             <- o .: "min-eos-version"
+        maxOsVersion              <- o .: "max-eos-version"
+        minOsVersion              <- o .: "min-eos-version"
         registryHostname          <- o .: "registry-hostname"
         resourcesDir              <- o .: "resources-path"
         needsMigration            <- o .: "run-migration"
@@ -120,6 +125,7 @@ instance FromJSON AppSettings where
         sslPath                   <- o .: "ssl-path"
         staticBinDir              <- o .: "static-bin-dir"
         torPort                   <- o .: "tor-port"
+        whitelist                 <- parseCommaSeparatedList <$> o .:? "whitelist" .!= []
 
         let sslKeyLocation  = sslPath </> "key.pem"
         let sslCsrLocation  = sslPath </> "certificate.csr"
@@ -141,3 +147,8 @@ compileTimeAppSettings :: AppSettings
 compileTimeAppSettings = case fromJSON $ applyEnvValue False mempty configSettingsYmlValue of
     Error   e        -> panic $ toS e
     Success settings -> settings
+
+parseCommaSeparatedList :: String -> [PkgId]
+parseCommaSeparatedList input = do
+    let strings = splitOn "," input
+    map read strings

@@ -148,6 +148,7 @@ Admin
     Id Text
     createdAt UTCTime
     passHash (Digest SHA256)
+    deletedAt UTCTime Maybe
 
 Upload
     uploader AdminId
