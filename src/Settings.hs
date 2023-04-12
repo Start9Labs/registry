@@ -57,6 +57,12 @@ import           Lib.PkgRepository              ( EosRepo(EosRepo, eosRepoFileRo
 import           Lib.Types.Emver                ( Version )
 import           Orphans.Emver                  ( )
 import Lib.Types.Core (PkgId)
+import Data.String
+import Data.List.Extra (splitOn)
+import Data.Maybe (Maybe)
+import Prelude (sequence, read)
+import Prelude (map)
+import Protolude (readMaybe)
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
 -- theoretically even a database.
@@ -122,7 +128,7 @@ instance FromJSON AppSettings where
         sslPath                   <- o .: "ssl-path"
         staticBinDir              <- o .: "static-bin-dir"
         torPort                   <- o .: "tor-port"
-        whitelist                 <- o .: "whitelist"
+        whitelist                 <- parseCommaSeparatedList <$> o .:? "whitelist" .!= []
 
         let sslKeyLocation  = sslPath </> "key.pem"
         let sslCsrLocation  = sslPath </> "certificate.csr"
@@ -144,3 +150,8 @@ compileTimeAppSettings :: AppSettings
 compileTimeAppSettings = case fromJSON $ applyEnvValue False mempty configSettingsYmlValue of
     Error   e        -> panic $ toS e
     Success settings -> settings
+
+parseCommaSeparatedList :: String -> [PkgId]
+parseCommaSeparatedList input = do
+    let strings = splitOn "," input
+    map read strings
