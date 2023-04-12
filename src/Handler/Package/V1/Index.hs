@@ -23,7 +23,7 @@ import Database.Queries (
     getDependencyVersions,
     getPkgDataSource,
     getPkgDependencyData,
-    serviceQuerySource,
+    serviceQuerySource, fetchLatestApp,
  )
 import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings))
 import Handler.Package.Api (DependencyRes (..), PackageListRes (..), PackageRes (..))
@@ -90,6 +90,7 @@ import Yesod (
 import Data.Tuple (fst)
 import Database.Persist.Postgresql (entityVal)
 import Yesod.Core (getsYesod)
+import Data.List (head)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
@@ -187,7 +188,7 @@ getPackageDependencies osPredicate PackageMetadata{packageMetadataPkgId = pkg, p
         let pkgDepInfo = fmap (\a -> (entityVal $ fst a, entityVal $ snd a)) pkgDepInfo'
         pkgDepInfoWithVersions <- traverse getDependencyVersions (fst <$> pkgDepInfo)
         let compatiblePkgDepInfo = fmap (filter (osPredicate . versionRecordOsVersion)) pkgDepInfoWithVersions
-        let depMetadata = catMaybes $ zipWith selectDependencyBestVersion pkgDepInfo compatiblePkgDepInfo
+        let depMetadata = zipWith selectDependencyBestVersion pkgDepInfo compatiblePkgDepInfo
         lift $
             fmap HM.fromList $
                 for depMetadata $ \(depId, title, v, isLocal) -> do
@@ -244,13 +245,17 @@ selectLatestVersionFromSpec pkgRanges vs =
 
 
 -- get best version of the dependency based on what is specified in the db (ie. what is specified in the manifest for the package)
-selectDependencyBestVersion :: (PkgDependency, PkgRecord) -> [VersionRecord] -> Maybe (PkgId, Text, Version, Bool)
+selectDependencyBestVersion :: (PkgDependency, PkgRecord) -> [VersionRecord] -> (PkgId, Text, Version, Bool)
 selectDependencyBestVersion pkgDepInfo depVersions = do
     let pkgDepRecord = fst pkgDepInfo
     let isLocal = pkgRecordHidden $ snd pkgDepInfo
     let depId = pkgDependencyDepId pkgDepRecord
     let versionRequirement = pkgDependencyDepVersionRange pkgDepRecord
     let satisfactory = filter ((<|| versionRequirement) . versionRecordNumber) depVersions
+    let pkgId = unPkgRecordKey depId
     case maximumOn versionRecordNumber satisfactory of
-        Just bestVersion -> Just (unPkgRecordKey depId, versionRecordTitle bestVersion, versionRecordNumber bestVersion, isLocal)
-        Nothing -> Nothing
+        Just bestVersion -> (pkgId, versionRecordTitle bestVersion, versionRecordNumber bestVersion, isLocal)
+        -- use latest version of dep for metadata info
+        Nothing -> do
+            let latestDepVersion = head $ sortOn (Down . versionRecordNumber) depVersions
+            (pkgId, versionRecordTitle latestDepVersion, versionRecordNumber latestDepVersion, isLocal)
