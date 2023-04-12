@@ -39,6 +39,7 @@ marketplace-name: "_env:MARKETPLACE_NAME:CHANGE ME"
 max-eos-version: "_env:MAX_VERSION:0.3.4.0"
 min-eos-version: "_env:MIN_VERSION:0.3.4.0"
 run-migration: "_env:RUN_MIGRATION:false"
+blacklist: "_env:BLACKLIST:ADD ME"
 
 database:
   database: "_env:PG_DATABASE:start9_registry"

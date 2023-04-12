@@ -56,6 +56,7 @@ import           Lib.PkgRepository              ( EosRepo(EosRepo, eosRepoFileRo
                                                 )
 import           Lib.Types.Emver                ( Version )
 import           Orphans.Emver                  ( )
+import Lib.Types.Core (PkgId)
 -- | Runtime settings to configure this application. These settings can be
 -- loaded from various sources: defaults, environment variables, config files,
 -- theoretically even a database.
@@ -75,12 +76,12 @@ data AppSettings = AppSettings
     -- ^ Should all log messages be displayed?
     , errorLogRoot              :: !FilePath
     , marketplaceName           :: !Text
-    , maxOsVersion             :: !Version
-    , minOsVersion             :: !Version
+    , maxOsVersion              :: !Version
+    , minOsVersion              :: !Version
     , registryHostname          :: !Text
     , registryVersion           :: !Version
     , resourcesDir              :: !FilePath
-    , needsMigration              :: !Bool
+    , needsMigration            :: !Bool
     , sslAuto                   :: !Bool
     , sslCertLocation           :: !FilePath
     , sslCsrLocation            :: !FilePath
@@ -88,6 +89,7 @@ data AppSettings = AppSettings
     , sslPath                   :: !FilePath
     , staticBinDir              :: !FilePath
     , torPort                   :: !AppPort
+    , blacklist                 :: ![PkgId]
     }
 instance Has PkgRepo AppSettings where
     extract = liftA2 PkgRepo ((</> "apps") . resourcesDir) staticBinDir
@@ -120,6 +122,7 @@ instance FromJSON AppSettings where
         sslPath                   <- o .: "ssl-path"
         staticBinDir              <- o .: "static-bin-dir"
         torPort                   <- o .: "tor-port"
+        blacklist                 <- o .: "blacklist"
 
         let sslKeyLocation  = sslPath </> "key.pem"
         let sslCsrLocation  = sslPath </> "certificate.csr"

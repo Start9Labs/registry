@@ -23,7 +23,7 @@ import Database.Queries (
     getDependencyVersions,
     getPkgDataSource,
     getPkgDependencyData,
-    serviceQuerySource, fetchLatestApp,
+    serviceQuerySource,
  )
 import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings))
 import Handler.Package.Api (DependencyRes (..), PackageListRes (..), PackageRes (..))
