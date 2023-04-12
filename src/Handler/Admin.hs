@@ -117,7 +117,9 @@ import Startlude (
     (<<$>>),
     (<>),
     (>),
-    (&&)
+    (&&),
+    (||),
+    (<=)
  )
 import System.FilePath (
     (<.>),
@@ -165,9 +167,8 @@ postPkgUploadR = do
         PackageManifest{..} <- do
             liftIO (decodeFileStrict (dir </> "manifest.json"))
                 `orThrow` sendResponseText status500 "Failed to parse manifest.json"
-        if (not $ elem packageManifestId whitelist && (length whitelist > 0))
-         then sendResponseText status500 "Package does not belong on this registry."
-         else do
+        if ((length whitelist > 0 && (packageManifestId `elem` whitelist)) || length whitelist <= 0)
+         then do
             renameFile path (dir </> (toS . unPkgId) packageManifestId <.> "s9pk")
             let targetPath = pkgRepoFileRoot </> show packageManifestId </> show packageManifestVersion
             removePathForcibly targetPath
@@ -181,6 +182,7 @@ postPkgUploadR = do
                 Just name -> do
                     now <- liftIO getCurrentTime
                     runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
+        else sendResponseText status500 "Package does not belong on this registry."
     where
         retry m = runMaybeT . asum $ replicate 3 (MaybeT $ hush <$> try @_ @SomeException m)
 
