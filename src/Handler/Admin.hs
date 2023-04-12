@@ -116,6 +116,8 @@ import Startlude (
     (<$>),
     (<<$>>),
     (<>),
+    (>),
+    (&&)
  )
 import System.FilePath (
     (<.>),
@@ -144,8 +146,7 @@ import Yesod (
 import Yesod.Auth (YesodAuth (maybeAuthId))
 import Yesod.Core.Types (JSONResponse (JSONResponse))
 import Database.Persist.Sql (runSqlPool)
-import Data.List (elem)
-
+import Data.List (elem, length)
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
@@ -164,7 +165,7 @@ postPkgUploadR = do
         PackageManifest{..} <- do
             liftIO (decodeFileStrict (dir </> "manifest.json"))
                 `orThrow` sendResponseText status500 "Failed to parse manifest.json"
-        if (not $ elem packageManifestId whitelist)
+        if (not $ elem packageManifestId whitelist && (length whitelist > 0))
          then sendResponseText status500 "Package does not belong on this registry."
          else do
             renameFile path (dir </> (toS . unPkgId) packageManifestId <.> "s9pk")
