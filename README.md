@@ -25,7 +25,7 @@ cd registry
 
 ### Set up embassy-publish tool
 
-- run `apt install libgmp-dev zlib1g-dev libtinfo-dev` (on macOS `brew install libmpd zlib-ng libtiff`)
+- run `apt install libgmp-dev zlib1g-dev libtinfo-dev libpq-dev` (on macOS `brew install libmpd zlib-ng libtiff`)
 - run `stack install` (recommended: include the installation path in your $PATH after running this command)
 - update your shell to include the installation path of the copied executables from `stack install`. i.e. `nano ~./zshrc` add `export PATH=$PATH:/your/path/here` to zshrc; save and exit nano. Run `source ~/.zshrc`
 - run `embassy-publish init --bash` (or --zsh / --fish depending on your preferred shell)
