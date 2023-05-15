@@ -27,7 +27,7 @@ import Startlude (
     show,
     symbolVal,
     ($),
-    (.),
+    (.), Enum,
  )
 
 import Data.Aeson (
@@ -89,17 +89,21 @@ instance PathPiece PkgId where
     fromPathPiece = fmap PkgId . fromPathPiece
     toPathPiece = unPkgId
 
-data OsArch = X86_64 | AARCH64 | RASPBERRYPI
-    deriving (Eq, Ord)
+data OsArch = X86_64 | AARCH64 | RASPBERRYPI | X86_64_NONFREE | AARCH64_NONFREE
+    deriving (Eq, Ord, Enum)
 instance Show OsArch where
     show X86_64 = "x86_64"
     show AARCH64 = "aarch64"
     show RASPBERRYPI = "raspberrypi"
+    show X86_64_NONFREE = "x86_64-nonfree"
+    show AARCH64_NONFREE = "aarch64-nonfree"
 instance Read OsArch where
     readsPrec _ "x86_64" = [(X86_64, "")]
     readsPrec _ "aarch64" = [(AARCH64, "")]
     readsPrec _ "raspberrypi" = [(RASPBERRYPI, "")]
     readsPrec _ "rasberrypi" = [(RASPBERRYPI, "")]
+    readsPrec _ "x86_64-nonfree" = [(X86_64_NONFREE, "")]
+    readsPrec _ "aarch64-nonfree" = [(AARCH64_NONFREE, "")]
     readsPrec _ _ = []
 instance PersistField OsArch where
     toPersistValue = PersistText . show
