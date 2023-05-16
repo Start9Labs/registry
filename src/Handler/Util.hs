@@ -178,7 +178,7 @@ getArchQuery :: Handler (Maybe OsArch)
 getArchQuery = parseQueryParam "arch" ((flip $ note . mappend "Invalid 'arch': ") =<< readMaybe)
 
 filterDeprecatedVersions :: Version -> (Version -> Bool) -> [VersionRecord] -> [VersionRecord]
-filterDeprecatedVersions minOsVersion osPredicate vrs = do
-    if (osPredicate minOsVersion)
+filterDeprecatedVersions communityVersion osPredicate vrs = do
+    if (osPredicate communityVersion)
         then filter (\v -> not $ isJust $ versionRecordDeprecatedAt v) $ vrs
         else vrs

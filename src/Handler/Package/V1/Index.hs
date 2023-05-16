@@ -34,7 +34,7 @@ import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies, (<||))
 import Model (Category (..), Key (..), PkgDependency (..), VersionRecord (..), PkgRecord (pkgRecordHidden))
 import Protolude.Unsafe (unsafeFromJust)
-import Settings (AppSettings (minOsVersion))
+import Settings (AppSettings (communityVersion))
 import Startlude (
     Applicative ((*>)),
     Bifunctor (..),
@@ -119,7 +119,7 @@ getPackageIndexR = do
             Nothing -> const True
             Just v -> flip satisfies v
     osArch <- getArchQuery
-    minOsVersion <- getsYesod $ minOsVersion . appSettings
+    communityVersion <- getsYesod $ communityVersion . appSettings
     do
         pkgIds <- getPkgIdsQuery
         category <- getCategoryQuery
@@ -140,8 +140,8 @@ getPackageIndexR = do
                         .| collateVersions
                         -- filter out versions of apps that are incompatible with the OS predicate
                         .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
-                        -- filter out deprecated service versions after a min os version
-                        .| mapC (second (filterDeprecatedVersions minOsVersion osPredicate))                        
+                        -- filter out deprecated service versions after community registry release
+                        .| mapC (second (filterDeprecatedVersions communityVersion osPredicate))                        
                         -- prune empty version sets
                         .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
                         -- grab the latest matching version if it exists

@@ -11,7 +11,7 @@ import Database.Persist.Sql (
     SqlBackend,
  )
 import Lib.Types.Core (
-    PkgId, OsArch (X86_64, AARCH64),
+    PkgId, OsArch (X86_64, AARCH64_NONFREE),
  )
 import Lib.Types.Emver (Version)
 import Model (
@@ -330,7 +330,7 @@ upsertPackageVersionPlatform :: (MonadUnliftIO m) => PackageManifest -> ReaderT 
 upsertPackageVersionPlatform PackageManifest{..} = do
     now <- liftIO getCurrentTime
     let pkgId = PkgRecordKey packageManifestId
-    let arches = [X86_64, AARCH64]
+    let arches = [X86_64 .. AARCH64_NONFREE]
     let records = createVersionPlatformRecord now pkgId packageManifestVersion <$> arches
     repsertMany records
     where

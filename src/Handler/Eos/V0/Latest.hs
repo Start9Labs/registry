@@ -17,18 +17,18 @@ import Database.Esqueleto.Experimental (
     (^.),
     (==.)
  )
-import Foundation (Handler, RegistryCtx (appSettings))
+import Foundation (Handler)
 import Handler.Package.V0.ReleaseNotes (ReleaseNotes (..))
 import Handler.Util (queryParamAs, getArchQuery)
 import Lib.Types.Emver (Version (unVersion), Version(Version), parseVersion)
 import Model (EntityField (..), OsVersion (..))
 import Orphans.Emver ()
-import Startlude (Down (..), Eq, Generic, Maybe (..), Ord ((<)), Show, Text, filter, fst, head, pure, sortOn, ($), (&&&), (.), (<$>), (<&>), (<=))
-import Yesod (ToContent (toContent), ToTypedContent (..), YesodPersist (runDB), getsYesod)
+import Startlude (Down (..), Eq, Generic, Maybe (..), Ord ((<)), Text, filter, fst, head, pure, sortOn, ($), (&&&), (.), (<$>), (<&>), (<=))
+import Yesod (ToContent (toContent), ToTypedContent (..), YesodPersist (runDB))
 import Yesod.Core.Types (JSONResponse (..))
-import Settings (AppSettings(maxOsVersion))
 import Lib.Types.Core (OsArch(RASPBERRYPI))
 import Data.Maybe (fromMaybe)
+import GHC.Show
 
 
 data EosRes = EosRes
@@ -49,15 +49,15 @@ instance ToTypedContent EosRes where
 getEosVersionR :: Handler (JSONResponse (Maybe EosRes))
 getEosVersionR = do
     currentEosVersion <- fromMaybe Version { unVersion = (0,3,0,0) } <$> queryParamAs "eos-version" parseVersion
+    -- defaults to raspberrypi for those on OS versions where we did not send this param yet
     arch <- fromMaybe RASPBERRYPI <$> getArchQuery 
-    maxVersion <- getsYesod $ maxOsVersion . appSettings
     allEosVersions <- runDB $
         select $ do
             vers <- from $ table @OsVersion
             where_ (vers ^. OsVersionArch ==. val (Just arch))
             orderBy [desc (vers ^. OsVersionNumber)]
             pure vers
-    let osV = determineMaxEosVersionAvailable maxVersion currentEosVersion $ entityVal <$> allEosVersions
+    let osV = determineMaxOsVersionAvailable currentEosVersion $ entityVal <$> allEosVersions
     let mLatest = head osV
     let mappedVersions =
             ReleaseNotes $
@@ -74,8 +74,10 @@ getEosVersionR = do
                 , eosResReleaseNotes = mappedVersions
                 }
 
-determineMaxEosVersionAvailable ::  Version -> Version -> [OsVersion] -> [OsVersion]
-determineMaxEosVersionAvailable maxEosVersion currentEosVersion versions = do
-    if (currentEosVersion < maxEosVersion)
-        then sortOn (Down . osVersionNumber) $ filter (\v -> osVersionNumber v <= maxEosVersion) $ versions
-        else versions
+determineMaxOsVersionAvailable ::  Version -> [OsVersion] -> [OsVersion]
+determineMaxOsVersionAvailable currentEosVersion versions = do
+    if (currentEosVersion < Version (0,3,2,1))
+        then sortOn (Down . osVersionNumber) $ filter (\v -> osVersionNumber v <= Version(0,3,2,1)) $ versions
+        else if (currentEosVersion < Version(0,3,4,0))
+            then sortOn (Down . osVersionNumber) $ filter (\v -> osVersionNumber v <= Version(0,3,4,0)) $ versions
+            else versions
