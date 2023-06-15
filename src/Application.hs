@@ -187,6 +187,7 @@ import Handler.Admin (
  )
 import Handler.Eos (getEosR, getEosVersionR)
 import Handler.Package
+import Handler.Root
 import Lib.Ssl (
     doesSslNeedRenew,
     renewSslCerts,
@@ -213,8 +214,6 @@ import System.Directory (createDirectoryIfMissing)
 import System.Posix.Process (exitImmediately)
 import System.Time.Extra (sleep)
 import Yesod (YesodPersist (runDB))
-import Handler.Root
-
 
 -- This line actually creates our YesodDispatch instance. It is the second half
 -- of the call to mkYesodData which occurs in Foundation.hs. Please see the
