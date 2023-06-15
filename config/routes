@@ -1,3 +1,5 @@
+/ RootR GET
+
 -- EOS API V0
 /eos/v0/latest                             EosVersionR        GET -- get eos information
 /eos/v0/eos.img                            EosR               GET -- get eos.img

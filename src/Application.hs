@@ -213,6 +213,7 @@ import System.Directory (createDirectoryIfMissing)
 import System.Posix.Process (exitImmediately)
 import System.Time.Extra (sleep)
 import Yesod (YesodPersist (runDB))
+import Handler.Root
 
 
 -- This line actually creates our YesodDispatch instance. It is the second half
