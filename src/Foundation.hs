@@ -153,8 +153,6 @@ import Yesod.Persist.Core (
 import Database.Persist ((==.))
 import Database.Persist (selectFirst)
 import Database.Persist (entityVal)
-import Handler.Root
-
 
 -- | The foundation datatype for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application

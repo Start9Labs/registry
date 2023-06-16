@@ -1,6 +1,7 @@
 module Handler.Root where
 import Startlude
+import Yesod
+import Foundation
 
-
-getRootR :: Handler ()
-getRootR = notImplemented
+getRootR :: HandlerFor RegistryCtx ()
+getRootR =  notImplemented
