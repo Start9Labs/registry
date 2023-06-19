@@ -7,6 +7,5 @@ import Settings (AppSettings(registryHostname, marketplaceName))
 
 getRootR :: HandlerFor RegistryCtx ()
 getRootR =  do
-  url <- getsYesod $ registryHostname . appSettings
-  name <- getsYesod $ marketplaceName . appSettings
+  (url, name) <- getsYesod $ (registryHostname &&& marketplaceName) . appSettings
   redirect $ T.pack "https://marketplace.start9.com?api=" <> url <> T.pack "&name=" <> name
