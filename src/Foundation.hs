@@ -154,7 +154,6 @@ import Database.Persist ((==.))
 import Database.Persist (selectFirst)
 import Database.Persist (entityVal)
 
-
 -- | The foundation datatype for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application
 -- starts running, such as database connections. Every handler will have

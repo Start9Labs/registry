@@ -1,6 +1,8 @@
+/ 																									RootR 						GET
+
 -- EOS API V0
-/eos/v0/latest                             EosVersionR        GET -- get eos information
-/eos/v0/eos.img                            EosR               GET -- get eos.img
+/eos/v0/latest                             					EosVersionR        GET -- get eos information
+/eos/v0/eos.img                            					EosR               GET -- get eos.img
 
 -- PACKAGE API V0
 /package/#ApiVersion/info                           InfoR              GET -- get all marketplace categories
@@ -15,9 +17,9 @@
 /package/#ApiVersion/version/#PkgId                 PkgVersionR        GET -- get most recent appId version
 
 -- ADMIN API V0
-/admin/v0/upload                           PkgUploadR         POST !admin
-/admin/v0/eos-upload                       EosUploadR         POST !admin
-/admin/v0/index                            PkgIndexR          POST !admin
-/admin/v0/deindex                          PkgDeindexR        GET POST !admin
-/admin/v0/category/#Text                   CategoryR          POST DELETE !admin
-/admin/v0/categorize/#Text/#PkgId          PkgCategorizeR     POST DELETE !admin
+/admin/v0/upload                           					PkgUploadR         POST !admin
+/admin/v0/eos-upload                       					EosUploadR         POST !admin
+/admin/v0/index                            					PkgIndexR          POST !admin
+/admin/v0/deindex                          					PkgDeindexR        GET POST !admin
+/admin/v0/category/#Text                   					CategoryR          POST DELETE !admin
+/admin/v0/categorize/#Text/#PkgId          					PkgCategorizeR     POST DELETE !admin
