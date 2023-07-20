@@ -63,6 +63,7 @@ dependencies:
   - unliftio
   - unordered-containers
   - unix
+  - utility-ht
   - wai
   - wai-cors
   - wai-extra
