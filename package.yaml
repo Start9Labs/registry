@@ -53,6 +53,8 @@ dependencies:
   - process
   - protolude
   - rainbow
+  - regex-base
+  - regex-tdfa
   - shakespeare
   - template-haskell
   - terminal-progress-bar

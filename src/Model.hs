@@ -29,6 +29,7 @@ import Lib.Types.Emver (
  )
 import Orphans.Cryptonite ()
 import Orphans.Emver ()
+import Orphans.Value ()
 import Startlude (
     Eq,
     Int,
@@ -36,8 +37,9 @@ import Startlude (
     Text,
     UTCTime,
     Word32,
-    Bool
+    Bool,
  )
+import Lib.Types.Manifest (PackageDevice)
 
 
 share
@@ -72,8 +74,10 @@ VersionPlatform
     updatedAt UTCTime Maybe
     pkgId PkgRecordId
     versionNumber Version
-    arch OsArch
-    Primary pkgId versionNumber arch
+    ram Int Maybe
+    device PackageDevice Maybe
+    arch OsArch Maybe
+    Primary pkgId versionNumber
     deriving Eq
     deriving Show
 

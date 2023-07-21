@@ -25,10 +25,10 @@ import Database.Queries (
     getPkgDependencyData,
     serviceQuerySource,
  )
-import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings))
+import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings, appConnPool))
 import Handler.Package.Api (DependencyRes (..), PackageListRes (..), PackageRes (..))
 import Handler.Types.Api (ApiVersion (..))
-import Handler.Util (basicRender, parseQueryParam, getArchQuery, filterDeprecatedVersions)
+import Handler.Util (basicRender, parseQueryParam, filterDeprecatedVersions, filterDevices, getPkgArch, getOsArch)
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies, (<||))
@@ -68,6 +68,7 @@ import Startlude (
     readMaybe,
     snd,
     sortOn,
+    words,
     zipWith,
     zipWithM,
     ($),
@@ -90,6 +91,10 @@ import Data.Tuple (fst)
 import Database.Persist.Postgresql (entityVal)
 import Yesod.Core (getsYesod)
 import Data.List (head)
+import Yesod (YesodRequest(reqGetParams))
+import Yesod (getRequest)
+import Data.Text (isInfixOf)
+import Data.List (last)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
@@ -115,11 +120,17 @@ data PackageMetadata = PackageMetadata
 getPackageIndexR :: Handler PackageListRes
 getPackageIndexR = do
     osPredicate <-
-        getOsVersionQuery <&> \case
+        getOsVersionCompat <&> \case
             Nothing -> const True
             Just v -> flip satisfies v
-    osArch <- getArchQuery
+    osArch <- getOsArch
+    pkgArch <- getPkgArch >>= \case
+        Nothing -> pure $ [Nothing]
+        Just a -> pure $ Just <$> a
+    ram <- getRamQuery
+    hardwareDevices <- getHardwareDevicesQuery
     communityVersion <- getsYesod $ communityVersion . appSettings
+    pool <- getsYesod appConnPool
     do
         pkgIds <- getPkgIdsQuery
         category <- getCategoryQuery
@@ -127,7 +138,7 @@ getPackageIndexR = do
         limit' <- fromMaybe 20 <$> getLimitQuery
         query <- T.strip . fromMaybe "" <$> lookupGetParam "query"
         let (source, packageRanges) = case pkgIds of
-                Nothing -> (serviceQuerySource category query osArch, const Any)
+                Nothing -> (serviceQuerySource category query osArch ram, const Any)
                 Just packages ->
                     let s = getPkgDataSource (packageReqId <$> packages) osArch
                         r = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages)
@@ -142,6 +153,10 @@ getPackageIndexR = do
                         .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
                         -- filter out deprecated service versions after community registry release
                         .| mapC (second (filterDeprecatedVersions communityVersion osPredicate))                        
+                        .| mapMC (\(b,c) -> do 
+                            l <- filterDevices pool hardwareDevices pkgArch c
+                            pure (b, l)
+                            )
                         -- prune empty version sets
                         .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
                         -- grab the latest matching version if it exists
@@ -172,9 +187,29 @@ getLimitQuery :: Handler (Maybe Int)
 getLimitQuery = parseQueryParam "per-page" ((flip $ note . mappend "Invalid 'per-page': ") =<< readMaybe)
 
 
-getOsVersionQuery :: Handler (Maybe VersionRange)
-getOsVersionQuery = parseQueryParam "eos-version-compat" (first toS . Atto.parseOnly parseRange)
+getOsVersionCompatQueryLegacy :: Handler (Maybe VersionRange)
+getOsVersionCompatQueryLegacy = parseQueryParam "eos-version-compat" (first toS . Atto.parseOnly parseRange)
 
+getOsVersionCompatQuery :: Handler (Maybe VersionRange)
+getOsVersionCompatQuery = parseQueryParam "os.compat" (first toS . Atto.parseOnly parseRange)
+
+getOsVersionCompat :: Handler (Maybe VersionRange)
+getOsVersionCompat = do
+    osVersion <- getOsVersionCompatQuery >>= \case
+        Just a -> pure $ Just a
+        Nothing -> getOsVersionCompatQueryLegacy
+    pure osVersion
+
+getHardwareDevicesQuery :: Handler (HM.HashMap Text Text)
+getHardwareDevicesQuery = do
+    allParams <- reqGetParams <$> getRequest
+    -- [("hardware.device.processor","intel"),("hardware.device.display","led")]
+    let hardwareDeviceParams = filter (\(key, _) -> "hardware.device" `isInfixOf` key) allParams
+    -- [("processor","intel"),("display","led")]
+    pure $ HM.fromList $ first (last . words) <$> hardwareDeviceParams
+
+getRamQuery :: Handler (Maybe Int)
+getRamQuery = parseQueryParam "hardware.ram" ((flip $ note . mappend "Invalid 'ram': ") =<< readMaybe)
 
 getPackageDependencies ::
     (MonadIO m, MonadLogger m, MonadResource m, Has PkgRepo r, MonadReader r m) =>

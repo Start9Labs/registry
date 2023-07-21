@@ -11,7 +11,7 @@ import Data.String.Interpolate.IsString (
     i,
  )
 import Foundation (Handler)
-import Handler.Package.V1.Index (getOsVersionQuery)
+import Handler.Package.V1.Index (getOsVersionCompat)
 import Handler.Util (
     fetchCompatiblePkgVersions,
     getVersionSpecFromQuery,
@@ -61,7 +61,7 @@ instance ToTypedContent (Maybe AppVersionRes) where
 
 getPkgVersionR :: PkgId -> Handler AppVersionRes
 getPkgVersionR pkg = do
-    osVersion <- getOsVersionQuery
+    osVersion <- getOsVersionCompat
     osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     spec <- getVersionSpecFromQuery
     preferMin <- versionPriorityFromQueryIsMin

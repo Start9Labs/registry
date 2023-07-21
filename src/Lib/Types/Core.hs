@@ -59,7 +59,6 @@ import Web.HttpApiData (
 import Yesod (PathPiece (..))
 import Prelude (read)
 
-
 newtype PkgId = PkgId {unPkgId :: Text}
     deriving stock (Eq, Ord)
     deriving newtype (FromHttpApiData, ToHttpApiData)

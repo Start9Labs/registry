@@ -250,7 +250,7 @@ postPkgDeindexR = do
             pure ()
     where
         deleteArch :: PkgId -> Version -> OsArch -> Handler ()
-        deleteArch id v a = runDB $ deleteWhere [VersionPlatformArch ==. a, VersionPlatformVersionNumber ==. v, VersionPlatformPkgId ==. PkgRecordKey id]
+        deleteArch id v a = runDB $ deleteWhere [VersionPlatformArch ==. Just a, VersionPlatformVersionNumber ==. v, VersionPlatformPkgId ==. PkgRecordKey id]
 
 
 newtype PackageList = PackageList {unPackageList :: HashMap PkgId [Version]}

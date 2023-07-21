@@ -17,7 +17,7 @@ import Data.String.Interpolate.IsString (
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
-import Database.Queries (fetchAllPkgVersions)
+import Database.Queries (fetchAllPkgVersions, getVersionPlatform)
 import Foundation
 import Lib.PkgRepository (
     PkgRepo,
@@ -31,7 +31,7 @@ import Lib.Types.Emver (
  )
 import Model (
     UserActivity (..),
-    VersionRecord (versionRecordOsVersion, versionRecordDeprecatedAt),
+    VersionRecord (versionRecordOsVersion, versionRecordDeprecatedAt, versionRecordPkgId), VersionPlatform (versionPlatformDevice),
  )
 import Network.HTTP.Types (
     Status,
@@ -61,7 +61,7 @@ import Startlude (
     ($),
     (.),
     (<$>),
-    (>>=), note, (=<<)
+    (>>=), note, (=<<), catMaybes, all, traverse, or
  )
 import UnliftIO (MonadUnliftIO)
 import Yesod (
@@ -80,6 +80,12 @@ import Yesod (
 import Yesod.Core (addHeader, logWarn)
 import Lib.Error (S9Error (..))
 import Data.Maybe (isJust)
+import qualified Data.HashMap.Strict as HM
+import Lib.Types.Manifest
+import Startlude (MonadIO)
+import Text.Regex.TDFA ((=~))
+import Startlude (filterM)
+import Database.Persist.Postgresql (ConnectionPool, runSqlPool)
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other =
@@ -158,7 +164,7 @@ tickleMAU = do
         Nothing -> pure ()
         Just sid -> do
             currentEosVersion <- queryParamAs "eos-version" parseVersion
-            arch <- getArchQuery
+            arch <- getOsArch
             now <- liftIO getCurrentTime
             void $ liftHandler $ runDB $ insertRecord $ UserActivity now sid currentEosVersion arch
 
@@ -174,11 +180,61 @@ fetchCompatiblePkgVersions osVersion pkg = do
                 Nothing -> const True
                 Just v -> flip satisfies v
 
-getArchQuery :: Handler (Maybe OsArch)
-getArchQuery = parseQueryParam "arch" ((flip $ note . mappend "Invalid 'arch': ") =<< readMaybe)
+getOsArchQueryLegacy :: Handler (Maybe OsArch)
+getOsArchQueryLegacy = parseQueryParam "arch" ((flip $ note . mappend "Invalid 'arch': ") =<< readMaybe)
+
+getOsArchQuery :: Handler (Maybe OsArch)
+getOsArchQuery = parseQueryParam "os.arch" ((flip $ note . mappend "Invalid 'arch': ") =<< readMaybe)
+
+getOsArch :: Handler (Maybe OsArch)
+getOsArch = do
+    osArch <- getOsArchQuery >>= \case
+        Just a -> pure $ Just a
+        Nothing -> getOsArchQueryLegacy
+    pure osArch
+
+getOsVersionLegacy :: Handler (Maybe Version)
+getOsVersionLegacy = parseQueryParam "eos-version" ((flip $ note . mappend "Invalid 'eos-version': ") =<< readMaybe)
+
+getOsVersionQuery :: Handler (Maybe Version)
+getOsVersionQuery = parseQueryParam "os.version" ((flip $ note . mappend "Invalid 'os.version': ") =<< readMaybe)
+
+getOsVersion :: Handler (Maybe Version)
+getOsVersion = do
+    osArch <- getOsVersionQuery >>= \case
+        Just a -> pure $ Just a
+        Nothing -> getOsVersionLegacy
+    pure osArch
+
+getPkgArch :: Handler (Maybe [OsArch])
+getPkgArch = parseQueryParam "hardware.arch" ((flip $ note . mappend "Invalid 'arch': ") =<< readMaybe)
 
 filterDeprecatedVersions :: Version -> (Version -> Bool) -> [VersionRecord] -> [VersionRecord]
 filterDeprecatedVersions communityVersion osPredicate vrs = do
     if (osPredicate communityVersion)
         then filter (\v -> not $ isJust $ versionRecordDeprecatedAt v) $ vrs
         else vrs
+
+filterDevices :: (MonadUnliftIO m) => ConnectionPool -> (HM.HashMap Text Text) -> [Maybe OsArch] -> [VersionRecord] -> m [VersionRecord]
+filterDevices pool hardwareDevices arches pkgRecords = do
+    res <- filterM compareHd pkgRecords
+    pure res
+    where
+        compareHd pkgRecord = do
+            let id = versionRecordPkgId pkgRecord
+            platformDetails <- flip runSqlPool pool $ getVersionPlatform id arches
+            let pkgDevices = catMaybes $ versionPlatformDevice <$> platformDetails
+            t <- traverse (areRegexMatchesEqual hardwareDevices) pkgDevices
+            pure $ or t
+
+regexMatch :: RegexPattern -> Text -> Bool
+regexMatch (RegexPattern pattern) text = text =~ pattern
+
+areRegexMatchesEqual :: (MonadIO m) => HM.HashMap Text Text -> PackageDevice ->  m Bool
+areRegexMatchesEqual textMap (PackageDevice regexMap) =
+    pure $ all checkMatch (HM.toList regexMap)
+  where
+    checkMatch :: (Text, RegexPattern) -> Bool
+    checkMatch (key, regexPattern) = case HM.lookup key textMap of
+        Just text -> regexMatch regexPattern text
+        Nothing   -> False

@@ -10,7 +10,7 @@ import Data.List.NonEmpty.Extra qualified as NE
 import Data.Tuple.Extra (second)
 import Database.Queries (collateVersions, getPkgDataSource)
 import Foundation (Handler, RegistryCtx (appSettings))
-import Handler.Package.V1.Index (getOsVersionQuery)
+import Handler.Package.V1.Index (getOsVersionCompat)
 import Lib.Error (S9Error (..))
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version (..), satisfies)
@@ -18,7 +18,7 @@ import Model (VersionRecord (..))
 import Network.HTTP.Types (status400)
 import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, nonEmpty, pure, ($), (.), (<$>), (<&>))
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), YesodRequest (reqGetParams), getRequest, sendResponseStatus)
-import Handler.Util (getArchQuery, filterDeprecatedVersions)
+import Handler.Util (getOsArch, filterDeprecatedVersions)
 import Yesod.Core (getsYesod)
 import Settings (AppSettings(communityVersion))
 
@@ -36,10 +36,10 @@ getVersionLatestR :: Handler VersionLatestRes
 getVersionLatestR = do
     getParameters <- reqGetParams <$> getRequest
     osPredicate' <-
-        getOsVersionQuery <&> \case
+        getOsVersionCompat <&> \case
             Nothing -> const True
             Just v -> flip satisfies v
-    osArch <- getArchQuery
+    osArch <- getOsArch
     communityServiceDeprecationVersion <- getsYesod $ communityVersion . appSettings
     do
         case lookup "ids" getParameters of

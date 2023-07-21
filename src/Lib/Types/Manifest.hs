@@ -5,15 +5,21 @@
 module Lib.Types.Manifest where
 
 import Control.Monad.Fail (MonadFail (..))
-import Data.Aeson (FromJSON (..), withObject, (.:), (.:?))
 import Data.HashMap.Internal.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
 import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version (..), VersionRange)
-import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($))
-
+import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), (<>))
+import Data.Aeson
+import Database.Persist.Sql ( PersistFieldSql(..) )
+import Database.Persist.Types (SqlType(..))
+import qualified Data.Text.Encoding as TE
+import qualified Data.ByteString.Lazy as BL
+import Database.Persist (PersistValue(..))
+import Data.Either (Either(..))
+import Database.Persist.Class ( PersistField(..) )
 
 data PackageManifest = PackageManifest
     { packageManifestId :: !PkgId
@@ -26,6 +32,8 @@ data PackageManifest = PackageManifest
     , packageManifestAlerts :: !(HashMap ServiceAlert (Maybe Text))
     , packageManifestDependencies :: !(HashMap PkgId PackageDependency)
     , packageManifestEosVersion :: !Version
+    , packageHardwareDevice :: !(Maybe PackageDevice)
+    , packageHardwareRam :: !(Maybe Int)
     }
     deriving (Show)
 instance FromJSON PackageManifest where
@@ -47,6 +55,8 @@ instance FromJSON PackageManifest where
         let packageManifestAlerts = HM.fromList a
         packageManifestDependencies <- o .: "dependencies"
         packageManifestEosVersion <- o .: "eos-version"
+        packageHardwareDevice <- o .: "hardware-requirements" >>= (.: "device")
+        packageHardwareRam <- o .: "hardware-requirements" >>= (.: "ram")
         pure PackageManifest{..}
 
 
@@ -63,7 +73,27 @@ instance FromJSON PackageDependency where
         packageDependencyDescription <- o .:? "description"
         pure PackageDependency{..}
 
+-- Custom type for regex pattern
+newtype RegexPattern = RegexPattern Text
+  deriving (Show, Eq, Generic)
 
+instance FromJSON RegexPattern where
+    parseJSON = withText "RegexPattern" (pure . RegexPattern)
+instance ToJSON RegexPattern where
+    toJSON (RegexPattern txt) = toJSON txt
+
+data PackageDevice = PackageDevice (HashMap Text RegexPattern)
+  deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+instance PersistField PackageDevice where
+    toPersistValue = PersistByteString . BL.toStrict . encode
+    fromPersistValue (PersistByteString bs) = case eitherDecode (BL.fromStrict bs) of
+        Left err -> Left $ TE.decodeUtf8 bs <> ": " <> T.pack err
+        Right val -> Right val
+    fromPersistValue _ = Left "Invalid JSON value in database"
+
+instance PersistFieldSql PackageDevice where
+    sqlType _ = SqlOther "JSONB"
 data ServiceAlert = INSTALL | UNINSTALL | RESTORE | START | STOP
     deriving (Show, Eq, Generic, Hashable, Read)
 
@@ -79,6 +109,14 @@ testManifest =
     "short": "Create Tor websites, hosted on your Embassy.",
     "long": "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites."
   },
+  "hardware-requirements" {
+    "device": {
+      processor: "",
+      display: ""
+    },
+    "ram": "8"
+
+  }
   "assets": {
     "license": "LICENSE",
     "icon": "icon.png",

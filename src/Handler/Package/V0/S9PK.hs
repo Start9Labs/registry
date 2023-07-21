@@ -14,7 +14,7 @@ import Database.Queries (
  )
 import Foundation (Handler)
 import GHC.Show (show)
-import Handler.Package.V1.Index (getOsVersionQuery)
+import Handler.Package.V1.Index (getOsVersionCompat)
 import Handler.Util (
     addPackageHeader,
     fetchCompatiblePkgVersions,
@@ -79,7 +79,7 @@ getAppR file = do
                 Nothing -> sendResponseStatus status416 ("Range Not Satisfiable" :: Text)
                 Just ranges -> pure $ Just ranges
     let pkg = PkgId . T.pack $ takeBaseName (show file)
-    osVersion <- getOsVersionQuery
+    osVersion <- getOsVersionCompat
     osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     versionSpec <- getVersionSpecFromQuery
     preferMin <- versionPriorityFromQueryIsMin
