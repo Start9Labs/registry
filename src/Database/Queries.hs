@@ -116,6 +116,7 @@ import Startlude (
     ($>),
     (<$>), Int,
  )
+import Database.Esqueleto.Experimental ((>.))
 
 serviceQuerySource ::
     (MonadResource m, MonadIO m) =>
@@ -149,7 +150,7 @@ serviceQuerySource mCat query mOsArch mRam = selectSource $ do
             where_ $ cat ^. CategoryName ==. val category &&. queryInMetadata query service
             where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
             where_ (vp ^. VersionPlatformArch ==. val mOsArch)
-            where_ (vp ^. VersionPlatformRam ==. val mRam)
+            where_ (vp ^. VersionPlatformRam >. val mRam)
             where_ (pr ^. PkgRecordHidden ==. val False)
             pure service
     groupBy (service ^. VersionRecordPkgId, service ^. VersionRecordNumber)
