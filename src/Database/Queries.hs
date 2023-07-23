@@ -168,12 +168,13 @@ queryInMetadata query service =
         ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
 
 
-getPkgDataSource :: (MonadResource m, MonadIO m) => [PkgId] -> [OsArch] -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
-getPkgDataSource pkgs arches = selectSource $ do
+getPkgDataSource :: (MonadResource m, MonadIO m) => [PkgId] -> [OsArch] -> Maybe Int -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
+getPkgDataSource pkgs arches mRam = selectSource $ do
     (pkgData :& vp) <- from $ table @VersionRecord
         `innerJoin` table @VersionPlatform `on` (\(service :& vp) -> (VersionPlatformPkgId === VersionRecordPkgId) (vp :& service))
     where_ (pkgData ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
     where_ (vp ^. VersionPlatformArch `in_` (valList $ Just <$> arches))
+    where_ (vp ^. VersionPlatformRam ==. val mRam)
     where_ (pkgData ^. VersionRecordPkgId `in_` valList (PkgRecordKey <$> pkgs))
     pure pkgData
 

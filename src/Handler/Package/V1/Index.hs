@@ -138,7 +138,7 @@ getPackageIndexR = do
     let (source, packageRanges) = case pkgIds of
             Nothing -> (serviceQuerySource category query pkgArch ram, const Any)
             Just packages ->
-                let s = getPkgDataSource (packageReqId <$> packages) pkgArch
+                let s = getPkgDataSource (packageReqId <$> packages) pkgArch ram
                     r = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages)
                 in (s, r)
     filteredPackages <-

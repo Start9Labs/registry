@@ -1,6 +1,6 @@
 module Handler.Package.V0.Latest where
 
-import Conduit (concatMapC, mapC, runConduit, sinkList, (.|))
+import Conduit (concatMapC, mapC, runConduit, sinkList, (.|), mapMC)
 import Data.Aeson (ToJSON (..), eitherDecode)
 import Data.ByteString.Lazy qualified as LBS
 import Data.HashMap.Strict (HashMap)
@@ -9,8 +9,8 @@ import Data.List (lookup)
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Tuple.Extra (second)
 import Database.Queries (collateVersions, getPkgDataSource)
-import Foundation (Handler, RegistryCtx (appSettings))
-import Handler.Package.V1.Index (getOsVersionCompat)
+import Foundation (Handler, RegistryCtx (appSettings, appConnPool))
+import Handler.Package.V1.Index (getOsVersionCompat, getRamQuery, getHardwareDevicesQuery)
 import Lib.Error (S9Error (..))
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version (..), satisfies)
@@ -18,7 +18,7 @@ import Model (VersionRecord (..))
 import Network.HTTP.Types (status400)
 import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, nonEmpty, pure, ($), (.), (<$>), (<&>), (>>=))
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), YesodRequest (reqGetParams), getRequest, sendResponseStatus)
-import Handler.Util (filterDeprecatedVersions, getPkgArch)
+import Handler.Util (filterDeprecatedVersions, getPkgArch, filterDevices)
 import Yesod.Core (getsYesod)
 import Settings (AppSettings(communityVersion))
 
@@ -42,7 +42,10 @@ getVersionLatestR = do
     pkgArch <- getPkgArch >>= \case
         Nothing -> pure []
         Just a -> pure a
+    ram <- getRamQuery
+    hardwareDevices <- getHardwareDevicesQuery
     communityServiceDeprecationVersion <- getsYesod $ communityVersion . appSettings
+    pool <- getsYesod appConnPool
     do
         case lookup "ids" getParameters of
             Nothing -> sendResponseStatus status400 (InvalidParamsE "get:ids" "<MISSING>")
@@ -50,7 +53,7 @@ getVersionLatestR = do
                 Left _ -> sendResponseStatus status400 (InvalidParamsE "get:ids" packages)
                 Right p -> do
                     let packageList = (,Nothing) <$> p
-                    let source = getPkgDataSource p pkgArch
+                    let source = getPkgDataSource p pkgArch ram
                     filteredPackages <-
                         runDB $
                             runConduit $
@@ -61,6 +64,11 @@ getVersionLatestR = do
                                     .| mapC (second (filter (osPredicate' . versionRecordOsVersion)))
                                     -- filter out deprecated service versions after community registry release
                                     .| mapC (second (filterDeprecatedVersions communityServiceDeprecationVersion osPredicate'))
+                                    -- filter hardware device compatability                        
+                                    .| mapMC (\(b,c) -> do 
+                                        l <- filterDevices pool hardwareDevices pkgArch c
+                                        pure (b, l)
+                                        )
                                     -- prune empty version sets
                                     .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
                                     -- grab the latest matching version if it exists
