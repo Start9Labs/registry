@@ -28,7 +28,7 @@ import Database.Queries (
 import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings, appConnPool))
 import Handler.Package.Api (DependencyRes (..), PackageListRes (..), PackageRes (..))
 import Handler.Types.Api (ApiVersion (..))
-import Handler.Util (basicRender, parseQueryParam, filterDeprecatedVersions, filterDevices, getPkgArch, getOsArch)
+import Handler.Util (basicRender, parseQueryParam, filterDeprecatedVersions, filterDevices, getPkgArch)
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies, (<||))
@@ -123,53 +123,52 @@ getPackageIndexR = do
         getOsVersionCompat <&> \case
             Nothing -> const True
             Just v -> flip satisfies v
-    osArch <- getOsArch
     pkgArch <- getPkgArch >>= \case
-        Nothing -> pure $ [Nothing]
-        Just a -> pure $ Just <$> a
+        Nothing -> pure []
+        Just a -> pure a
     ram <- getRamQuery
     hardwareDevices <- getHardwareDevicesQuery
     communityVersion <- getsYesod $ communityVersion . appSettings
     pool <- getsYesod appConnPool
-    do
-        pkgIds <- getPkgIdsQuery
-        category <- getCategoryQuery
-        page <- fromMaybe 1 <$> getPageQuery
-        limit' <- fromMaybe 20 <$> getLimitQuery
-        query <- T.strip . fromMaybe "" <$> lookupGetParam "query"
-        let (source, packageRanges) = case pkgIds of
-                Nothing -> (serviceQuerySource category query osArch ram, const Any)
-                Just packages ->
-                    let s = getPkgDataSource (packageReqId <$> packages) osArch
-                        r = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages)
-                    in (s, r)
-        filteredPackages <-
-            runDB $
-                runConduit $
-                    source
-                        -- group conduit pipeline by pkg id
-                        .| collateVersions
-                        -- filter out versions of apps that are incompatible with the OS predicate
-                        .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
-                        -- filter out deprecated service versions after community registry release
-                        .| mapC (second (filterDeprecatedVersions communityVersion osPredicate))                        
-                        .| mapMC (\(b,c) -> do 
-                            l <- filterDevices pool hardwareDevices pkgArch c
-                            pure (b, l)
-                            )
-                        -- prune empty version sets
-                        .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
-                        -- grab the latest matching version if it exists
-                        .| concatMapC (\(a, b) -> (a,b,) <$> (selectLatestVersionFromSpec packageRanges b))
-                        -- construct
-                        .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> getCategoriesFor a)
-                        -- pages start at 1 for some reason. TODO: make pages start at 0
-                        .| (dropC (limit' * (page - 1)) *> takeC limit')
-                        .| sinkList
+    pkgIds <- getPkgIdsQuery
+    category <- getCategoryQuery
+    page <- fromMaybe 1 <$> getPageQuery
+    limit' <- fromMaybe 20 <$> getLimitQuery
+    query <- T.strip . fromMaybe "" <$> lookupGetParam "query"
+    let (source, packageRanges) = case pkgIds of
+            Nothing -> (serviceQuerySource category query pkgArch ram, const Any)
+            Just packages ->
+                let s = getPkgDataSource (packageReqId <$> packages) pkgArch
+                    r = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages)
+                in (s, r)
+    filteredPackages <-
+        runDB $
+            runConduit $
+                source
+                    -- group conduit pipeline by pkg id
+                    .| collateVersions
+                    -- filter out versions of apps that are incompatible with the OS predicate
+                    .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
+                    -- filter out deprecated service versions after community registry release
+                    .| mapC (second (filterDeprecatedVersions communityVersion osPredicate))
+                    -- filter hardware device compatability                        
+                    .| mapMC (\(b,c) -> do 
+                        l <- filterDevices pool hardwareDevices pkgArch c
+                        pure (b, l)
+                        )
+                    -- prune empty version sets
+                    .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
+                    -- grab the latest matching version if it exists
+                    .| concatMapC (\(a, b) -> (a,b,) <$> (selectLatestVersionFromSpec packageRanges b))
+                    -- construct
+                    .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> getCategoriesFor a)
+                    -- pages start at 1 for some reason. TODO: make pages start at 0
+                    .| (dropC (limit' * (page - 1)) *> takeC limit')
+                    .| sinkList
 
-        -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
-        pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
-        PackageListRes <$> runConcurrently (zipWithM (Concurrently .* constructPackageListApiRes) filteredPackages pkgsWithDependencies)
+    -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
+    pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
+    PackageListRes <$> runConcurrently (zipWithM (Concurrently .* constructPackageListApiRes) filteredPackages pkgsWithDependencies)
 
 getPkgIdsQuery :: Handler (Maybe [PackageReq])
 getPkgIdsQuery = parseQueryParam "ids" (first toS . eitherDecodeStrict . encodeUtf8)

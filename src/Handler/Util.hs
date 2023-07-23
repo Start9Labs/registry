@@ -23,7 +23,7 @@ import Lib.PkgRepository (
     PkgRepo,
     getHash,
  )
-import Lib.Types.Core (PkgId, OsArch)
+import Lib.Types.Core (PkgId, OsArch (..))
 import Lib.Types.Emver (
     Version,
     VersionRange,
@@ -61,7 +61,7 @@ import Startlude (
     ($),
     (.),
     (<$>),
-    (>>=), note, (=<<), catMaybes, all, traverse, or
+    (>>=), note, (=<<), catMaybes, all, traverse, or, encodeUtf8, toS
  )
 import UnliftIO (MonadUnliftIO)
 import Yesod (
@@ -86,6 +86,8 @@ import Startlude (MonadIO)
 import Text.Regex.TDFA ((=~))
 import Startlude (filterM)
 import Database.Persist.Postgresql (ConnectionPool, runSqlPool)
+import Data.Aeson (eitherDecodeStrict)
+import Data.Bifunctor (Bifunctor(first))
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other =
@@ -201,13 +203,25 @@ getOsVersionQuery = parseQueryParam "os.version" ((flip $ note . mappend "Invali
 
 getOsVersion :: Handler (Maybe Version)
 getOsVersion = do
-    osArch <- getOsVersionQuery >>= \case
+    osVersion <- getOsVersionQuery >>= \case
         Just a -> pure $ Just a
         Nothing -> getOsVersionLegacy
-    pure osArch
+    pure osVersion
 
 getPkgArch :: Handler (Maybe [OsArch])
-getPkgArch = parseQueryParam "hardware.arch" ((flip $ note . mappend "Invalid 'arch': ") =<< readMaybe)
+getPkgArch = do 
+    arch <- parseQueryParam "hardware.arch" parseArch >>= \case
+        Just a -> pure $ Just a
+        Nothing -> do
+            getOsArch >>= \case
+                Just a -> pure $ Just [a]
+                Nothing -> pure $ Just []
+    pure arch
+
+-- >>> parseArch "[\"aarch64\"]"
+-- Right [aarch64]
+parseArch :: Text -> Either Text [OsArch]
+parseArch = first toS . eitherDecodeStrict . encodeUtf8
 
 filterDeprecatedVersions :: Version -> (Version -> Bool) -> [VersionRecord] -> [VersionRecord]
 filterDeprecatedVersions communityVersion osPredicate vrs = do
@@ -215,7 +229,7 @@ filterDeprecatedVersions communityVersion osPredicate vrs = do
         then filter (\v -> not $ isJust $ versionRecordDeprecatedAt v) $ vrs
         else vrs
 
-filterDevices :: (MonadUnliftIO m) => ConnectionPool -> (HM.HashMap Text Text) -> [Maybe OsArch] -> [VersionRecord] -> m [VersionRecord]
+filterDevices :: (MonadUnliftIO m) => ConnectionPool -> (HM.HashMap Text Text) -> [OsArch] -> [VersionRecord] -> m [VersionRecord]
 filterDevices pool hardwareDevices arches pkgRecords = do
     res <- filterM compareHd pkgRecords
     pure res
@@ -232,6 +246,7 @@ regexMatch (RegexPattern pattern) text = text =~ pattern
 
 areRegexMatchesEqual :: (MonadIO m) => HM.HashMap Text Text -> PackageDevice ->  m Bool
 areRegexMatchesEqual textMap (PackageDevice regexMap) =
+    -- putStrLn @Text textMap
     pure $ all checkMatch (HM.toList regexMap)
   where
     checkMatch :: (Text, RegexPattern) -> Bool

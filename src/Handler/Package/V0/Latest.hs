@@ -16,9 +16,9 @@ import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version (..), satisfies)
 import Model (VersionRecord (..))
 import Network.HTTP.Types (status400)
-import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, nonEmpty, pure, ($), (.), (<$>), (<&>))
+import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, nonEmpty, pure, ($), (.), (<$>), (<&>), (>>=))
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), YesodRequest (reqGetParams), getRequest, sendResponseStatus)
-import Handler.Util (getOsArch, filterDeprecatedVersions)
+import Handler.Util (filterDeprecatedVersions, getPkgArch)
 import Yesod.Core (getsYesod)
 import Settings (AppSettings(communityVersion))
 
@@ -39,7 +39,9 @@ getVersionLatestR = do
         getOsVersionCompat <&> \case
             Nothing -> const True
             Just v -> flip satisfies v
-    osArch <- getOsArch
+    pkgArch <- getPkgArch >>= \case
+        Nothing -> pure []
+        Just a -> pure a
     communityServiceDeprecationVersion <- getsYesod $ communityVersion . appSettings
     do
         case lookup "ids" getParameters of
@@ -48,7 +50,7 @@ getVersionLatestR = do
                 Left _ -> sendResponseStatus status400 (InvalidParamsE "get:ids" packages)
                 Right p -> do
                     let packageList = (,Nothing) <$> p
-                    let source = getPkgDataSource p osArch
+                    let source = getPkgDataSource p pkgArch
                     filteredPackages <-
                         runDB $
                             runConduit $

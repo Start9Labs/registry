@@ -111,11 +111,10 @@ testManifest =
   },
   "hardware-requirements" {
     "device": {
-      processor: "intel",
-      display: "r'^{.*}$'"
+      "processor": "intel",
+      "display": "r'^{.*}$'"
     },
     "ram": "8"
-
   }
   "assets": {
     "license": "LICENSE",
