@@ -1,5 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Handler.Util where
 
@@ -61,7 +62,7 @@ import Startlude (
     ($),
     (.),
     (<$>),
-    (>>=), note, (=<<), catMaybes, all, traverse, or, encodeUtf8, toS
+    (>>=), note, (=<<), catMaybes, all, encodeUtf8, toS, fmap
  )
 import UnliftIO (MonadUnliftIO)
 import Yesod (
@@ -82,10 +83,7 @@ import Lib.Error (S9Error (..))
 import Data.Maybe (isJust)
 import qualified Data.HashMap.Strict as HM
 import Lib.Types.Manifest
-import Startlude (MonadIO)
 import Text.Regex.TDFA ((=~))
-import Startlude (filterM)
-import Database.Persist.Postgresql (ConnectionPool, runSqlPool)
 import Data.Aeson (eitherDecodeStrict)
 import Data.Bifunctor (Bifunctor(first))
 
@@ -229,25 +227,23 @@ filterDeprecatedVersions communityVersion osPredicate vrs = do
         then filter (\v -> not $ isJust $ versionRecordDeprecatedAt v) $ vrs
         else vrs
 
-filterDevices :: (MonadUnliftIO m) => ConnectionPool -> (HM.HashMap Text Text) -> [OsArch] -> [VersionRecord] -> m [VersionRecord]
-filterDevices pool hardwareDevices arches pkgRecords = do
-    res <- filterM compareHd pkgRecords
-    pure res
+filterDevices :: (MonadUnliftIO m) => (HM.HashMap Text Text) -> [OsArch] -> [(VersionRecord, VersionPlatform)] -> m [VersionRecord]
+filterDevices hardwareDevices arches pkgRecords = do
+    pure $ catMaybes $ fmap (compareHd hardwareDevices) pkgRecords
     where
-        compareHd pkgRecord = do
-            let id = versionRecordPkgId pkgRecord
-            platformDetails <- flip runSqlPool pool $ getVersionPlatform id arches
-            let pkgDevices = catMaybes $ versionPlatformDevice <$> platformDetails
-            t <- traverse (areRegexMatchesEqual hardwareDevices) pkgDevices
-            pure $ or t
+        compareHd :: HM.HashMap Text Text -> (VersionRecord, VersionPlatform) -> Maybe VersionRecord
+        compareHd hd (vr, vp) = case versionPlatformDevice vp of
+            Nothing -> Just vr
+            Just d -> if areRegexMatchesEqual hd d
+                then Just vr
+                else Nothing
 
 regexMatch :: RegexPattern -> Text -> Bool
 regexMatch (RegexPattern pattern) text = text =~ pattern
 
-areRegexMatchesEqual :: (MonadIO m) => HM.HashMap Text Text -> PackageDevice ->  m Bool
+areRegexMatchesEqual :: HM.HashMap Text Text -> PackageDevice ->  Bool
 areRegexMatchesEqual textMap (PackageDevice regexMap) =
-    -- putStrLn @Text textMap
-    pure $ all checkMatch (HM.toList regexMap)
+    all checkMatch (HM.toList regexMap)
   where
     checkMatch :: (Text, RegexPattern) -> Bool
     checkMatch (key, regexPattern) = case HM.lookup key textMap of

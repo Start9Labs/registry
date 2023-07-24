@@ -9,14 +9,14 @@ import Data.List (lookup)
 import Data.List.NonEmpty.Extra qualified as NE
 import Data.Tuple.Extra (second)
 import Database.Queries (collateVersions, getPkgDataSource)
-import Foundation (Handler, RegistryCtx (appSettings, appConnPool))
+import Foundation (Handler, RegistryCtx (appSettings))
 import Handler.Package.V1.Index (getOsVersionCompat, getRamQuery, getHardwareDevicesQuery)
 import Lib.Error (S9Error (..))
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version (..), satisfies)
 import Model (VersionRecord (..))
 import Network.HTTP.Types (status400)
-import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, nonEmpty, pure, ($), (.), (<$>), (<&>), (>>=))
+import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, nonEmpty, pure, ($), (.), (<$>), (<&>), (>>=), fst)
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), YesodRequest (reqGetParams), getRequest, sendResponseStatus)
 import Handler.Util (filterDeprecatedVersions, getPkgArch, filterDevices)
 import Yesod.Core (getsYesod)
@@ -45,7 +45,6 @@ getVersionLatestR = do
     ram <- getRamQuery
     hardwareDevices <- getHardwareDevicesQuery
     communityServiceDeprecationVersion <- getsYesod $ communityVersion . appSettings
-    pool <- getsYesod appConnPool
     do
         case lookup "ids" getParameters of
             Nothing -> sendResponseStatus status400 (InvalidParamsE "get:ids" "<MISSING>")
@@ -61,14 +60,14 @@ getVersionLatestR = do
                                     -- group conduit pipeline by pkg id
                                     .| collateVersions
                                     -- filter out versions of apps that are incompatible with the OS predicate
-                                    .| mapC (second (filter (osPredicate' . versionRecordOsVersion)))
-                                    -- filter out deprecated service versions after community registry release
-                                    .| mapC (second (filterDeprecatedVersions communityServiceDeprecationVersion osPredicate'))
+                                    .| mapC (second (filter (osPredicate' . versionRecordOsVersion . fst)))
                                     -- filter hardware device compatability                        
                                     .| mapMC (\(b,c) -> do 
-                                        l <- filterDevices pool hardwareDevices pkgArch c
+                                        l <- filterDevices hardwareDevices pkgArch c
                                         pure (b, l)
                                         )
+                                    -- filter out deprecated service versions after community registry release
+                                    .| mapC (second (filterDeprecatedVersions communityServiceDeprecationVersion osPredicate'))
                                     -- prune empty version sets
                                     .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
                                     -- grab the latest matching version if it exists

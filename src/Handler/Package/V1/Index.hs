@@ -25,7 +25,7 @@ import Database.Queries (
     getPkgDependencyData,
     serviceQuerySource,
  )
-import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings, appConnPool))
+import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings))
 import Handler.Package.Api (DependencyRes (..), PackageListRes (..), PackageRes (..))
 import Handler.Types.Api (ApiVersion (..))
 import Handler.Util (basicRender, parseQueryParam, filterDeprecatedVersions, filterDevices, getPkgArch)
@@ -129,7 +129,6 @@ getPackageIndexR = do
     ram <- getRamQuery
     hardwareDevices <- getHardwareDevicesQuery
     communityVersion <- getsYesod $ communityVersion . appSettings
-    pool <- getsYesod appConnPool
     pkgIds <- getPkgIdsQuery
     category <- getCategoryQuery
     page <- fromMaybe 1 <$> getPageQuery
@@ -148,14 +147,14 @@ getPackageIndexR = do
                     -- group conduit pipeline by pkg id
                     .| collateVersions
                     -- filter out versions of apps that are incompatible with the OS predicate
-                    .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
-                    -- filter out deprecated service versions after community registry release
-                    .| mapC (second (filterDeprecatedVersions communityVersion osPredicate))
+                    .| mapC (second (filter (osPredicate . versionRecordOsVersion . fst)))
                     -- filter hardware device compatability                        
                     .| mapMC (\(b,c) -> do 
-                        l <- filterDevices pool hardwareDevices pkgArch c
+                        l <- filterDevices hardwareDevices pkgArch c
                         pure (b, l)
                         )
+                    -- filter out deprecated service versions after community registry release
+                    .| mapC (second (filterDeprecatedVersions communityVersion osPredicate))
                     -- prune empty version sets
                     .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
                     -- grab the latest matching version if it exists

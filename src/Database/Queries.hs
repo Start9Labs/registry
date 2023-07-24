@@ -31,7 +31,7 @@ import Startlude (
     getCurrentTime,
     maybe,
     ($),
-    (.), Bool (False),
+    (.), Bool (False), fst,
  )
 import System.FilePath (takeExtension)
 import UnliftIO (
@@ -97,7 +97,7 @@ import Model (
         VersionRecordNumber,
         VersionRecordPkgId,
         VersionRecordTitle,
-        VersionRecordUpdatedAt, PkgRecordHidden, VersionPlatformRam
+        VersionRecordUpdatedAt, PkgRecordHidden, VersionPlatformRam, VersionPlatformCreatedAt, VersionPlatformUpdatedAt
     ),
     Key (unPkgRecordKey),
     PkgCategory,
@@ -116,7 +116,8 @@ import Startlude (
     ($>),
     (<$>), Int,
  )
-import Database.Esqueleto.Experimental ((>.))
+import Database.Esqueleto.Experimental (isNothing)
+import Database.Esqueleto.Experimental ((>=.))
 
 serviceQuerySource ::
     (MonadResource m, MonadIO m) =>
@@ -124,19 +125,19 @@ serviceQuerySource ::
     Text ->
     [OsArch] ->
     Maybe Int ->
-    ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
+    ConduitT () (Entity VersionRecord, Entity VersionPlatform) (ReaderT SqlBackend m) ()
 serviceQuerySource mCat query arches mRam = selectSource $ do
-    service <- case mCat of
+    (service, vp) <- case mCat of
         Nothing -> do
             (service :& vp :& pr) <- from $ table @VersionRecord 
                 `innerJoin` table @VersionPlatform `on` (\(service :& vp) -> (VersionPlatformPkgId === VersionRecordPkgId) (vp :& service))
                 `innerJoin` table @PkgRecord `on` (\(v :& _ :& p) -> (PkgRecordId === VersionRecordPkgId) (p :& v))
             where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
             where_ (vp ^. VersionPlatformArch `in_` (valList $ Just <$> arches))
-            where_ (vp ^. VersionPlatformRam ==. val mRam)
+            where_ (vp ^. VersionPlatformRam >=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
             where_ (pr ^. PkgRecordHidden ==. val False)
             where_ $ queryInMetadata query service
-            pure service
+            pure (service, vp)
         Just category -> do
             (service :& _ :& cat :& vp :& pr) <-
                 from $
@@ -150,16 +151,16 @@ serviceQuerySource mCat query arches mRam = selectSource $ do
             where_ $ cat ^. CategoryName ==. val category &&. queryInMetadata query service
             where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
             where_ (vp ^. VersionPlatformArch `in_` (valList $ Just <$> arches))
-            where_ (vp ^. VersionPlatformRam >. val mRam)
+            where_ (vp ^. VersionPlatformRam >=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
             where_ (pr ^. PkgRecordHidden ==. val False)
-            pure service
-    groupBy (service ^. VersionRecordPkgId, service ^. VersionRecordNumber)
+            pure (service, vp)
+    groupBy (service ^. VersionRecordPkgId, service ^. VersionRecordNumber, vp ^. VersionPlatformCreatedAt, vp ^. VersionPlatformUpdatedAt, vp ^. VersionPlatformPkgId, vp ^. VersionPlatformVersionNumber)
     orderBy
         [ asc (service ^. VersionRecordPkgId)
         , desc (service ^. VersionRecordNumber)
         , desc (service ^. VersionRecordUpdatedAt)
         ]
-    pure service
+    pure (service, vp)
 
 queryInMetadata :: Text -> SqlExpr (Entity VersionRecord) -> (SqlExpr (Value Bool))
 queryInMetadata query service =
@@ -168,15 +169,15 @@ queryInMetadata query service =
         ||. (service ^. VersionRecordTitle `ilike` (%) ++. val query ++. (%))
 
 
-getPkgDataSource :: (MonadResource m, MonadIO m) => [PkgId] -> [OsArch] -> Maybe Int -> ConduitT () (Entity VersionRecord) (ReaderT SqlBackend m) ()
+getPkgDataSource :: (MonadResource m, MonadIO m) => [PkgId] -> [OsArch] -> Maybe Int -> ConduitT () (Entity VersionRecord, Entity VersionPlatform) (ReaderT SqlBackend m) ()
 getPkgDataSource pkgs arches mRam = selectSource $ do
     (pkgData :& vp) <- from $ table @VersionRecord
         `innerJoin` table @VersionPlatform `on` (\(service :& vp) -> (VersionPlatformPkgId === VersionRecordPkgId) (vp :& service))
     where_ (pkgData ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
     where_ (vp ^. VersionPlatformArch `in_` (valList $ Just <$> arches))
-    where_ (vp ^. VersionPlatformRam ==. val mRam)
+    where_ (vp ^. VersionPlatformRam >=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
     where_ (pkgData ^. VersionRecordPkgId `in_` valList (PkgRecordKey <$> pkgs))
-    pure pkgData
+    pure (pkgData, vp)
 
 
 getPkgDependencyData ::
@@ -219,18 +220,20 @@ getCategoriesFor pkg = fmap (fmap entityVal) $
 
 collateVersions ::
     MonadUnliftIO m =>
-    ConduitT (Entity VersionRecord) (PkgId, [VersionRecord]) (ReaderT SqlBackend m) ()
-collateVersions = awaitForever $ \v0 -> do
+    ConduitT (Entity VersionRecord, Entity VersionPlatform) (PkgId, [(VersionRecord, VersionPlatform)]) (ReaderT SqlBackend m) ()
+collateVersions = awaitForever $ \(v0, _) -> do
     let pkg = unPkgRecordKey . versionRecordPkgId $ entityVal v0
+    minput <- await
     let pull = do
-            mvn <- await
-            case mvn of
+            -- mvn <- await
+            case minput of
                 Nothing -> pure Nothing
                 Just vn -> do
-                    let pkg' = unPkgRecordKey . versionRecordPkgId $ entityVal vn
+                    let pkg' = unPkgRecordKey . versionRecordPkgId $ entityVal $ fst vn
                     if pkg == pkg' then pure (Just vn) else leftover vn $> Nothing
     ls <- unfoldM pull
-    yield (pkg, fmap entityVal $ v0 : ls)
+    let withoutEntity = fmap (\a -> (entityVal $ fst a, entityVal $ snd a)) ls
+    yield (pkg, withoutEntity)
 
 
 getDependencyVersions ::
