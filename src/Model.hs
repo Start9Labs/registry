@@ -29,7 +29,6 @@ import Lib.Types.Emver (
  )
 import Orphans.Cryptonite ()
 import Orphans.Emver ()
-import Orphans.Value ()
 import Startlude (
     Eq,
     Int,
