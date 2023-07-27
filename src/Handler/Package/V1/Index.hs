@@ -123,9 +123,7 @@ getPackageIndexR = do
         getOsVersionCompat <&> \case
             Nothing -> const True
             Just v -> flip satisfies v
-    pkgArch <- getPkgArch >>= \case
-        Nothing -> pure []
-        Just a -> pure a
+    pkgArch <- getPkgArch
     ram <- getRamQuery
     hardwareDevices <- getHardwareDevicesQuery
     communityVersion <- getsYesod $ communityVersion . appSettings

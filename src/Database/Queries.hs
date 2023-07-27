@@ -299,9 +299,11 @@ upsertPackageVersionPlatform :: (MonadUnliftIO m) => (Maybe [OsArch]) -> Package
 upsertPackageVersionPlatform maybeArches PackageManifest{..} = do
     now <- liftIO getCurrentTime
     let pkgId = PkgRecordKey packageManifestId
-    let arches = case maybeArches of
+    let arches = case packageHardwareArch of
             Just a -> a
-            Nothing -> [X86_64 .. AARCH64]
+            Nothing -> case maybeArches of
+                Just a -> a
+                Nothing -> [X86_64, AARCH64]
     let records = createVersionPlatformRecord now pkgId packageManifestVersion packageHardwareRam packageHardwareDevice <$> arches 
     repsertMany records
     where

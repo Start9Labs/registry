@@ -9,7 +9,7 @@ import Data.HashMap.Internal.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
 import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
-import Lib.Types.Core (PkgId)
+import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (Version (..), VersionRange)
 import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), (<>))
 import Data.Aeson
@@ -34,6 +34,7 @@ data PackageManifest = PackageManifest
     , packageManifestEosVersion :: !Version
     , packageHardwareDevice :: !(Maybe PackageDevice)
     , packageHardwareRam :: !(Maybe Int)
+    , packageHardwareArch :: !(Maybe [OsArch])
     }
     deriving (Show)
 instance FromJSON PackageManifest where
@@ -57,6 +58,7 @@ instance FromJSON PackageManifest where
         packageManifestEosVersion <- o .: "eos-version"
         packageHardwareDevice <- o .: "hardware-requirements" >>= (.: "device")
         packageHardwareRam <- o .: "hardware-requirements" >>= (.: "ram")
+        packageHardwareArch <- o .: "hardware-requirements" >>= (.: "arch")
         pure PackageManifest{..}
 
 
@@ -114,7 +116,8 @@ testManifest =
       "processor": "^[A-Za-z0-9]+$",
       "display": "^[A-Za-z0-9]+$"
     },
-    "ram": "8000000000"
+    "ram": "8000000000",
+    "arch": ["aarch64", "x86_64"]
   }
   "assets": {
     "license": "LICENSE",

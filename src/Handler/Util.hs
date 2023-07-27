@@ -208,20 +208,21 @@ getOsVersion = do
         Nothing -> getOsVersionLegacy
     pure osVersion
 
-getPkgArch :: Handler (Maybe [OsArch])
+getPkgArch :: Handler [OsArch]
 getPkgArch = do 
-    arch <- parseQueryParam "hardware.arch" parseArch >>= \case
-        Just a -> pure $ Just a
+    arch <- parseQueryParam "hardware.arch" ((flip $ note . mappend "Invalid 'hardware.arch': ") =<< readMaybe)
+    case arch of
+        Just a -> pure [a]
         Nothing -> do
             getOsArch >>= \case
-                Just a -> pure $ Just [a]
-                Nothing -> pure $ Just []
-    pure arch
-
--- >>> parseArch "[\"aarch64\"]"
--- Right [aarch64]
-parseArch :: Text -> Either Text [OsArch]
-parseArch = first toS . eitherDecodeStrict . encodeUtf8
+                Just a -> pure [matchLegacyArch a]
+                Nothing -> pure [X86_64, AARCH64]
+    where
+        matchLegacyArch X86_64 = X86_64
+        matchLegacyArch AARCH64 = AARCH64
+        matchLegacyArch RASPBERRYPI = AARCH64
+        matchLegacyArch X86_64_NONFREE = X86_64
+        matchLegacyArch AARCH64_NONFREE = AARCH64
 
 filterDeprecatedVersions :: Version -> (Version -> Bool) -> [VersionRecord] -> [VersionRecord]
 filterDeprecatedVersions communityVersion osPredicate vrs = do
