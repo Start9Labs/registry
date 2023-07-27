@@ -42,6 +42,7 @@ dependencies:
   - monad-logger
   - monad-logger-extras
   - monad-loops
+  - multimap
   - network-uri
   - optparse-applicative
   - parallel

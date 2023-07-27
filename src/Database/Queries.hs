@@ -31,7 +31,7 @@ import Startlude (
     getCurrentTime,
     maybe,
     ($),
-    (.), Bool (False), fst,
+    (.), Bool (False), fst, bimap,
  )
 import System.FilePath (takeExtension)
 import UnliftIO (
@@ -55,7 +55,6 @@ import Database.Esqueleto.Experimental (
     asc,
     desc,
     from,
-    groupBy,
     ilike,
     in_,
     innerJoin,
@@ -97,7 +96,7 @@ import Model (
         VersionRecordNumber,
         VersionRecordPkgId,
         VersionRecordTitle,
-        VersionRecordUpdatedAt, PkgRecordHidden, VersionPlatformRam, VersionPlatformCreatedAt, VersionPlatformUpdatedAt
+        VersionRecordUpdatedAt, PkgRecordHidden, VersionPlatformRam
     ),
     Key (unPkgRecordKey),
     PkgCategory,
@@ -133,7 +132,7 @@ serviceQuerySource mCat query arches mRam = selectSource $ do
                 `innerJoin` table @VersionPlatform `on` (\(service :& vp) -> (VersionPlatformPkgId === VersionRecordPkgId) (vp :& service))
                 `innerJoin` table @PkgRecord `on` (\(v :& _ :& p) -> (PkgRecordId === VersionRecordPkgId) (p :& v))
             where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
-            where_ (vp ^. VersionPlatformArch `in_` (valList $ Just <$> arches))
+            where_ (vp ^. VersionPlatformArch `in_` (valList arches))
             where_ (vp ^. VersionPlatformRam >=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
             where_ (pr ^. PkgRecordHidden ==. val False)
             where_ $ queryInMetadata query service
@@ -150,11 +149,10 @@ serviceQuerySource mCat query arches mRam = selectSource $ do
             -- weight title, short, long (bitcoin should equal Bitcoin Core)
             where_ $ cat ^. CategoryName ==. val category &&. queryInMetadata query service
             where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
-            where_ (vp ^. VersionPlatformArch `in_` (valList $ Just <$> arches))
+            where_ (vp ^. VersionPlatformArch `in_` (valList arches))
             where_ (vp ^. VersionPlatformRam >=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
             where_ (pr ^. PkgRecordHidden ==. val False)
             pure (service, vp)
-    groupBy (service ^. VersionRecordPkgId, service ^. VersionRecordNumber, vp ^. VersionPlatformCreatedAt, vp ^. VersionPlatformUpdatedAt, vp ^. VersionPlatformPkgId, vp ^. VersionPlatformVersionNumber)
     orderBy
         [ asc (service ^. VersionRecordPkgId)
         , desc (service ^. VersionRecordNumber)
@@ -174,7 +172,7 @@ getPkgDataSource pkgs arches mRam = selectSource $ do
     (pkgData :& vp) <- from $ table @VersionRecord
         `innerJoin` table @VersionPlatform `on` (\(service :& vp) -> (VersionPlatformPkgId === VersionRecordPkgId) (vp :& service))
     where_ (pkgData ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
-    where_ (vp ^. VersionPlatformArch `in_` (valList $ Just <$> arches))
+    where_ (vp ^. VersionPlatformArch `in_` (valList arches))
     where_ (vp ^. VersionPlatformRam >=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
     where_ (pkgData ^. VersionRecordPkgId `in_` valList (PkgRecordKey <$> pkgs))
     pure (pkgData, vp)
@@ -221,19 +219,17 @@ getCategoriesFor pkg = fmap (fmap entityVal) $
 collateVersions ::
     MonadUnliftIO m =>
     ConduitT (Entity VersionRecord, Entity VersionPlatform) (PkgId, [(VersionRecord, VersionPlatform)]) (ReaderT SqlBackend m) ()
-collateVersions = awaitForever $ \(v0, _) -> do
+collateVersions = awaitForever $ \(v0, vp) -> do
     let pkg = unPkgRecordKey . versionRecordPkgId $ entityVal v0
-    minput <- await
     let pull = do
-            -- mvn <- await
-            case minput of
+            mvn <- await
+            case mvn of
                 Nothing -> pure Nothing
                 Just vn -> do
                     let pkg' = unPkgRecordKey . versionRecordPkgId $ entityVal $ fst vn
                     if pkg == pkg' then pure (Just vn) else leftover vn $> Nothing
     ls <- unfoldM pull
-    let withoutEntity = fmap (\a -> (entityVal $ fst a, entityVal $ snd a)) ls
-    yield (pkg, withoutEntity)
+    yield (pkg, bimap entityVal entityVal (v0, vp) : fmap (\(v, vp') -> (entityVal v, entityVal vp')) ls)
 
 
 getDependencyVersions ::
@@ -309,14 +305,14 @@ upsertPackageVersionPlatform maybeArches PackageManifest{..} = do
     let records = createVersionPlatformRecord now pkgId packageManifestVersion packageHardwareRam packageHardwareDevice <$> arches 
     repsertMany records
     where
-        createVersionPlatformRecord time id version ram device arch = ((VersionPlatformKey id version), VersionPlatform
+        createVersionPlatformRecord time id version ram device arch = ((VersionPlatformKey id version arch), VersionPlatform
             time
             (Just time)
             id
             version
             ram
             device
-            (Just arch))
+            arch)
 
 getVersionPlatform ::
     (Monad m, MonadIO m) =>
@@ -327,6 +323,6 @@ getVersionPlatform pkgId arches = do
     vps <- select $ do
         v <- from $ table @VersionPlatform
         where_ $ v ^. VersionPlatformPkgId ==. val pkgId
-        where_ (v ^. VersionPlatformArch `in_` (valList $ Just <$> arches))
+        where_ (v ^. VersionPlatformArch `in_` (valList arches))
         pure v
     pure $ entityVal <$> vps

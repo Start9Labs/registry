@@ -76,8 +76,8 @@ VersionPlatform
     versionNumber Version
     ram Int Maybe
     device PackageDevice Maybe
-    arch OsArch Maybe
-    Primary pkgId versionNumber
+    arch OsArch
+    Primary pkgId versionNumber arch
     deriving Eq
     deriving Show
 

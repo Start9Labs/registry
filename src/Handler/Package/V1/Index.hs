@@ -16,6 +16,7 @@ import Data.HashMap.Strict qualified as HM
 import Data.List (lookup)
 import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
+import qualified Data.MultiMap as MM
 import Database.Persist.Sql (SqlBackend)
 import Database.Queries (
     collateVersions,
@@ -68,7 +69,6 @@ import Startlude (
     readMaybe,
     snd,
     sortOn,
-    words,
     zipWith,
     zipWithM,
     ($),
@@ -93,8 +93,8 @@ import Yesod.Core (getsYesod)
 import Data.List (head)
 import Yesod (YesodRequest(reqGetParams))
 import Yesod (getRequest)
-import Data.Text (isInfixOf)
 import Data.List (last)
+import Data.Text (isPrefixOf)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
@@ -150,7 +150,7 @@ getPackageIndexR = do
                     .| mapC (second (filter (osPredicate . versionRecordOsVersion . fst)))
                     -- filter hardware device compatability                        
                     .| mapMC (\(b,c) -> do 
-                        l <- filterDevices hardwareDevices pkgArch c
+                        l <- filterDevices hardwareDevices c
                         pure (b, l)
                         )
                     -- filter out deprecated service versions after community registry release
@@ -198,13 +198,13 @@ getOsVersionCompat = do
         Nothing -> getOsVersionCompatQueryLegacy
     pure osVersion
 
-getHardwareDevicesQuery :: Handler (HM.HashMap Text Text)
+getHardwareDevicesQuery :: Handler (MM.MultiMap Text Text)
 getHardwareDevicesQuery = do
     allParams <- reqGetParams <$> getRequest
     -- [("hardware.device.processor","intel"),("hardware.device.display","led")]
-    let hardwareDeviceParams = filter (\(key, _) -> "hardware.device" `isInfixOf` key) allParams
+    let hardwareDeviceParams = filter (\(key, _) -> "hardware.device" `isPrefixOf` key) allParams
     -- [("processor","intel"),("display","led")]
-    pure $ HM.fromList $ first (last . words) <$> hardwareDeviceParams
+    pure $ MM.fromList $ first (last . T.splitOn ".") <$> hardwareDeviceParams
 
 getRamQuery :: Handler (Maybe Int)
 getRamQuery = parseQueryParam "hardware.ram" ((flip $ note . mappend "Invalid 'ram': ") =<< readMaybe)

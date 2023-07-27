@@ -62,7 +62,7 @@ import Startlude (
     ($),
     (.),
     (<$>),
-    (>>=), note, (=<<), catMaybes, all, encodeUtf8, toS, fmap
+    (>>=), note, (=<<), catMaybes, all, encodeUtf8, toS, fmap, traceM, show, trace, any, or, (++), IO, putStrLn, map
  )
 import UnliftIO (MonadUnliftIO)
 import Yesod (
@@ -86,6 +86,8 @@ import Lib.Types.Manifest
 import Text.Regex.TDFA ((=~))
 import Data.Aeson (eitherDecodeStrict)
 import Data.Bifunctor (Bifunctor(first))
+import qualified Data.MultiMap as MM
+import Startlude (bimap)
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other =
@@ -227,13 +229,14 @@ filterDeprecatedVersions communityVersion osPredicate vrs = do
         then filter (\v -> not $ isJust $ versionRecordDeprecatedAt v) $ vrs
         else vrs
 
-filterDevices :: (MonadUnliftIO m) => (HM.HashMap Text Text) -> [OsArch] -> [(VersionRecord, VersionPlatform)] -> m [VersionRecord]
-filterDevices hardwareDevices arches pkgRecords = do
+filterDevices :: (MonadUnliftIO m) => (MM.MultiMap Text Text) -> [(VersionRecord, VersionPlatform)] -> m [VersionRecord]
+filterDevices hardwareDevices pkgRecords = do
     pure $ catMaybes $ fmap (compareHd hardwareDevices) pkgRecords
     where
-        compareHd :: HM.HashMap Text Text -> (VersionRecord, VersionPlatform) -> Maybe VersionRecord
+        compareHd :: MM.MultiMap Text Text -> (VersionRecord, VersionPlatform) -> Maybe VersionRecord
         compareHd hd (vr, vp) = case versionPlatformDevice vp of
-            Nothing -> Just vr
+            Nothing -> do 
+                Just vr
             Just d -> if areRegexMatchesEqual hd d
                 then Just vr
                 else Nothing
@@ -241,11 +244,12 @@ filterDevices hardwareDevices arches pkgRecords = do
 regexMatch :: RegexPattern -> Text -> Bool
 regexMatch (RegexPattern pattern) text = text =~ pattern
 
-areRegexMatchesEqual :: HM.HashMap Text Text -> PackageDevice ->  Bool
+areRegexMatchesEqual :: MM.MultiMap Text Text -> PackageDevice ->  Bool
 areRegexMatchesEqual textMap (PackageDevice regexMap) =
-    all checkMatch (HM.toList regexMap)
+    any checkMatch (HM.toList regexMap)
   where
     checkMatch :: (Text, RegexPattern) -> Bool
-    checkMatch (key, regexPattern) = case HM.lookup key textMap of
-        Just text -> regexMatch regexPattern text
-        Nothing   -> False
+    checkMatch (key, regexPattern) = 
+        case MM.lookup key textMap of
+            _ : xs -> or $ regexMatch regexPattern <$> xs
+            []   -> False

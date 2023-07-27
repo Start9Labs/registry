@@ -16,7 +16,7 @@ import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version (..), satisfies)
 import Model (VersionRecord (..))
 import Network.HTTP.Types (status400)
-import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, nonEmpty, pure, ($), (.), (<$>), (<&>), (>>=), fst)
+import Startlude (Bool (True), Down (Down), Either (..), Generic, Maybe (..), NonEmpty, Show, const, encodeUtf8, filter, flip, nonEmpty, pure, ($), (.), (<$>), (<&>), (>>=), fst, traceM, show)
 import Yesod (ToContent (..), ToTypedContent (..), YesodPersist (runDB), YesodRequest (reqGetParams), getRequest, sendResponseStatus)
 import Handler.Util (filterDeprecatedVersions, getPkgArch, filterDevices)
 import Yesod.Core (getsYesod)
@@ -63,7 +63,7 @@ getVersionLatestR = do
                                     .| mapC (second (filter (osPredicate' . versionRecordOsVersion . fst)))
                                     -- filter hardware device compatability                        
                                     .| mapMC (\(b,c) -> do 
-                                        l <- filterDevices hardwareDevices pkgArch c
+                                        l <- filterDevices hardwareDevices c
                                         pure (b, l)
                                         )
                                     -- filter out deprecated service versions after community registry release
