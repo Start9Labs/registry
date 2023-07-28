@@ -11,8 +11,20 @@ import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
 import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (Version (..), VersionRange)
-import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), (<>))
+import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), (<>), String, map)
 import Data.Aeson
+    ( eitherDecode,
+      eitherDecodeStrict,
+      encode,
+      (.:),
+      (.:?),
+      withObject,
+      withText,
+      object,
+      FromJSON(parseJSON),
+      Value(Object),
+      KeyValue((.=)),
+      ToJSON(toJSON) )
 import Database.Persist.Sql ( PersistFieldSql(..) )
 import Database.Persist.Types (SqlType(..))
 import qualified Data.Text.Encoding as TE
@@ -20,6 +32,8 @@ import qualified Data.ByteString.Lazy as BL
 import Database.Persist (PersistValue(..))
 import Data.Either (Either(..))
 import Database.Persist.Class ( PersistField(..) )
+import Data.Aeson.Key ( fromText )
+import Data.Maybe (maybe)
 
 data PackageManifest = PackageManifest
     { packageManifestId :: !PkgId
@@ -56,11 +70,10 @@ instance FromJSON PackageManifest where
         let packageManifestAlerts = HM.fromList a
         packageManifestDependencies <- o .: "dependencies"
         packageManifestEosVersion <- o .: "eos-version"
-        packageHardwareDevice <- o .: "hardware-requirements" >>= (.: "device")
-        packageHardwareRam <- o .: "hardware-requirements" >>= (.: "ram")
-        packageHardwareArch <- o .: "hardware-requirements" >>= (.: "arch")
+        packageHardwareDevice <- o .:? "hardware-requirements" >>= maybe (pure Nothing) (.:? "device")
+        packageHardwareRam <- o .:? "hardware-requirements" >>= maybe (pure Nothing) (.:? "ram")
+        packageHardwareArch <- o .:? "hardware-requirements" >>= maybe (pure Nothing)  (.:? "arch")
         pure PackageManifest{..}
-
 
 data PackageDependency = PackageDependency
     { packageDependencyOptional :: !(Maybe Text)
@@ -85,7 +98,17 @@ instance ToJSON RegexPattern where
     toJSON (RegexPattern txt) = toJSON txt
 
 data PackageDevice = PackageDevice (HashMap Text RegexPattern)
-  deriving (Show, Eq, Generic, ToJSON, FromJSON)
+  deriving (Show, Eq)
+
+instance ToJSON PackageDevice where
+    toJSON (PackageDevice hashMap) = object (toJSONKeyValuePairs hashMap)
+      where
+        toJSONKeyValuePairs = map toKeyValue . HM.toList
+        toKeyValue (key, value) = fromText key .= toJSON value
+instance FromJSON PackageDevice where
+    parseJSON = withObject "PackageDevice" $ \obj -> do
+        hashMap <- parseJSON (Object obj)
+        pure $ PackageDevice hashMap
 
 instance PersistField PackageDevice where
     toPersistValue = PersistByteString . BL.toStrict . encode
@@ -100,25 +123,26 @@ data ServiceAlert = INSTALL | UNINSTALL | RESTORE | START | STOP
     deriving (Show, Eq, Generic, Hashable, Read)
 
 
--- >>> eitherDecode testManifest :: Either String PackageManifest
+-- >>> eitherDecodeStrict testManifest :: Either String PackageManifest
 testManifest :: ByteString
 testManifest =
     [i|{
   "id": "embassy-pages",
   "title": "Embassy Pages",
   "version": "0.1.3",
+  "eos-version": "0.3.0",
   "description": {
     "short": "Create Tor websites, hosted on your Embassy.",
     "long": "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites."
   },
-  "hardware-requirements" {
+  "hardware-requirements": {
     "device": {
       "processor": "^[A-Za-z0-9]+$",
       "display": "^[A-Za-z0-9]+$"
     },
-    "ram": "8000000000",
+    "ram": 8000000000,
     "arch": ["aarch64", "x86_64"]
-  }
+  },
   "assets": {
     "license": "LICENSE",
     "icon": "icon.png",

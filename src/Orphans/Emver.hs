@@ -35,8 +35,6 @@ import           Lib.Types.Emver                ( Version
 
 instance FromJSON Version where
     parseJSON = withText "Emver Version" $ either fail pure . Atto.parseOnly parseVersion
-instance ToJSON Version where
-    toJSON = String . show
 instance FromJSON VersionRange where
     parseJSON = withText "Emver" $ either fail pure . Atto.parseOnly parseRange
 instance ToJSON VersionRange where

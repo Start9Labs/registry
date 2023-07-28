@@ -73,7 +73,7 @@ import           Startlude                      ( ($)
                                                 )
 
 import           Control.Monad.Fail             ( fail )
-import           Data.Aeson                     ( ToJSONKey )
+import           Data.Aeson                     ( ToJSONKey, toJSON, Value(String))
 import qualified Data.Attoparsec.Text          as Atto
 import qualified Data.Text                     as T
 import           GHC.Base                       ( error )
@@ -81,9 +81,13 @@ import qualified GHC.Read                      as GHC
                                                 ( readsPrec )
 import qualified GHC.Show                      as GHC
                                                 ( show )
+import Dhall (Generic)
+import Data.Aeson.Types (ToJSON)
 
 -- | AppVersion is the core representation of the SemverQuad type.
-newtype Version = Version { unVersion :: (Word, Word, Word, Word) } deriving (Eq, Ord, ToJSONKey, Hashable)
+newtype Version = Version { unVersion :: (Word, Word, Word, Word) } deriving (Eq, Ord, Generic, ToJSONKey, Hashable)
+instance ToJSON Version where
+    toJSON = String . show
 instance Show Version where
     show (Version (x, y, z, q)) =
         let postfix = if q == 0 then "" else '.' : GHC.show q
