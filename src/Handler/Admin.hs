@@ -221,7 +221,7 @@ instance FromJSON IndexPkgReq where
     parseJSON = withObject "Index Package Request" $ \o -> do
         indexPkgReqId <- o .: "id"
         indexPkgReqVersion <- o .: "version"
-        indexPkgReqArches <- o .: "arches"
+        indexPkgReqArches <- o .:? "arches"
         pure IndexPkgReq{..}
 instance ToJSON IndexPkgReq where
     toJSON IndexPkgReq{..} = object ["id" .= indexPkgReqId, "version" .= indexPkgReqVersion]
