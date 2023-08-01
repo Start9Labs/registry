@@ -529,7 +529,7 @@ upload (Upload name mpkg shouldIndex arches) = do
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/upload")
             <&> setRequestHeaders [("accept", "text/plain")]
-            <&> setRequestResponseTimeout (responseTimeoutMicro (600_000_000)) -- 10 minutes
+            <&> setRequestResponseTimeout (responseTimeoutMicro (5_400_000_000)) -- 90 minutes
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     size <- getFileSize pkg
     bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
