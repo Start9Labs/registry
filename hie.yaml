@@ -7,4 +7,4 @@ cradle:
     - path: "./test"
       component: "start9-registry:test:start9-registry-test"
     - path: "./cli"
-      component: "start9-registry:exe:embassy-publish"
+      component: "start9-registry:exe:registry-publish"

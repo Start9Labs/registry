@@ -111,7 +111,7 @@ executables:
     when:
       - condition: flag(library-only)
         buildable: false
-  embassy-publish:
+  registry-publish:
     source-dirs: cli
     main: Main.hs
     ghc-options:

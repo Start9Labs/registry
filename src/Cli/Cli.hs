@@ -270,7 +270,7 @@ cfgLocation = getHomeDirectory <&> \d -> d </> ".embassy/publish.dhall"
 
 
 parseInit :: Parser (Maybe Shell)
-parseInit = subparser $ command "init" (info go $ progDesc "Initializes embassy-publish config") <> metavar "init"
+parseInit = subparser $ command "init" (info go $ progDesc "Initializes registry-publish config") <> metavar "init"
     where
         shells = [Bash, Fish, Zsh]
         go = headMay . fmap fst . filter snd . zip shells <$> for shells (switch . long . toS . toLower . show)
@@ -461,13 +461,13 @@ init sh = do
         for_ sh $ \case
             Bash -> do
                 let bashrc = home </> ".bashrc"
-                appendFile bashrc "source <(embassy-publish --bash-completion-script `which embassy-publish`)\n"
+                appendFile bashrc "source <(registry-publish --bash-completion-script `which registry-publish`)\n"
             Fish -> do
                 let fishrc = home </> ".config" </> "fish" </> "config.fish"
-                appendFile fishrc "source <(embassy-publish --fish-completion-script `which embassy-publish`)\n"
+                appendFile fishrc "source <(registry-publish --fish-completion-script `which registry-publish`)\n"
             Zsh -> do
-                let zshcompleter = "/usr/local/share/zsh/site-functions/_embassy-publish"
-                res <- readProcess "embassy-publish" ["--zsh-completion-script", "`which embassy-publish`"] ""
+                let zshcompleter = "/usr/local/share/zsh/site-functions/_registry-publish"
+                res <- readProcess "registry-publish" ["--zsh-completion-script", "`which registry-publish`"] ""
                 writeFile zshcompleter (toS res)
 
 
