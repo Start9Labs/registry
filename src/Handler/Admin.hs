@@ -119,7 +119,7 @@ import Startlude (
     (>),
     (&&),
     (||),
-    (<=)
+    (<=), traceM
  )
 import System.FilePath (
     (<.>),
@@ -235,7 +235,7 @@ postPkgIndexR = do
         liftIO (decodeFileStrict manifest)
             `orThrow` sendResponseText
                 status404
-                [i|Could not locate manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
+                [i|Could not decode manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
     pool <- getsYesod appConnPool
     runSqlPoolNoTransaction (upsertPackageVersion man) pool Nothing
     runSqlPool (upsertPackageVersionPlatform indexPkgReqArches man) pool

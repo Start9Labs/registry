@@ -11,7 +11,7 @@ import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
 import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (Version (..), VersionRange)
-import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), map, otherwise, show)
+import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), map, otherwise, show, String)
 import Data.Aeson
     ( eitherDecodeStrict,
       (.:),
@@ -20,7 +20,6 @@ import Data.Aeson
       withText,
       object,
       FromJSON(parseJSON),
-      Value(Object),
       KeyValue((.=)),
       ToJSON(toJSON) )
 import Database.Persist.Sql ( PersistFieldSql(..) )
@@ -31,6 +30,7 @@ import Data.Either (Either(..))
 import Database.Persist.Class ( PersistField(..) )
 import Data.Aeson.Key ( fromText )
 import Data.Maybe (maybe)
+import Data.Aeson.Types (Value(Object))
 
 
 data PackageManifest = PackageManifest
@@ -107,7 +107,7 @@ instance ToJSON PackageDevice where
         toKeyValue (key, value) = fromText key .= toJSON value
 instance FromJSON PackageDevice where
     parseJSON = withObject "PackageDevice" $ \obj -> do
-        hashMap <- obj .: ""
+        hashMap <- parseJSON (Object obj)
         pure $ PackageDevice hashMap
 
 instance PersistField PackageDevice where
@@ -125,6 +125,7 @@ data ServiceAlert = INSTALL | UNINSTALL | RESTORE | START | STOP
 
 
 -- >>> eitherDecodeStrict testManifest :: Either String PackageManifest
+-- Right (PackageManifest {packageManifestId = embassy-pages, packageManifestTitle = "Embassy Pages", packageManifestVersion = 0.1.3, packageManifestDescriptionLong = "Embassy Pages is a simple web server that uses directories inside File Browser to serve Tor websites.", packageManifestDescriptionShort = "Create Tor websites, hosted on your Embassy.", packageManifestReleaseNotes = "Upgrade to EmbassyOS v0.3.0", packageManifestIcon = Just "icon.png", packageManifestAlerts = fromList [(STOP,Nothing),(RESTORE,Nothing),(INSTALL,Nothing),(START,Nothing),(UNINSTALL,Nothing)], packageManifestDependencies = fromList [(filebrowser,PackageDependency {packageDependencyOptional = Nothing, packageDependencyVersion = >=2.14.1.1 <3.0.0, packageDependencyDescription = Just "Used to upload files to serve."})], packageManifestEosVersion = 0.3.0, packageHardwareDevice = Just (PackageDevice (fromList [("processor",RegexPattern "^[A-Za-z0-9]+$"),("display",RegexPattern "^[A-Za-z0-9]+$")])), packageHardwareRam = Just 8000000000, packageHardwareArch = Just [aarch64,x86_64]})
 testManifest :: ByteString
 testManifest =
     [i|{
