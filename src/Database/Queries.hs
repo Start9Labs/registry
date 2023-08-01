@@ -116,7 +116,7 @@ import Startlude (
     (<$>), Int,
  )
 import Database.Esqueleto.Experimental (isNothing)
-import Database.Esqueleto.Experimental ((>=.))
+import Database.Esqueleto.Experimental ((<=.))
 
 serviceQuerySource ::
     (MonadResource m, MonadIO m) =>
@@ -133,7 +133,7 @@ serviceQuerySource mCat query arches mRam = selectSource $ do
                 `innerJoin` table @PkgRecord `on` (\(v :& _ :& p) -> (PkgRecordId === VersionRecordPkgId) (p :& v))
             where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
             where_ (vp ^. VersionPlatformArch `in_` (valList arches))
-            where_ (vp ^. VersionPlatformRam >=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
+            where_ (vp ^. VersionPlatformRam <=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
             where_ (pr ^. PkgRecordHidden ==. val False)
             where_ $ queryInMetadata query service
             pure (service, vp)
@@ -150,7 +150,7 @@ serviceQuerySource mCat query arches mRam = selectSource $ do
             where_ $ cat ^. CategoryName ==. val category &&. queryInMetadata query service
             where_ (service ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
             where_ (vp ^. VersionPlatformArch `in_` (valList arches))
-            where_ (vp ^. VersionPlatformRam >=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
+            where_ (vp ^. VersionPlatformRam <=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
             where_ (pr ^. PkgRecordHidden ==. val False)
             pure (service, vp)
     orderBy
@@ -173,7 +173,7 @@ getPkgDataSource pkgs arches mRam = selectSource $ do
         `innerJoin` table @VersionPlatform `on` (\(service :& vp) -> (VersionPlatformPkgId === VersionRecordPkgId) (vp :& service))
     where_ (pkgData ^. VersionRecordNumber ==. vp ^. VersionPlatformVersionNumber)
     where_ (vp ^. VersionPlatformArch `in_` (valList arches))
-    where_ (vp ^. VersionPlatformRam >=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
+    where_ (vp ^. VersionPlatformRam <=. val mRam ||. isNothing (vp ^. VersionPlatformRam))
     where_ (pkgData ^. VersionRecordPkgId `in_` valList (PkgRecordKey <$> pkgs))
     pure (pkgData, vp)
 
