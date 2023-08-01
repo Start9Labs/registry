@@ -11,7 +11,7 @@ import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
 import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (Version (..), VersionRange)
-import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), (<>), String, map)
+import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), (<>), String, map, otherwise, show)
 import Data.Aeson
     ( eitherDecode,
       eitherDecodeStrict,
@@ -34,6 +34,7 @@ import Data.Either (Either(..))
 import Database.Persist.Class ( PersistField(..) )
 import Data.Aeson.Key ( fromText )
 import Data.Maybe (maybe)
+
 
 data PackageManifest = PackageManifest
     { packageManifestId :: !PkgId
@@ -101,7 +102,9 @@ data PackageDevice = PackageDevice (HashMap Text RegexPattern)
   deriving (Show, Eq)
 
 instance ToJSON PackageDevice where
-    toJSON (PackageDevice hashMap) = object (toJSONKeyValuePairs hashMap)
+    toJSON (PackageDevice hashMap)
+      | HM.null hashMap = object [] -- Empty object when the HashMap is empty
+      | otherwise = object (toJSONKeyValuePairs hashMap)
       where
         toJSONKeyValuePairs = map toKeyValue . HM.toList
         toKeyValue (key, value) = fromText key .= toJSON value
@@ -111,9 +114,9 @@ instance FromJSON PackageDevice where
         pure $ PackageDevice hashMap
 
 instance PersistField PackageDevice where
-    toPersistValue = PersistByteString . BL.toStrict . encode
-    fromPersistValue (PersistByteString bs) = case eitherDecode (BL.fromStrict bs) of
-        Left err -> Left $ TE.decodeUtf8 bs <> ": " <> T.pack err
+    toPersistValue = PersistText . T.pack . show . toJSON
+    fromPersistValue (PersistText t) = case eitherDecodeStrict (TE.encodeUtf8 t) of
+        Left err -> Left $ T.pack err
         Right val -> Right val
     fromPersistValue _ = Left "Invalid JSON value in database"
 
