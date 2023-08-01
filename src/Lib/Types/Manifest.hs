@@ -11,11 +11,9 @@ import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
 import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (Version (..), VersionRange)
-import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), (<>), String, map, otherwise, show)
+import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), map, otherwise, show)
 import Data.Aeson
-    ( eitherDecode,
-      eitherDecodeStrict,
-      encode,
+    ( eitherDecodeStrict,
       (.:),
       (.:?),
       withObject,
@@ -28,7 +26,6 @@ import Data.Aeson
 import Database.Persist.Sql ( PersistFieldSql(..) )
 import Database.Persist.Types (SqlType(..))
 import qualified Data.Text.Encoding as TE
-import qualified Data.ByteString.Lazy as BL
 import Database.Persist (PersistValue(..))
 import Data.Either (Either(..))
 import Database.Persist.Class ( PersistField(..) )
