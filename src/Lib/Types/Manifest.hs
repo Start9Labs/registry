@@ -107,10 +107,11 @@ instance ToJSON PackageDevice where
         toKeyValue (key, value) = fromText key .= toJSON value
 instance FromJSON PackageDevice where
     parseJSON = withObject "PackageDevice" $ \obj -> do
-        hashMap <- parseJSON (Object obj)
+        hashMap <- obj .: ""
         pure $ PackageDevice hashMap
 
 instance PersistField PackageDevice where
+    toPersistValue :: PackageDevice -> PersistValue
     toPersistValue = PersistText . T.pack . show . toJSON
     fromPersistValue (PersistText t) = case eitherDecodeStrict (TE.encodeUtf8 t) of
         Left err -> Left $ T.pack err
