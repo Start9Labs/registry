@@ -119,7 +119,7 @@ import Startlude (
     (>),
     (&&),
     (||),
-    (<=), traceM
+    (<=),
  )
 import System.FilePath (
     (<.>),

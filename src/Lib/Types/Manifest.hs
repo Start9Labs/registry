@@ -11,26 +11,24 @@ import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
 import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (Version (..), VersionRange)
-import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), map, otherwise, show, String)
+import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), fmap, String)
 import Data.Aeson
     ( eitherDecodeStrict,
       (.:),
       (.:?),
       withObject,
       withText,
-      object,
       FromJSON(parseJSON),
-      KeyValue((.=)),
       ToJSON(toJSON) )
 import Database.Persist.Sql ( PersistFieldSql(..) )
 import Database.Persist.Types (SqlType(..))
-import qualified Data.Text.Encoding as TE
 import Database.Persist (PersistValue(..))
 import Data.Either (Either(..))
 import Database.Persist.Class ( PersistField(..) )
-import Data.Aeson.Key ( fromText )
 import Data.Maybe (maybe)
-import Data.Aeson.Types (Value(Object))
+import qualified Data.ByteString as BS
+import Yesod.Persist (LiteralType(Escaped))
+import Data.Aeson.Encode.Pretty (encodePretty)
 
 
 data PackageManifest = PackageManifest
@@ -95,25 +93,17 @@ instance FromJSON RegexPattern where
 instance ToJSON RegexPattern where
     toJSON (RegexPattern txt) = toJSON txt
 
-data PackageDevice = PackageDevice (HashMap Text RegexPattern)
-  deriving (Show, Eq)
+newtype PackageDevice = PackageDevice { unPackageDevice :: HashMap Text RegexPattern }
+  deriving (Show, Eq, Generic)
 
-instance ToJSON PackageDevice where
-    toJSON (PackageDevice hashMap)
-      | HM.null hashMap = object [] -- Empty object when the HashMap is empty
-      | otherwise = object (toJSONKeyValuePairs hashMap)
-      where
-        toJSONKeyValuePairs = map toKeyValue . HM.toList
-        toKeyValue (key, value) = fromText key .= toJSON value
 instance FromJSON PackageDevice where
-    parseJSON = withObject "PackageDevice" $ \obj -> do
-        hashMap <- parseJSON (Object obj)
-        pure $ PackageDevice hashMap
+    parseJSON = fmap PackageDevice . parseJSON
+instance ToJSON PackageDevice where
+    toJSON = toJSON . unPackageDevice
 
 instance PersistField PackageDevice where
-    toPersistValue :: PackageDevice -> PersistValue
-    toPersistValue = PersistText . T.pack . show . toJSON
-    fromPersistValue (PersistText t) = case eitherDecodeStrict (TE.encodeUtf8 t) of
+    toPersistValue =  PersistLiteral_  Escaped . BS.toStrict . encodePretty
+    fromPersistValue (PersistLiteral t) = case eitherDecodeStrict t of
         Left err -> Left $ T.pack err
         Right val -> Right val
     fromPersistValue _ = Left "Invalid JSON value in database"

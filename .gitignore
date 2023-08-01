@@ -41,3 +41,4 @@ shell.nix
 testdata/
 lbuild.sh
 icon
+resources/apps/text-generation-webui
