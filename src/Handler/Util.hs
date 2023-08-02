@@ -252,5 +252,4 @@ areRegexMatchesEqual textMap (PackageDevice regexMap) =
     checkMatch :: (Text, RegexPattern) -> Bool
     checkMatch (key, regexPattern) = 
         case MM.lookup key textMap of
-            _ : xs -> or $ regexMatch regexPattern <$> xs
-            []   -> False
+            val -> or $ regexMatch regexPattern <$> val
