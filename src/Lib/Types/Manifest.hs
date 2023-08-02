@@ -19,7 +19,7 @@ import Data.Aeson
       withObject,
       withText,
       FromJSON(parseJSON),
-      ToJSON(toJSON) )
+      ToJSON(toJSON), encode )
 import Database.Persist.Sql ( PersistFieldSql(..) )
 import Database.Persist.Types (SqlType(..))
 import Database.Persist (PersistValue(..))
@@ -28,7 +28,6 @@ import Database.Persist.Class ( PersistField(..) )
 import Data.Maybe (maybe)
 import qualified Data.ByteString as BS
 import Yesod.Persist (LiteralType(Escaped))
-import Data.Aeson.Encode.Pretty (encodePretty)
 
 
 data PackageManifest = PackageManifest
@@ -102,11 +101,11 @@ instance ToJSON PackageDevice where
     toJSON = toJSON . unPackageDevice
 
 instance PersistField PackageDevice where
-    toPersistValue =  PersistLiteral_  Escaped . BS.toStrict . encodePretty
-    fromPersistValue (PersistLiteral t) = case eitherDecodeStrict t of
+    toPersistValue =  PersistLiteral_ Escaped . BS.toStrict . encode
+    fromPersistValue (PersistByteString t) = case eitherDecodeStrict t of
         Left err -> Left $ T.pack err
         Right val -> Right val
-    fromPersistValue _ = Left "Invalid JSON value in database"
+    fromPersistValue _ = Left "Invalid JSON value in database ERR"
 
 instance PersistFieldSql PackageDevice where
     sqlType _ = SqlOther "JSONB"
