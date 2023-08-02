@@ -11,7 +11,7 @@ import Data.String.Interpolate.IsString (i)
 import Data.Text qualified as T
 import Lib.Types.Core (PkgId, OsArch)
 import Lib.Types.Emver (Version (..), VersionRange)
-import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), fmap, String)
+import Startlude (ByteString, Eq, Generic, Hashable, Maybe (..), Monad ((>>=)), Read, Show, Text, for, pure, readMaybe, ($), Int, (.), fmap, String, null, (<$>), otherwise)
 import Data.Aeson
     ( eitherDecodeStrict,
       (.:),
@@ -28,6 +28,7 @@ import Database.Persist.Class ( PersistField(..) )
 import Data.Maybe (maybe)
 import qualified Data.ByteString as BS
 import Yesod.Persist (LiteralType(Escaped))
+import Data.Aeson.Types (Value(Object), Parser)
 
 
 data PackageManifest = PackageManifest
@@ -65,10 +66,16 @@ instance FromJSON PackageManifest where
         let packageManifestAlerts = HM.fromList a
         packageManifestDependencies <- o .: "dependencies"
         packageManifestEosVersion <- o .: "eos-version"
-        packageHardwareDevice <- o .:? "hardware-requirements" >>= maybe (pure Nothing) (.:? "device")
+        packageHardwareDevice <- o .:? "hardware-requirements" >>= maybe (pure Nothing) (.:? "devices") >>= parsePackageDevice
         packageHardwareRam <- o .:? "hardware-requirements" >>= maybe (pure Nothing) (.:? "ram")
         packageHardwareArch <- o .:? "hardware-requirements" >>= maybe (pure Nothing)  (.:? "arch")
         pure PackageManifest{..}
+
+parsePackageDevice :: Maybe Value -> Parser (Maybe PackageDevice)
+parsePackageDevice (Just (Object o))
+    | null o = pure Nothing
+    | otherwise = Just . PackageDevice <$> parseJSON (Object o)
+parsePackageDevice _ = pure Nothing
 
 data PackageDependency = PackageDependency
     { packageDependencyOptional :: !(Maybe Text)
