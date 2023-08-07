@@ -36,8 +36,9 @@ import Startlude (
     Text,
     UTCTime,
     Word32,
-    Bool
+    Bool,
  )
+import Lib.Types.Manifest (PackageDevice)
 
 
 share
@@ -72,6 +73,8 @@ VersionPlatform
     updatedAt UTCTime Maybe
     pkgId PkgRecordId
     versionNumber Version
+    ram Int Maybe
+    device PackageDevice Maybe
     arch OsArch
     Primary pkgId versionNumber arch
     deriving Eq

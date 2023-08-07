@@ -30,6 +30,7 @@ version
 **/*.s9pk
 **/appmgr
 0.3.0_features.md
+**/start-sdk
 **/embassy-sdk
 start9-registry.prof
 start9-registry.hp
@@ -40,3 +41,4 @@ shell.nix
 testdata/
 lbuild.sh
 icon
+resources/apps/text-generation-webui

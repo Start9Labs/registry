@@ -46,7 +46,7 @@ import Database.Persist (
     entityVal,
     insert_,
     selectList,
-    (=.),
+    (=.), PersistQueryWrite (deleteWhere),
  )
 import Database.Persist.Postgresql (runSqlPoolNoTransaction)
 import Database.Queries (upsertPackageVersion, upsertPackageVersionPlatform)
@@ -67,12 +67,12 @@ import Lib.PkgRepository (
     getPackages,
     getVersionsFor,
  )
-import Lib.Types.Core (PkgId (unPkgId))
+import Lib.Types.Core (PkgId (unPkgId), OsArch)
 import Lib.Types.Emver (Version (..))
 import Lib.Types.Manifest (PackageManifest (..))
 import Model (
     Category (..),
-    EntityField (EosHashHash),
+    EntityField (EosHashHash, VersionPlatformArch, VersionPlatformVersionNumber, VersionPlatformPkgId),
     EosHash (EosHash),
     Key (AdminKey, PkgRecordKey, VersionRecordKey),
     PkgCategory (PkgCategory),
@@ -119,7 +119,7 @@ import Startlude (
     (>),
     (&&),
     (||),
-    (<=)
+    (<=),
  )
 import System.FilePath (
     (<.>),
@@ -149,6 +149,7 @@ import Yesod.Auth (YesodAuth (maybeAuthId))
 import Yesod.Core.Types (JSONResponse (JSONResponse))
 import Database.Persist.Sql (runSqlPool)
 import Data.List (elem, length)
+import Database.Persist ((==.))
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
@@ -213,12 +214,14 @@ postEosUploadR = do
 data IndexPkgReq = IndexPkgReq
     { indexPkgReqId :: !PkgId
     , indexPkgReqVersion :: !Version
+    , indexPkgReqArches :: !(Maybe [OsArch])
     }
     deriving (Eq, Show)
 instance FromJSON IndexPkgReq where
     parseJSON = withObject "Index Package Request" $ \o -> do
         indexPkgReqId <- o .: "id"
         indexPkgReqVersion <- o .: "version"
+        indexPkgReqArches <- o .:? "arches"
         pure IndexPkgReq{..}
 instance ToJSON IndexPkgReq where
     toJSON IndexPkgReq{..} = object ["id" .= indexPkgReqId, "version" .= indexPkgReqVersion]
@@ -232,15 +235,22 @@ postPkgIndexR = do
         liftIO (decodeFileStrict manifest)
             `orThrow` sendResponseText
                 status404
-                [i|Could not locate manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
+                [i|Could not decode manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
     pool <- getsYesod appConnPool
     runSqlPoolNoTransaction (upsertPackageVersion man) pool Nothing
-    runSqlPool (upsertPackageVersionPlatform man) pool
+    runSqlPool (upsertPackageVersionPlatform indexPkgReqArches man) pool
 
 postPkgDeindexR :: Handler ()
 postPkgDeindexR = do
     IndexPkgReq{..} <- requireCheckJsonBody
-    runDB $ delete (VersionRecordKey (PkgRecordKey indexPkgReqId) indexPkgReqVersion)
+    case indexPkgReqArches of
+        Nothing -> runDB $ delete (VersionRecordKey (PkgRecordKey indexPkgReqId) indexPkgReqVersion)
+        Just a -> do
+            _ <- traverse (deleteArch indexPkgReqId indexPkgReqVersion) a
+            pure ()
+    where
+        deleteArch :: PkgId -> Version -> OsArch -> Handler ()
+        deleteArch id v a = runDB $ deleteWhere [VersionPlatformArch ==. a, VersionPlatformVersionNumber ==. v, VersionPlatformPkgId ==. PkgRecordKey id]
 
 
 newtype PackageList = PackageList {unPackageList :: HashMap PkgId [Version]}

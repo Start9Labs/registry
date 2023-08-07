@@ -27,7 +27,7 @@ import Startlude (
     show,
     symbolVal,
     ($),
-    (.), Enum,
+    (.), Enum, Applicative (..),
  )
 
 import Data.Aeson (
@@ -57,8 +57,8 @@ import Web.HttpApiData (
     ToHttpApiData,
  )
 import Yesod (PathPiece (..))
-import Prelude (read)
-
+import Prelude (read, fail)
+import Data.Aeson.Types (withText)
 
 newtype PkgId = PkgId {unPkgId :: Text}
     deriving stock (Eq, Ord)
@@ -112,7 +112,14 @@ instance PersistField OsArch where
 instance PersistFieldSql OsArch where
     sqlType _ = SqlString
 instance FromJSON OsArch where
-    parseJSON = parseJSON
+    parseJSON = withText "OsArch" $ \case
+        "x86_64"         -> pure X86_64
+        "aarch64"        -> pure AARCH64
+        "raspberrypi"    -> pure RASPBERRYPI
+        "rasberrypi"    -> pure RASPBERRYPI
+        "x86_64-nonfree" -> pure X86_64_NONFREE
+        "arch64-nonfree"-> pure AARCH64_NONFREE
+        _                -> fail "Invalid OsArch value"
 instance ToJSON OsArch where
     toJSON = toJSON
 

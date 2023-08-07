@@ -42,6 +42,7 @@ dependencies:
   - monad-logger
   - monad-logger-extras
   - monad-loops
+  - multimap
   - network-uri
   - optparse-applicative
   - parallel
@@ -53,6 +54,8 @@ dependencies:
   - process
   - protolude
   - rainbow
+  - regex-base
+  - regex-tdfa
   - shakespeare
   - template-haskell
   - terminal-progress-bar
@@ -63,6 +66,7 @@ dependencies:
   - unliftio
   - unordered-containers
   - unix
+  - utility-ht
   - wai
   - wai-cors
   - wai-extra
@@ -107,7 +111,7 @@ executables:
     when:
       - condition: flag(library-only)
         buildable: false
-  embassy-publish:
+  registry-publish:
     source-dirs: cli
     main: Main.hs
     ghc-options:

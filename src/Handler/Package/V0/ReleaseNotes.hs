@@ -11,7 +11,7 @@ import Data.Aeson.Key (fromText)
 import Data.HashMap.Strict (HashMap)
 import Data.HashMap.Strict qualified as HM
 import Foundation (Handler)
-import Handler.Package.V1.Index (getOsVersionQuery)
+import Handler.Package.V1.Index (getOsVersionCompat)
 import Handler.Util (fetchCompatiblePkgVersions)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version)
@@ -49,7 +49,7 @@ instance ToTypedContent ReleaseNotes where
 
 getReleaseNotesR :: PkgId -> Handler ReleaseNotes
 getReleaseNotesR pkg = do
-    osVersion <- getOsVersionQuery
+    osVersion <- getOsVersionCompat
     osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     pure $ constructReleaseNotesApiRes osCompatibleVersions
     where

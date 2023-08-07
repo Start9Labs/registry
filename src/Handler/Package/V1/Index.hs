@@ -16,6 +16,7 @@ import Data.HashMap.Strict qualified as HM
 import Data.List (lookup)
 import Data.List.NonEmpty qualified as NE
 import Data.Text qualified as T
+import qualified Data.MultiMap as MM
 import Database.Persist.Sql (SqlBackend)
 import Database.Queries (
     collateVersions,
@@ -28,7 +29,7 @@ import Database.Queries (
 import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings))
 import Handler.Package.Api (DependencyRes (..), PackageListRes (..), PackageRes (..))
 import Handler.Types.Api (ApiVersion (..))
-import Handler.Util (basicRender, parseQueryParam, getArchQuery, filterDeprecatedVersions)
+import Handler.Util (basicRender, parseQueryParam, filterDeprecatedVersions, filterDevices, getPkgArch)
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
 import Lib.Types.Core (PkgId)
 import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies, (<||))
@@ -90,6 +91,10 @@ import Data.Tuple (fst)
 import Database.Persist.Postgresql (entityVal)
 import Yesod.Core (getsYesod)
 import Data.List (head)
+import Yesod (YesodRequest(reqGetParams))
+import Yesod (getRequest)
+import Data.List (last)
+import Data.Text (isPrefixOf)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
@@ -115,46 +120,52 @@ data PackageMetadata = PackageMetadata
 getPackageIndexR :: Handler PackageListRes
 getPackageIndexR = do
     osPredicate <-
-        getOsVersionQuery <&> \case
+        getOsVersionCompat <&> \case
             Nothing -> const True
             Just v -> flip satisfies v
-    osArch <- getArchQuery
+    pkgArch <- getPkgArch
+    ram <- getRamQuery
+    hardwareDevices <- getHardwareDevicesQuery
     communityVersion <- getsYesod $ communityVersion . appSettings
-    do
-        pkgIds <- getPkgIdsQuery
-        category <- getCategoryQuery
-        page <- fromMaybe 1 <$> getPageQuery
-        limit' <- fromMaybe 20 <$> getLimitQuery
-        query <- T.strip . fromMaybe "" <$> lookupGetParam "query"
-        let (source, packageRanges) = case pkgIds of
-                Nothing -> (serviceQuerySource category query osArch, const Any)
-                Just packages ->
-                    let s = getPkgDataSource (packageReqId <$> packages) osArch
-                        r = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages)
-                    in (s, r)
-        filteredPackages <-
-            runDB $
-                runConduit $
-                    source
-                        -- group conduit pipeline by pkg id
-                        .| collateVersions
-                        -- filter out versions of apps that are incompatible with the OS predicate
-                        .| mapC (second (filter (osPredicate . versionRecordOsVersion)))
-                        -- filter out deprecated service versions after community registry release
-                        .| mapC (second (filterDeprecatedVersions communityVersion osPredicate))                        
-                        -- prune empty version sets
-                        .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
-                        -- grab the latest matching version if it exists
-                        .| concatMapC (\(a, b) -> (a,b,) <$> (selectLatestVersionFromSpec packageRanges b))
-                        -- construct
-                        .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> getCategoriesFor a)
-                        -- pages start at 1 for some reason. TODO: make pages start at 0
-                        .| (dropC (limit' * (page - 1)) *> takeC limit')
-                        .| sinkList
+    pkgIds <- getPkgIdsQuery
+    category <- getCategoryQuery
+    page <- fromMaybe 1 <$> getPageQuery
+    limit' <- fromMaybe 20 <$> getLimitQuery
+    query <- T.strip . fromMaybe "" <$> lookupGetParam "query"
+    let (source, packageRanges) = case pkgIds of
+            Nothing -> (serviceQuerySource category query pkgArch ram, const Any)
+            Just packages ->
+                let s = getPkgDataSource (packageReqId <$> packages) pkgArch ram
+                    r = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages)
+                in (s, r)
+    filteredPackages <-
+        runDB $
+            runConduit $
+                source
+                    -- group conduit pipeline by pkg id
+                    .| collateVersions
+                    -- filter out versions of apps that are incompatible with the OS predicate
+                    .| mapC (second (filter (osPredicate . versionRecordOsVersion . fst)))
+                    -- filter hardware device compatability                        
+                    .| mapMC (\(b,c) -> do 
+                        l <- filterDevices hardwareDevices c
+                        pure (b, l)
+                        )
+                    -- filter out deprecated service versions after community registry release
+                    .| mapC (second (filterDeprecatedVersions communityVersion osPredicate))
+                    -- prune empty version sets
+                    .| concatMapC (\(pkgId, vs) -> (pkgId,) <$> nonEmpty vs)
+                    -- grab the latest matching version if it exists
+                    .| concatMapC (\(a, b) -> (a,b,) <$> (selectLatestVersionFromSpec packageRanges b))
+                    -- construct
+                    .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> getCategoriesFor a)
+                    -- pages start at 1 for some reason. TODO: make pages start at 0
+                    .| (dropC (limit' * (page - 1)) *> takeC limit')
+                    .| sinkList
 
-        -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
-        pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
-        PackageListRes <$> runConcurrently (zipWithM (Concurrently .* constructPackageListApiRes) filteredPackages pkgsWithDependencies)
+    -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
+    pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
+    PackageListRes <$> runConcurrently (zipWithM (Concurrently .* constructPackageListApiRes) filteredPackages pkgsWithDependencies)
 
 getPkgIdsQuery :: Handler (Maybe [PackageReq])
 getPkgIdsQuery = parseQueryParam "ids" (first toS . eitherDecodeStrict . encodeUtf8)
@@ -172,9 +183,29 @@ getLimitQuery :: Handler (Maybe Int)
 getLimitQuery = parseQueryParam "per-page" ((flip $ note . mappend "Invalid 'per-page': ") =<< readMaybe)
 
 
-getOsVersionQuery :: Handler (Maybe VersionRange)
-getOsVersionQuery = parseQueryParam "eos-version-compat" (first toS . Atto.parseOnly parseRange)
+getOsVersionCompatQueryLegacy :: Handler (Maybe VersionRange)
+getOsVersionCompatQueryLegacy = parseQueryParam "eos-version-compat" (first toS . Atto.parseOnly parseRange)
 
+getOsVersionCompatQuery :: Handler (Maybe VersionRange)
+getOsVersionCompatQuery = parseQueryParam "os.compat" (first toS . Atto.parseOnly parseRange)
+
+getOsVersionCompat :: Handler (Maybe VersionRange)
+getOsVersionCompat = do
+    osVersion <- getOsVersionCompatQuery >>= \case
+        Just a -> pure $ Just a
+        Nothing -> getOsVersionCompatQueryLegacy
+    pure osVersion
+
+getHardwareDevicesQuery :: Handler (MM.MultiMap Text Text)
+getHardwareDevicesQuery = do
+    allParams <- reqGetParams <$> getRequest
+    -- [("hardware.device.processor","intel"),("hardware.device.display","led")]
+    let hardwareDeviceParams = filter (\(key, _) -> "hardware.device" `isPrefixOf` key) allParams
+    -- [("processor","intel"),("display","led")]
+    pure $ MM.fromList $ first (last . T.splitOn ".") <$> hardwareDeviceParams
+
+getRamQuery :: Handler (Maybe Int)
+getRamQuery = parseQueryParam "hardware.ram" ((flip $ note . mappend "Invalid 'ram': ") =<< readMaybe)
 
 getPackageDependencies ::
     (MonadIO m, MonadLogger m, MonadResource m, Has PkgRepo r, MonadReader r m) =>

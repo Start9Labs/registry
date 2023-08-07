@@ -70,7 +70,7 @@ import Handler.Admin (
     PackageList (..),
  )
 import Lib.External.AppMgr (sourceManifest)
-import Lib.Types.Core (PkgId (..))
+import Lib.Types.Core (PkgId (..), OsArch)
 import Lib.Types.Emver (Version (..))
 import Lib.Types.Manifest (PackageManifest (..))
 import Network.HTTP.Client.Conduit (
@@ -109,7 +109,6 @@ import Options.Applicative (
     help,
     helper,
     info,
-    liftA3,
     long,
     mappend,
     metavar,
@@ -205,12 +204,16 @@ import Yesod (
     logError,
     logWarn,
  )
+import Prelude (read)
+import Options.Applicative (some)
+import Control.Applicative.HT (lift4)
 
 
 data Upload = Upload
     { publishRepoName :: !String
     , publishPkg :: !(Maybe FilePath)
     , publishIndex :: !Bool
+    , publishArches :: !(Maybe [OsArch])
     }
     deriving (Show)
 
@@ -253,7 +256,7 @@ data Command
     | CmdRegDel !String
     | CmdRegList
     | CmdUpload !Upload
-    | CmdIndex !String !String !Version !Bool
+    | CmdIndex !String !String !Version !(Maybe [OsArch]) !Bool
     | CmdListUnindexed !String
     | CmdCatAdd !String !String !(Maybe String) !(Maybe Int)
     | CmdCatDel !String !String
@@ -267,7 +270,7 @@ cfgLocation = getHomeDirectory <&> \d -> d </> ".embassy/publish.dhall"
 
 
 parseInit :: Parser (Maybe Shell)
-parseInit = subparser $ command "init" (info go $ progDesc "Initializes embassy-publish config") <> metavar "init"
+parseInit = subparser $ command "init" (info go $ progDesc "Initializes registry-publish config") <> metavar "init"
     where
         shells = [Bash, Fish, Zsh]
         go = headMay . fmap fst . filter snd . zip shells <$> for shells (switch . long . toS . toLower . show)
@@ -281,7 +284,7 @@ parsePublish =
                 "upload"
     where
         go =
-            liftA3
+            lift4
                 Upload
                 (strOption (short 't' <> long "target" <> metavar "NAME" <> help "Name of registry in publish.dhall"))
                 ( optional $
@@ -289,7 +292,17 @@ parsePublish =
                         (short 'p' <> long "package" <> metavar "S9PK" <> help "File path of the package to publish")
                 )
                 (switch (short 'i' <> long "index" <> help "Index the package after uploading"))
+                ( optional $
+                    some parseArch 
+                )
 
+parseArch :: Parser OsArch
+parseArch = read <$> strOption
+    ( short 'a'
+    <> long "arches"
+    <> metavar "ARCHES"
+    <> help "Single element of package architectures type. Options include x86_64 and aarch64."
+    )
 
 parseRepoAdd :: Parser Command
 parseRepoAdd = subparser $ command "add" (info go $ progDesc "Add a registry to your config") <> metavar "add"
@@ -349,6 +362,7 @@ parseIndexHelper b =
         <$> strOption (short 't' <> long "target" <> metavar "REGISTRY_NAME")
         <*> strArgument (metavar "PKG")
         <*> strArgument (metavar "VERSION")
+        <*> optional (some parseArch)
         <*> pure b
 
 
@@ -430,7 +444,7 @@ cliMain =
         CmdRegDel s -> regRm s
         CmdRegList -> regLs
         CmdUpload up -> upload up
-        CmdIndex name pkg v shouldIndex -> if shouldIndex then index name pkg v else deindex name pkg v
+        CmdIndex name pkg v arches shouldIndex -> if shouldIndex then index name pkg v arches else deindex name pkg v arches
         CmdListUnindexed name -> listUnindexed name
         CmdCatAdd target cat desc pri -> catAdd target cat desc pri
         CmdCatDel target cat -> catDel target cat
@@ -447,13 +461,13 @@ init sh = do
         for_ sh $ \case
             Bash -> do
                 let bashrc = home </> ".bashrc"
-                appendFile bashrc "source <(embassy-publish --bash-completion-script `which embassy-publish`)\n"
+                appendFile bashrc "source <(registry-publish --bash-completion-script `which registry-publish`)\n"
             Fish -> do
                 let fishrc = home </> ".config" </> "fish" </> "config.fish"
-                appendFile fishrc "source <(embassy-publish --fish-completion-script `which embassy-publish`)\n"
+                appendFile fishrc "source <(registry-publish --fish-completion-script `which registry-publish`)\n"
             Zsh -> do
-                let zshcompleter = "/usr/local/share/zsh/site-functions/_embassy-publish"
-                res <- readProcess "embassy-publish" ["--zsh-completion-script", "`which embassy-publish`"] ""
+                let zshcompleter = "/usr/local/share/zsh/site-functions/_registry-publish"
+                res <- readProcess "registry-publish" ["--zsh-completion-script", "`which registry-publish`"] ""
                 writeFile zshcompleter (toS res)
 
 
@@ -495,7 +509,7 @@ regLs = do
 
 
 upload :: Upload -> IO ()
-upload (Upload name mpkg shouldIndex) = do
+upload (Upload name mpkg shouldIndex arches) = do
     PublishCfgRepo{..} <- findNameInCfg name
     pkg <- case mpkg of
         Nothing -> do
@@ -515,7 +529,7 @@ upload (Upload name mpkg shouldIndex) = do
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/upload")
             <&> setRequestHeaders [("accept", "text/plain")]
-            <&> setRequestResponseTimeout (responseTimeoutMicro (600_000_000)) -- 10 minutes
+            <&> setRequestResponseTimeout (responseTimeoutMicro (5_400_000_000)) -- 90 minutes
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     size <- getFileSize pkg
     bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
@@ -539,18 +553,18 @@ upload (Upload name mpkg shouldIndex) = do
                 exitWith $ ExitFailure 1
             Right a -> pure a
         let pkgId = toS $ unPkgId packageManifestId
-        index name pkgId packageManifestVersion
+        index name pkgId packageManifestVersion arches
         putChunkLn $ fromString ("Successfully indexed " <> pkgId <> "@" <> show packageManifestVersion) & fore green
     where
         sfs2prog :: StreamFileStatus -> Progress ()
         sfs2prog StreamFileStatus{..} = Progress (fromIntegral readSoFar) (fromIntegral fileSize) ()
 
-index :: String -> String -> Version -> IO ()
-index name pkg v = performHttp name "POST" [i|/admin/v0/index|] (IndexPkgReq (PkgId $ toS pkg) v)
+index :: String -> String -> Version -> (Maybe [OsArch]) -> IO ()
+index name pkg v arches = performHttp name "POST" [i|/admin/v0/index|] (IndexPkgReq (PkgId $ toS pkg) v arches)
 
 
-deindex :: String -> String -> Version -> IO ()
-deindex name pkg v = performHttp name "POST" [i|/admin/v0/deindex|] (IndexPkgReq (PkgId $ toS pkg) v)
+deindex :: String -> String -> Version -> (Maybe [OsArch]) -> IO ()
+deindex name pkg v arches = performHttp name "POST" [i|/admin/v0/deindex|] (IndexPkgReq (PkgId $ toS pkg) v arches)
 
 
 listUnindexed :: String -> IO ()

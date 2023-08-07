@@ -16,6 +16,13 @@
   "build": [
     "make"
   ],
+    "hardware-requirements": {
+    "device": {
+      "processor": "intel",
+      "display": "r'^{.*}$'"
+    },
+    "ram": "8"
+  },
   "release-notes": "Upgrade to EmbassyOS v0.3.0",
   "license": "mit",
   "wrapper-repo": "https://github.com/Start9Labs/lnd-wrapper",

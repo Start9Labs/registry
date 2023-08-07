@@ -19,8 +19,8 @@ import Database.Esqueleto.Experimental (
  )
 import Foundation (Handler)
 import Handler.Package.V0.ReleaseNotes (ReleaseNotes (..))
-import Handler.Util (queryParamAs, getArchQuery)
-import Lib.Types.Emver (Version (unVersion), Version(Version), parseVersion)
+import Handler.Util (getOsArch, getOsVersion)
+import Lib.Types.Emver (Version (unVersion), Version(Version))
 import Model (EntityField (..), OsVersion (..))
 import Orphans.Emver ()
 import Startlude (Down (..), Eq, Generic, Maybe (..), Ord ((<)), Text, filter, fst, head, pure, sortOn, ($), (&&&), (.), (<$>), (<&>), (<=))
@@ -48,9 +48,9 @@ instance ToTypedContent EosRes where
 
 getEosVersionR :: Handler (JSONResponse (Maybe EosRes))
 getEosVersionR = do
-    currentEosVersion <- fromMaybe Version { unVersion = (0,3,0,0) } <$> queryParamAs "eos-version" parseVersion
+    currentEosVersion <-  fromMaybe Version { unVersion = (0,3,0,0) } <$> getOsVersion
     -- defaults to raspberrypi for those on OS versions where we did not send this param yet
-    arch <- fromMaybe RASPBERRYPI <$> getArchQuery 
+    arch <- fromMaybe RASPBERRYPI <$> getOsArch 
     allEosVersions <- runDB $
         select $ do
             vers <- from $ table @OsVersion

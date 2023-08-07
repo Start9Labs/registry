@@ -10,7 +10,7 @@ import Data.String.Interpolate.IsString (
     i,
  )
 import Foundation (Handler)
-import Handler.Package.V1.Index (getOsVersionQuery)
+import Handler.Package.V1.Index (getOsVersionCompat)
 import Handler.Util (
     fetchCompatiblePkgVersions,
     getVersionSpecFromQuery,
@@ -41,7 +41,7 @@ import Yesod (
 
 getLicenseR :: PkgId -> Handler TypedContent
 getLicenseR pkg = do
-    osVersion <- getOsVersionQuery
+    osVersion <- getOsVersionCompat
     osCompatibleVersions <- fetchCompatiblePkgVersions osVersion pkg
     spec <- getVersionSpecFromQuery
     preferMin <- versionPriorityFromQueryIsMin
