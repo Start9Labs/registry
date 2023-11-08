@@ -186,7 +186,7 @@ import Handler.Admin (
     postPkgUploadR,
  )
 import Handler.Eos (getEosR, getEosVersionR)
-import Handler.Root(getRootR)
+import Handler.Root(getRootR, getMarketplaceR)
 import Handler.Package
 import Lib.Ssl (
     doesSslNeedRenew,
