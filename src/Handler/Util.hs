@@ -165,10 +165,10 @@ tickleMAU = do
     lookupGetParam "server-id" >>= \case
         Nothing -> pure ()
         Just sid -> do
-            currentEosVersion <- queryParamAs "eos-version" parseVersion
+            currentOsVersion <- getOsVersion
             arch <- getOsArch
             now <- liftIO getCurrentTime
-            void $ liftHandler $ runDB $ insertRecord $ UserActivity now sid currentEosVersion arch
+            void $ liftHandler $ runDB $ insertRecord $ UserActivity now sid currentOsVersion arch
 
 
 fetchCompatiblePkgVersions :: Maybe VersionRange -> PkgId -> Handler [VersionRecord]
