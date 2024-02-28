@@ -25,30 +25,30 @@ cd registry
 
 ### Set up registry-publish tool
 
-- run `apt install libgmp-dev zlib1g-dev libtinfo-dev libpq-dev` (on macOS `brew install libmpd zlib-ng libtiff`)
-- run `stack install` (recommended: include the installation path in your $PATH after running this command)
-- update your shell to include the installation path of the copied executables from `stack install`. i.e. `nano ~./zshrc` add `export PATH=$PATH:/your/path/here` to zshrc; save and exit nano. Run `source ~/.zshrc`
-- run `registry-publish init --bash` (or --zsh / --fish depending on your preferred shell)
-- run `registry-publish reg add -l <URL> -n <NAME> -u <USER> -p <PASS>` (include https:// in your URL)
-- take the hash that is emitted by this command and submit it to the registry owner
+1. run `apt install libgmp-dev zlib1g-dev libtinfo-dev libpq-dev` (on macOS `brew install libmpd zlib-ng libtiff`)
+1. run `stack install` (recommended: include the installation path in your $PATH after running this command)
+1. update your shell to include the installation path of the copied executables from `stack install`. i.e. `nano ~./zshrc` add `export PATH=$PATH:/your/path/here` to zshrc; save and exit nano. Run `source ~/.zshrc`
+1. run `registry-publish init --bash` (or --zsh / --fish depending on your preferred shell)
+1. run `registry-publish reg add -l <URL> -n <NAME> -u <USER> -p <PASS>` (include https:// in your URL)
+1. take the hash that is emitted by this command and submit it to the registry owner
 
 ### Setting up a registry dev environment
 
-- set up a local database in postgresql
-- set the PG_DATABASE environment variable to that database
-- set PG_USER to the owner of that database
-- set PG_PASSWORD to the password for that user
-- set SSL_AUTO to false
-- set RESOURCES_PATH to an empty directory you wish to use as your package repository
-- install `start-sdk`
-- set STATIC_BIN to the path that contains `start-sdk`
+1. set up a local database in postgresql
+1. set the PG_DATABASE environment variable to that database
+1. set PG_USER to the owner of that database
+1. set PG_PASSWORD to the password for that user
+1. set SSL_AUTO to false
+1. set RESOURCES_PATH to an empty directory you wish to use as your package repository
+1. install `start-sdk`
+1. set STATIC_BIN to the path that contains `start-sdk`
 
 ## APIs
 
 ### EOS
 
 This API is exclusive to Start9, we do not publish this as part of the standard Marketplace protocol because Start9 does
-not intend for other organizations to host prebuilt OS binaries per the Non Commercial License
+not intend for other organizations to host prebuilt OS binaries
 
 ### Package
 
