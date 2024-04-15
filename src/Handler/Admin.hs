@@ -151,6 +151,22 @@ import Database.Persist.Sql (runSqlPool)
 import Data.List (elem, length)
 import Database.Persist ((==.))
 import Network.HTTP.Types.Status (status401)
+import Network.HTTP.Types (status200)
+
+postCheckPkgAuthR :: PkgId -> Handler ()
+postCheckPkgAuthR pkgId = do
+    whitelist <- getsYesod $ whitelist . appSettings
+    maybeAuthId >>= \case
+        Nothing -> do
+            sendResponseText status401 "User not an authorized admin."
+        Just name -> do
+            if ((length whitelist > 0 && (pkgId `elem` whitelist)) || length whitelist <= 0)
+                then do
+                    authorized <- checkAdminAllowedPkgs pkgId name
+                    if authorized
+                        then sendResponseText status200 "User authorized to upload this package."
+                        else sendResponseText status401 "User not authorized to upload this package."
+                else sendResponseText status500 "Package does not belong on this registry."
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
@@ -179,7 +195,7 @@ postPkgUploadR = do
             maybeAuthId >>= \case
                 Nothing -> do
                     $logError
-                        "The Impossible has happened, an unauthenticated user has managed to upload a pacakge to this registry"
+                        "Impossible: an unauthenticated user has managed to upload a pacakge to this registry."
                     pure ()
                 Just name -> do
                     authorized <- checkAdminAllowedPkgs packageManifestId name
@@ -238,7 +254,7 @@ postPkgIndexR = do
     maybeAuthId >>= \case
         Nothing -> do
             $logError
-                "An unauthenticated user has accessed the index endpoint."
+                "Impossible: an unauthenticated user has accessed the index endpoint."
             pure ()
         Just name -> do
             authorized <- checkAdminAllowedPkgs indexPkgReqId name
@@ -261,7 +277,7 @@ postPkgDeindexR = do
     maybeAuthId >>= \case
         Nothing -> do
             $logError
-                "An unauthenticated user has accessed the deindex endpoint."
+                "Impossible: an unauthenticated user has accessed the deindex endpoint."
             pure ()
         Just name -> do
             authorized <- checkAdminAllowedPkgs indexPkgReqId name
@@ -327,7 +343,7 @@ postPkgCategorizeR cat pkg = do
     maybeAuthId >>= \case
         Nothing -> do
             $logError
-                "An unauthenticated user has accessed the categorize endpoint."
+                "Impossible: an unauthenticated user has accessed the categorize endpoint."
             pure ()
         Just name -> do
             authorized <- checkAdminAllowedPkgs pkg name
@@ -345,6 +361,16 @@ postPkgCategorizeR cat pkg = do
                 else sendResponseText status401 "User not authorized to categorize this package."
 
 deletePkgCategorizeR :: Text -> PkgId -> Handler ()
-deletePkgCategorizeR cat pkg = runDB $ do
-    catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
-    deleteBy (UniquePkgCategory (PkgRecordKey pkg) (entityKey catEnt))
+deletePkgCategorizeR cat pkg = do
+    maybeAuthId >>= \case
+        Nothing -> do
+            $logError
+                "Impossible: an unauthenticated user has accessed the uncategorize endpoint."
+            pure ()
+        Just name -> do
+            authorized <- checkAdminAllowedPkgs pkg name
+            if authorized
+                then runDB $ do
+                    catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
+                    deleteBy (UniquePkgCategory (PkgRecordKey pkg) (entityKey catEnt))
+                else sendResponseText status401 "User not authorized to uncategorize this package."

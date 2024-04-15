@@ -184,6 +184,7 @@ import Handler.Admin (
     postPkgDeindexR,
     postPkgIndexR,
     postPkgUploadR,
+    postCheckPkgAuthR
  )
 import Handler.Eos (getEosR, getEosVersionR)
 import Handler.Root(getRootR, getMarketplaceR)

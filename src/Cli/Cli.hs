@@ -53,7 +53,7 @@ import Data.HashMap.Internal.Strict (
 import Data.String.Interpolate.IsString (
     i,
  )
-import Data.Text (toLower)
+import Data.Text (toLower, splitOn)
 import Dhall (
     Encoder (embed),
     FromDhall (..),
@@ -207,6 +207,8 @@ import Yesod (
 import Prelude (read)
 import Options.Applicative (some)
 import Control.Applicative.HT (lift4)
+import Data.List (last)
+import Data.List (head)
 
 
 data Upload = Upload
@@ -526,6 +528,20 @@ upload (Upload name mpkg shouldIndex arches) = do
                     for_ pkgs $ \f -> $logWarn (fromString f)
                     exitWith $ ExitFailure 1
         Just s -> pure s
+    let pkgId_ = head $ splitOn "." $ last $ splitOn "/" $ show pkg
+    putChunkLn $ fromString ("Checking permissions...") & fore green
+    pkgAuthBody <-
+        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/auth/" <> show pkgId_)
+            <&> setRequestHeaders [("accept", "text/plain")]
+            <&> setRequestResponseTimeout (responseTimeoutMicro (90_000_000))
+            <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
+    manager <- newTlsManager
+    pkgAuthRes <- runReaderT (httpLbs pkgAuthBody) manager
+    if getResponseStatus pkgAuthRes == status200
+        then pure () -- no output is successful
+        else do
+            $logError (decodeUtf8 . LB.toStrict $ getResponseBody pkgAuthRes)
+            exitWith $ ExitFailure 1
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/upload")
             <&> setRequestHeaders [("accept", "text/plain")]
@@ -535,7 +551,6 @@ upload (Upload name mpkg shouldIndex arches) = do
     bar <- newProgressBar defStyle 30 (Progress 0 (fromIntegral size) ())
     body <- observedStreamFile (updateProgress bar . const . sfs2prog) pkg
     let withBody = setRequestBody body noBody
-    manager <- newTlsManager
     res <- runReaderT (httpLbs withBody) manager
     if getResponseStatus res == status200
         then -- no output is successful
