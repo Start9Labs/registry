@@ -79,7 +79,7 @@ import Model (
     Unique (UniqueName, UniquePkgCategory),
     Upload (..),
     VersionRecord (versionRecordNumber, versionRecordPkgId),
-    unPkgRecordKey,
+    unPkgRecordKey, AdminPkgs (AdminPkgs),
  )
 import Network.HTTP.Types (
     status400,
@@ -162,7 +162,7 @@ postCheckPkgAuthR pkgId = do
         Just name -> do
             if ((length whitelist > 0 && (pkgId `elem` whitelist)) || length whitelist <= 0)
                 then do
-                    authorized <- checkAdminAllowedPkgs pkgId name
+                    (authorized, _) <- checkAdminAllowedPkgs pkgId name
                     if authorized
                         then sendResponseText status200 "User authorized to upload this package."
                         else sendResponseText status401 "User not authorized to upload this package."
@@ -198,11 +198,15 @@ postPkgUploadR = do
                         "Impossible: an unauthenticated user has managed to upload a pacakge to this registry."
                     pure ()
                 Just name -> do
-                    authorized <- checkAdminAllowedPkgs packageManifestId name
+                    (authorized, newPkg) <- checkAdminAllowedPkgs packageManifestId name
                     if authorized
                         then do
                             now <- liftIO getCurrentTime
                             runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
+                            -- if pkg is whitelisted and a new upload, add as authorized for this admin user
+                            if (newPkg) 
+                                then runDB $ insert_ (AdminPkgs (AdminKey name) (PkgRecordKey packageManifestId))
+                                else pure ()
                         else sendResponseText status401 "User not authorized to upload this package."
         else sendResponseText status500 "Package does not belong on this registry."
     where
@@ -257,7 +261,7 @@ postPkgIndexR = do
                 "Impossible: an unauthenticated user has accessed the index endpoint."
             pure ()
         Just name -> do
-            authorized <- checkAdminAllowedPkgs indexPkgReqId name
+            (authorized, _) <- checkAdminAllowedPkgs indexPkgReqId name
             if authorized
                 then do
                     manifest <- getManifestLocation indexPkgReqId indexPkgReqVersion
@@ -280,7 +284,7 @@ postPkgDeindexR = do
                 "Impossible: an unauthenticated user has accessed the deindex endpoint."
             pure ()
         Just name -> do
-            authorized <- checkAdminAllowedPkgs indexPkgReqId name
+            (authorized, _) <- checkAdminAllowedPkgs indexPkgReqId name
             if authorized
                 then do
                     case indexPkgReqArches of
@@ -346,7 +350,7 @@ postPkgCategorizeR cat pkg = do
                 "Impossible: an unauthenticated user has accessed the categorize endpoint."
             pure ()
         Just name -> do
-            authorized <- checkAdminAllowedPkgs pkg name
+            (authorized, _) <- checkAdminAllowedPkgs pkg name
             if authorized
                 then runDB $ do
                     catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
@@ -368,7 +372,7 @@ deletePkgCategorizeR cat pkg = do
                 "Impossible: an unauthenticated user has accessed the uncategorize endpoint."
             pure ()
         Just name -> do
-            authorized <- checkAdminAllowedPkgs pkg name
+            (authorized, _) <- checkAdminAllowedPkgs pkg name
             if authorized
                 then runDB $ do
                     catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]

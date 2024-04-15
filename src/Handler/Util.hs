@@ -18,7 +18,7 @@ import Data.String.Interpolate.IsString (
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
-import Database.Queries (fetchAllPkgVersions, getVersionPlatform, getAllowedPkgs)
+import Database.Queries (fetchAllPkgVersions, getVersionPlatform, getAllowedPkgs, getPkg)
 import Foundation
 import Lib.PkgRepository (
     PkgRepo,
@@ -256,7 +256,12 @@ areRegexMatchesEqual textMap (PackageDevice regexMap) =
         case MM.lookup key textMap of
             val -> or $ regexMatch regexPattern <$> val
 
-checkAdminAllowedPkgs :: PkgId -> Text -> Handler Bool
+checkAdminAllowedPkgs :: PkgId -> Text -> Handler (Bool, Bool) -- (exists, new)
 checkAdminAllowedPkgs pkgId adminId = do
-    res <- runDB $ getAllowedPkgs (PkgRecordKey pkgId) (AdminKey adminId)
-    pure $ if length res > 0 then True else False
+    -- if pkg does not exist yet, allow, because authorized by whitelist
+    pkg <- runDB $ getPkg (PkgRecordKey pkgId)
+    if length pkg > 0
+        then do
+            res <- runDB $ getAllowedPkgs (PkgRecordKey pkgId) (AdminKey adminId)
+            pure $ if length res > 0 then (True, True) else (False, True)
+        else pure (True, False)

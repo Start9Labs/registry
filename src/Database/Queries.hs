@@ -337,3 +337,11 @@ getAllowedPkgs pkgId adminId = do
         where_ $ p ^. AdminPkgsAdmin ==. val adminId
         pure p
     pure $ entityVal <$> pkgs
+
+getPkg:: (Monad m, MonadIO m) => PkgRecordId -> ReaderT SqlBackend m [PkgRecord]
+getPkg pkgId = do
+    pkg <- select $ do
+        p <- from $ table @PkgRecord
+        where_ $ p ^. PkgRecordId ==. val pkgId
+        pure p
+    pure $ entityVal <$> pkg
