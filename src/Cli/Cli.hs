@@ -528,7 +528,6 @@ upload (Upload name mpkg shouldIndex arches) = do
                     for_ pkgs $ \f -> $logWarn (fromString f)
                     exitWith $ ExitFailure 1
         Just s -> pure s
-    putChunkLn $ fromString ("Checking authorization...") & fore green
     let pkgId_ = head $ splitOn "." $ last $ splitOn "/" $ show pkg
     pkgAuthBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/auth/" <> unpack pkgId_)
