@@ -53,7 +53,7 @@ import Data.HashMap.Internal.Strict (
 import Data.String.Interpolate.IsString (
     i,
  )
-import Data.Text (toLower, splitOn)
+import Data.Text (toLower, splitOn, unpack)
 import Dhall (
     Encoder (embed),
     FromDhall (..),
@@ -528,10 +528,10 @@ upload (Upload name mpkg shouldIndex arches) = do
                     for_ pkgs $ \f -> $logWarn (fromString f)
                     exitWith $ ExitFailure 1
         Just s -> pure s
+    putChunkLn $ fromString ("Checking authorization...") & fore green
     let pkgId_ = head $ splitOn "." $ last $ splitOn "/" $ show pkg
-    putChunkLn $ fromString ("Checking permissions...") & fore green
     pkgAuthBody <-
-        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/auth/" <> show pkgId_)
+        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/auth/" <> unpack pkgId_)
             <&> setRequestHeaders [("accept", "text/plain")]
             <&> setRequestResponseTimeout (responseTimeoutMicro (90_000_000))
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
