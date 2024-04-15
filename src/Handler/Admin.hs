@@ -58,7 +58,7 @@ import Handler.Util (
     getHashFromQuery,
     getVersionFromQuery,
     orThrow,
-    sendResponseText,
+    sendResponseText, checkAdminAllowedPkgs,
  )
 import Lib.PkgRepository (
     PkgRepo (PkgRepo, pkgRepoFileRoot),
@@ -150,6 +150,7 @@ import Yesod.Core.Types (JSONResponse (JSONResponse))
 import Database.Persist.Sql (runSqlPool)
 import Data.List (elem, length)
 import Database.Persist ((==.))
+import Network.HTTP.Types.Status (status401)
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
@@ -181,8 +182,12 @@ postPkgUploadR = do
                         "The Impossible has happened, an unauthenticated user has managed to upload a pacakge to this registry"
                     pure ()
                 Just name -> do
-                    now <- liftIO getCurrentTime
-                    runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
+                    authorized <- checkAdminAllowedPkgs packageManifestId name
+                    if authorized
+                        then do
+                            now <- liftIO getCurrentTime
+                            runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
+                        else sendResponseText status401 "User not authorized to upload this package."
         else sendResponseText status500 "Package does not belong on this registry."
     where
         retry m = runMaybeT . asum $ replicate 3 (MaybeT $ hush <$> try @_ @SomeException m)
@@ -230,24 +235,44 @@ instance ToJSON IndexPkgReq where
 postPkgIndexR :: Handler ()
 postPkgIndexR = do
     IndexPkgReq{..} <- requireCheckJsonBody
-    manifest <- getManifestLocation indexPkgReqId indexPkgReqVersion
-    man <-
-        liftIO (decodeFileStrict manifest)
-            `orThrow` sendResponseText
-                status404
-                [i|Could not decode manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
-    pool <- getsYesod appConnPool
-    runSqlPoolNoTransaction (upsertPackageVersion man) pool Nothing
-    runSqlPool (upsertPackageVersionPlatform indexPkgReqArches man) pool
+    maybeAuthId >>= \case
+        Nothing -> do
+            $logError
+                "An unauthenticated user has accessed the index endpoint."
+            pure ()
+        Just name -> do
+            authorized <- checkAdminAllowedPkgs indexPkgReqId name
+            if authorized
+                then do
+                    manifest <- getManifestLocation indexPkgReqId indexPkgReqVersion
+                    man <-
+                        liftIO (decodeFileStrict manifest)
+                            `orThrow` sendResponseText
+                                status404
+                                [i|Could not decode manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
+                    pool <- getsYesod appConnPool
+                    runSqlPoolNoTransaction (upsertPackageVersion man) pool Nothing
+                    runSqlPool (upsertPackageVersionPlatform indexPkgReqArches man) pool
+                else sendResponseText status401 "User not authorized to index this package."
 
 postPkgDeindexR :: Handler ()
 postPkgDeindexR = do
     IndexPkgReq{..} <- requireCheckJsonBody
-    case indexPkgReqArches of
-        Nothing -> runDB $ delete (VersionRecordKey (PkgRecordKey indexPkgReqId) indexPkgReqVersion)
-        Just a -> do
-            _ <- traverse (deleteArch indexPkgReqId indexPkgReqVersion) a
+    maybeAuthId >>= \case
+        Nothing -> do
+            $logError
+                "An unauthenticated user has accessed the deindex endpoint."
             pure ()
+        Just name -> do
+            authorized <- checkAdminAllowedPkgs indexPkgReqId name
+            if authorized
+                then do
+                    case indexPkgReqArches of
+                        Nothing -> runDB $ delete (VersionRecordKey (PkgRecordKey indexPkgReqId) indexPkgReqVersion)
+                        Just a -> do
+                            _ <- traverse (deleteArch indexPkgReqId indexPkgReqVersion) a
+                            pure ()
+                else sendResponseText status401 "User not authorized to deindex this package."
     where
         deleteArch :: PkgId -> Version -> OsArch -> Handler ()
         deleteArch id v a = runDB $ deleteWhere [VersionPlatformArch ==. a, VersionPlatformVersionNumber ==. v, VersionPlatformPkgId ==. PkgRecordKey id]
@@ -298,16 +323,26 @@ deleteCategoryR cat = runDB $ deleteBy (UniqueName cat)
 
 
 postPkgCategorizeR :: Text -> PkgId -> Handler ()
-postPkgCategorizeR cat pkg = runDB $ do
-    catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
-    _pkgEnt <- get (PkgRecordKey pkg) `orThrow` sendResponseText status404 [i|Package "#{pkg}" does not exist|]
-    now <- liftIO getCurrentTime
-    void $
-        insertUnique (PkgCategory now (PkgRecordKey pkg) (entityKey catEnt))
-            `orThrow` sendResponseText
-                status403
-                [i|Package "#{pkg}" is already assigned to category "#{cat}"|]
+postPkgCategorizeR cat pkg = do
+    maybeAuthId >>= \case
+        Nothing -> do
+            $logError
+                "An unauthenticated user has accessed the categorize endpoint."
+            pure ()
+        Just name -> do
+            authorized <- checkAdminAllowedPkgs pkg name
+            if authorized
+                then runDB $ do
+                    catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
+                    _pkgEnt <- get (PkgRecordKey pkg) `orThrow` sendResponseText status404 [i|Package "#{pkg}" does not exist|]
+                    now <- liftIO getCurrentTime
+                    void $
+                        insertUnique (PkgCategory now (PkgRecordKey pkg) (entityKey catEnt))
+                            `orThrow` sendResponseText
+                                status403
+                                [i|Package "#{pkg}" is already assigned to category "#{cat}"|]
 
+                else sendResponseText status401 "User not authorized to categorize this package."
 
 deletePkgCategorizeR :: Text -> PkgId -> Handler ()
 deletePkgCategorizeR cat pkg = runDB $ do

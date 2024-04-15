@@ -18,7 +18,7 @@ import Data.String.Interpolate.IsString (
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
-import Database.Queries (fetchAllPkgVersions, getVersionPlatform)
+import Database.Queries (fetchAllPkgVersions, getVersionPlatform, getAllowedPkgs)
 import Foundation
 import Lib.PkgRepository (
     PkgRepo,
@@ -32,7 +32,7 @@ import Lib.Types.Emver (
  )
 import Model (
     UserActivity (..),
-    VersionRecord (versionRecordOsVersion, versionRecordDeprecatedAt, versionRecordPkgId), VersionPlatform (versionPlatformDevice),
+    VersionRecord (versionRecordOsVersion, versionRecordDeprecatedAt, versionRecordPkgId), VersionPlatform (versionPlatformDevice), AdminId, Key (PkgRecordKey, AdminKey),
  )
 import Network.HTTP.Types (
     Status,
@@ -61,6 +61,7 @@ import Startlude (
     void,
     ($),
     (.),
+    (>),
     (<$>),
     (>>=), note, (=<<), catMaybes, all, encodeUtf8, toS, fmap, traceM, show, trace, any, or, (++), IO, putStrLn, map
  )
@@ -88,6 +89,7 @@ import Data.Aeson (eitherDecodeStrict)
 import Data.Bifunctor (Bifunctor(first))
 import qualified Data.MultiMap as MM
 import Startlude (bimap)
+import Data.List (length)
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other =
@@ -253,3 +255,8 @@ areRegexMatchesEqual textMap (PackageDevice regexMap) =
     checkMatch (key, regexPattern) = 
         case MM.lookup key textMap of
             val -> or $ regexMatch regexPattern <$> val
+
+checkAdminAllowedPkgs :: PkgId -> Text -> Handler Bool
+checkAdminAllowedPkgs pkgId adminId = do
+    res <- runDB $ getAllowedPkgs (PkgRecordKey pkgId) (AdminKey adminId)
+    pure $ if length res > 0 then True else False
