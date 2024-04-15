@@ -162,10 +162,13 @@ postCheckPkgAuthR pkgId = do
         Just name -> do
             if ((length whitelist > 0 && (pkgId `elem` whitelist)) || length whitelist <= 0)
                 then do
-                    (authorized, _) <- checkAdminAllowedPkgs pkgId name
-                    if authorized
+                    (authorized, newPkg) <- checkAdminAllowedPkgs pkgId name
+                    if authorized && not newPkg
                         then sendResponseText status200 "User authorized to upload this package."
-                        else sendResponseText status401 "User not authorized to upload this package."
+                    else if authorized && newPkg
+                        -- if pkg is whitelisted and a new upload, add as authorized for this admin user
+                        then runDB $ insert_ (AdminPkgs (AdminKey name) (PkgRecordKey pkgId))
+                    else sendResponseText status401 "User not authorized to upload this package."
                 else sendResponseText status500 "Package does not belong on this registry."
 
 postPkgUploadR :: Handler ()
@@ -198,15 +201,11 @@ postPkgUploadR = do
                         "Impossible: an unauthenticated user has managed to upload a pacakge to this registry."
                     pure ()
                 Just name -> do
-                    (authorized, newPkg) <- checkAdminAllowedPkgs packageManifestId name
+                    (authorized, _) <- checkAdminAllowedPkgs packageManifestId name
                     if authorized
                         then do
                             now <- liftIO getCurrentTime
                             runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
-                            -- if pkg is whitelisted and a new upload, add as authorized for this admin user
-                            if (newPkg) 
-                                then runDB $ insert_ (AdminPkgs (AdminKey name) (PkgRecordKey packageManifestId))
-                                else pure ()
                         else sendResponseText status401 "User not authorized to upload this package."
         else sendResponseText status500 "Package does not belong on this registry."
     where
