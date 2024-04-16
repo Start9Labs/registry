@@ -263,5 +263,5 @@ checkAdminAllowedPkgs pkgId adminId = do
     if length pkg > 0
         then do
             res <- runDB $ getAllowedPkgs (PkgRecordKey pkgId) (AdminKey adminId)
-            pure $ if length res > 0 then (True, True) else (False, True)
-        else pure (True, False)
+            pure $ if length res > 0 then (True, False) else (False, False)
+        else pure (True, True)
