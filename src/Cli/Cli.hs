@@ -90,7 +90,7 @@ import Network.HTTP.Simple (
     setRequestBody,
     setRequestBodyJSON,
     setRequestHeaders,
-    setRequestResponseTimeout,
+    setRequestResponseTimeout, setRequestQueryString,
  )
 import Network.HTTP.Types (status200)
 import Network.URI (
@@ -179,7 +179,7 @@ import Startlude (
     ($>),
     (&),
     (.),
-    (<&>),
+    (<&>), encodeUtf8,
  )
 import System.Directory (
     createDirectoryIfMissing,
@@ -529,20 +529,10 @@ upload (Upload name mpkg shouldIndex arches) = do
                     exitWith $ ExitFailure 1
         Just s -> pure s
     let pkgId_ = head $ splitOn "." $ last $ splitOn "/" $ show pkg
-    pkgAuthBody <-
-        parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/auth/" <> unpack pkgId_)
-            <&> setRequestHeaders [("accept", "text/plain")]
-            <&> setRequestResponseTimeout (responseTimeoutMicro (90_000_000))
-            <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)
     manager <- newTlsManager
-    pkgAuthRes <- runReaderT (httpLbs pkgAuthBody) manager
-    if getResponseStatus pkgAuthRes == status200
-        then pure () -- no output is successful
-        else do
-            $logError (decodeUtf8 . LB.toStrict $ getResponseBody pkgAuthRes)
-            exitWith $ ExitFailure 1
     noBody <-
         parseRequest ("POST " <> show publishCfgRepoLocation <> "/admin/v0/upload")
+            <&> setRequestQueryString [("id", Just $ encodeUtf8 pkgId_)]
             <&> setRequestHeaders [("accept", "text/plain")]
             <&> setRequestResponseTimeout (responseTimeoutMicro (5_400_000_000)) -- 90 minutes
             <&> applyBasicAuth (B8.pack publishCfgRepoUser) (B8.pack publishCfgRepoPass)

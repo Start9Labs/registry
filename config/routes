@@ -18,8 +18,7 @@
 /package/#ApiVersion/version/#PkgId                 PkgVersionR        GET -- get most recent appId version
 
 -- ADMIN API V0
-/admin/v0/auth/#PkgId               					CheckPkgAuthR      POST !admin
-/admin/v0/upload                           					PkgUploadR         POST !admin
+/admin/v0/upload                           					PkgUploadR         POST !admin -- ?id=<pkgId>
 /admin/v0/eos-upload                       					EosUploadR         POST !admin
 /admin/v0/index                            					PkgIndexR          POST !admin
 /admin/v0/deindex                          					PkgDeindexR        GET POST !admin
