@@ -256,12 +256,12 @@ areRegexMatchesEqual textMap (PackageDevice regexMap) =
         case MM.lookup key textMap of
             val -> or $ regexMatch regexPattern <$> val
 
-checkAdminAllowedPkgs :: PkgId -> Text -> Handler (Bool, Bool) -- (exists, new)
+checkAdminAllowedPkgs :: PkgId -> Text -> Handler (Bool, Bool) -- (authorized, newPkg)
 checkAdminAllowedPkgs pkgId adminId = do
     -- if pkg does not exist yet, allow, because authorized by whitelist
     pkg <- runDB $ getPkg (PkgRecordKey pkgId)
     if length pkg > 0
         then do
-            res <- runDB $ getAllowedPkgs (PkgRecordKey pkgId) (AdminKey adminId)
+            res <- runDB $ getAllowedPkgs pkgId (AdminKey adminId)
             pure $ if length res > 0 then (True, False) else (False, False)
         else pure (True, True)

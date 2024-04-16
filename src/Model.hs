@@ -155,7 +155,7 @@ Admin
 
 AdminPkgs
     admin AdminId
-    pkgId PkgRecordId
+    pkgId PkgId
     UniqueAdminPkg pkgId admin
 
 Upload

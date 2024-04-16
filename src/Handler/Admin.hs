@@ -168,7 +168,7 @@ postCheckPkgAuthR pkgId = do
                     else if authorized && newPkg
                         -- if pkg is whitelisted and a new upload, add as authorized for this admin user
                         then do
-                            runDB $ insert_ (AdminPkgs (AdminKey name) (PkgRecordKey pkgId))
+                            runDB $ insert_ (AdminPkgs (AdminKey name) pkgId)
                             sendResponseText status200 "User authorized to upload this package."
                     else sendResponseText status401 "User not authorized to upload this package."
                 else sendResponseText status500 "Package does not belong on this registry."
@@ -207,7 +207,7 @@ postPkgUploadR = do
                     if authorized
                         then do
                             now <- liftIO getCurrentTime
-                            runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
+                            runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId)packageManifestVersion now)
                         else sendResponseText status401 "User not authorized to upload this package."
         else sendResponseText status500 "Package does not belong on this registry."
     where

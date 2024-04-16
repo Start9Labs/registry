@@ -329,7 +329,7 @@ getVersionPlatform pkgId arches = do
         pure v
     pure $ entityVal <$> vps
 
-getAllowedPkgs :: (Monad m, MonadIO m) => PkgRecordId -> AdminId -> ReaderT SqlBackend m [AdminPkgs]
+getAllowedPkgs :: (Monad m, MonadIO m) => PkgId -> AdminId -> ReaderT SqlBackend m [AdminPkgs]
 getAllowedPkgs pkgId adminId = do
     pkgs <- select $ do
         p <- from $ table @AdminPkgs
