@@ -1,5 +1,5 @@
-/ 																									RootR 						GET
-/marketplace/#PkgId 																MarketplaceR 			GET
+/ 																									RootR 						 GET
+/marketplace/#PkgId 																MarketplaceR 			 GET
 
 -- EOS API V0
 /eos/v0/latest                             					EosVersionR        GET -- get eos information

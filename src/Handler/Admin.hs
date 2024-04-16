@@ -154,6 +154,7 @@ postPkgUploadR = do
     resourcesTemp <- getsYesod $ (</> "temp") . resourcesDir . appSettings
     createDirectoryIfMissing True resourcesTemp
     pkgId_ <- getPkgIdParam
+    $logInfo $ "PARAM: " <> show pkgId_
     withTempDirectory resourcesTemp "newpkg" $ \dir -> do
         let path = dir </> "temp" <.> "s9pk"
         case pkgId_ of

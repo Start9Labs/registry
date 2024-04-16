@@ -310,8 +310,7 @@ checkAdminAuthUpload pkgId = do
 
 getPkgIdParam :: MonadHandler m => m (Maybe PkgId)
 getPkgIdParam = do
-    id <- lookupPostParam "id"
-    case id of
+    lookupPostParam "id" >>= \case
         Nothing -> pure Nothing
         Just v -> case readMaybe v of
             Nothing -> sendResponseStatus status400 ("Invalid PkgId" :: Text)
