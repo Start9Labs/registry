@@ -19,7 +19,7 @@ import Model (
     Metric (Metric),
     PkgDependency (..),
     PkgRecord (PkgRecord),
-    VersionRecord (VersionRecord), VersionPlatform (VersionPlatform), EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch), PkgRecordId,
+    VersionRecord (VersionRecord), VersionPlatform (VersionPlatform), EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch, AdminPkgsPkgId, AdminPkgsAdmin), PkgRecordId, AdminPkgs, AdminId,
  )
 import Orphans.Emver ()
 import Startlude (
@@ -328,3 +328,20 @@ getVersionPlatform pkgId arches = do
         where_ (v ^. VersionPlatformArch `in_` (valList arches))
         pure v
     pure $ entityVal <$> vps
+
+getAllowedPkgs :: (Monad m, MonadIO m) => PkgId -> AdminId -> ReaderT SqlBackend m [AdminPkgs]
+getAllowedPkgs pkgId adminId = do
+    pkgs <- select $ do
+        p <- from $ table @AdminPkgs
+        where_ $ p ^. AdminPkgsPkgId ==. val pkgId
+        where_ $ p ^. AdminPkgsAdmin ==. val adminId
+        pure p
+    pure $ entityVal <$> pkgs
+
+getPkg:: (Monad m, MonadIO m) => PkgRecordId -> ReaderT SqlBackend m [PkgRecord]
+getPkg pkgId = do
+    pkg <- select $ do
+        p <- from $ table @PkgRecord
+        where_ $ p ^. PkgRecordId ==. val pkgId
+        pure p
+    pure $ entityVal <$> pkg

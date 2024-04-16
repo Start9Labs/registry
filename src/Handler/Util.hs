@@ -18,7 +18,7 @@ import Data.String.Interpolate.IsString (
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
-import Database.Queries (fetchAllPkgVersions, getVersionPlatform)
+import Database.Queries (fetchAllPkgVersions, getVersionPlatform, getAllowedPkgs, getPkg)
 import Foundation
 import Lib.PkgRepository (
     PkgRepo,
@@ -32,7 +32,7 @@ import Lib.Types.Emver (
  )
 import Model (
     UserActivity (..),
-    VersionRecord (versionRecordOsVersion, versionRecordDeprecatedAt, versionRecordPkgId), VersionPlatform (versionPlatformDevice),
+    VersionRecord (versionRecordOsVersion, versionRecordDeprecatedAt, versionRecordPkgId), VersionPlatform (versionPlatformDevice), AdminId, Key (PkgRecordKey, AdminKey),
  )
 import Network.HTTP.Types (
     Status,
@@ -61,6 +61,7 @@ import Startlude (
     void,
     ($),
     (.),
+    (>),
     (<$>),
     (>>=), note, (=<<), catMaybes, all, encodeUtf8, toS, fmap, traceM, show, trace, any, or, (++), IO, putStrLn, map
  )
@@ -88,6 +89,9 @@ import Data.Aeson (eitherDecodeStrict)
 import Data.Bifunctor (Bifunctor(first))
 import qualified Data.MultiMap as MM
 import Startlude (bimap)
+import Data.List (length)
+import Control.Monad.Logger (logError)
+import Yesod.Auth (YesodAuth(maybeAuthId))
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other =
@@ -253,3 +257,24 @@ areRegexMatchesEqual textMap (PackageDevice regexMap) =
     checkMatch (key, regexPattern) = 
         case MM.lookup key textMap of
             val -> or $ regexMatch regexPattern <$> val
+
+checkAdminAllowedPkgs :: PkgId -> Text -> Handler (Bool, Bool) -- (authorized, newPkg)
+checkAdminAllowedPkgs pkgId adminId = do
+    -- if pkg does not exist yet, allow, because authorized by whitelist
+    pkg <- runDB $ getPkg (PkgRecordKey pkgId)
+    if length pkg > 0
+        then do
+            res <- runDB $ getAllowedPkgs pkgId (AdminKey adminId)
+            pure $ if length res > 0 then (True, False) else (False, False)
+        else pure (True, True)
+
+checkAdminAuth :: PkgId -> Handler (Bool, Text)
+checkAdminAuth pkgId = do
+    maybeAuthId >>= \case
+        Nothing -> do
+            $logError
+                "Impossible: an unauthenticated user has accessed an authenticated endpoint."
+            pure (False, "")
+        Just name -> do
+            (authorized, _) <- checkAdminAllowedPkgs pkgId name
+            pure (authorized, name)

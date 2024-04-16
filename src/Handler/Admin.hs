@@ -58,7 +58,7 @@ import Handler.Util (
     getHashFromQuery,
     getVersionFromQuery,
     orThrow,
-    sendResponseText,
+    sendResponseText, checkAdminAllowedPkgs, checkAdminAuth,
  )
 import Lib.PkgRepository (
     PkgRepo (PkgRepo, pkgRepoFileRoot),
@@ -79,7 +79,7 @@ import Model (
     Unique (UniqueName, UniquePkgCategory),
     Upload (..),
     VersionRecord (versionRecordNumber, versionRecordPkgId),
-    unPkgRecordKey,
+    unPkgRecordKey, AdminPkgs (AdminPkgs),
  )
 import Network.HTTP.Types (
     status400,
@@ -150,6 +150,28 @@ import Yesod.Core.Types (JSONResponse (JSONResponse))
 import Database.Persist.Sql (runSqlPool)
 import Data.List (elem, length)
 import Database.Persist ((==.))
+import Network.HTTP.Types.Status (status401)
+import Network.HTTP.Types (status200)
+
+postCheckPkgAuthR :: PkgId -> Handler ()
+postCheckPkgAuthR pkgId = do
+    whitelist <- getsYesod $ whitelist . appSettings
+    maybeAuthId >>= \case
+        Nothing -> do
+            sendResponseText status401 "User not an authorized admin."
+        Just name -> do
+            if ((length whitelist > 0 && (pkgId `elem` whitelist)) || length whitelist <= 0)
+                then do
+                    (authorized, newPkg) <- checkAdminAllowedPkgs pkgId name
+                    if authorized && not newPkg
+                        then sendResponseText status200 "User authorized to upload this package."
+                    else if authorized && newPkg
+                        -- if pkg is whitelisted and a new upload, add as authorized for this admin user
+                        then do
+                            runDB $ insert_ (AdminPkgs (AdminKey name) pkgId)
+                            sendResponseText status200 "User authorized to upload this package."
+                    else sendResponseText status401 "User not authorized to upload this package."
+                else sendResponseText status500 "Package does not belong on this registry."
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
@@ -175,14 +197,12 @@ postPkgUploadR = do
             removePathForcibly targetPath
             createDirectoryIfMissing True targetPath
             renameDirectory dir targetPath
-            maybeAuthId >>= \case
-                Nothing -> do
-                    $logError
-                        "The Impossible has happened, an unauthenticated user has managed to upload a pacakge to this registry"
-                    pure ()
-                Just name -> do
+            (authorized, name) <- checkAdminAuth packageManifestId
+            if authorized
+                then do
                     now <- liftIO getCurrentTime
-                    runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId) packageManifestVersion now)
+                    runDB $ insert_ (Upload (AdminKey name) (PkgRecordKey packageManifestId)packageManifestVersion now)
+                else sendResponseText status401 "User not authorized to upload this package."
         else sendResponseText status500 "Package does not belong on this registry."
     where
         retry m = runMaybeT . asum $ replicate 3 (MaybeT $ hush <$> try @_ @SomeException m)
@@ -230,24 +250,32 @@ instance ToJSON IndexPkgReq where
 postPkgIndexR :: Handler ()
 postPkgIndexR = do
     IndexPkgReq{..} <- requireCheckJsonBody
-    manifest <- getManifestLocation indexPkgReqId indexPkgReqVersion
-    man <-
-        liftIO (decodeFileStrict manifest)
-            `orThrow` sendResponseText
-                status404
-                [i|Could not decode manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
-    pool <- getsYesod appConnPool
-    runSqlPoolNoTransaction (upsertPackageVersion man) pool Nothing
-    runSqlPool (upsertPackageVersionPlatform indexPkgReqArches man) pool
+    (admin, _) <- checkAdminAuth indexPkgReqId
+    if admin
+        then do
+            manifest <- getManifestLocation indexPkgReqId indexPkgReqVersion
+            man <-
+                liftIO (decodeFileStrict manifest)
+                    `orThrow` sendResponseText
+                        status404
+                        [i|Could not decode manifest for #{indexPkgReqId}@#{indexPkgReqVersion}|]
+            pool <- getsYesod appConnPool
+            runSqlPoolNoTransaction (upsertPackageVersion man) pool Nothing
+            runSqlPool (upsertPackageVersionPlatform indexPkgReqArches man) pool
+        else sendResponseText status401 "User not authorized to index this package."
 
 postPkgDeindexR :: Handler ()
 postPkgDeindexR = do
     IndexPkgReq{..} <- requireCheckJsonBody
-    case indexPkgReqArches of
-        Nothing -> runDB $ delete (VersionRecordKey (PkgRecordKey indexPkgReqId) indexPkgReqVersion)
-        Just a -> do
-            _ <- traverse (deleteArch indexPkgReqId indexPkgReqVersion) a
-            pure ()
+    (admin, _) <- checkAdminAuth indexPkgReqId
+    if admin
+        then do
+            case indexPkgReqArches of
+                Nothing -> runDB $ delete (VersionRecordKey (PkgRecordKey indexPkgReqId) indexPkgReqVersion)
+                Just a -> do
+                    _ <- traverse (deleteArch indexPkgReqId indexPkgReqVersion) a
+                    pure ()
+        else sendResponseText status401 "User not authorized to deindex this package."
     where
         deleteArch :: PkgId -> Version -> OsArch -> Handler ()
         deleteArch id v a = runDB $ deleteWhere [VersionPlatformArch ==. a, VersionPlatformVersionNumber ==. v, VersionPlatformPkgId ==. PkgRecordKey id]
@@ -298,18 +326,26 @@ deleteCategoryR cat = runDB $ deleteBy (UniqueName cat)
 
 
 postPkgCategorizeR :: Text -> PkgId -> Handler ()
-postPkgCategorizeR cat pkg = runDB $ do
-    catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
-    _pkgEnt <- get (PkgRecordKey pkg) `orThrow` sendResponseText status404 [i|Package "#{pkg}" does not exist|]
-    now <- liftIO getCurrentTime
-    void $
-        insertUnique (PkgCategory now (PkgRecordKey pkg) (entityKey catEnt))
-            `orThrow` sendResponseText
-                status403
-                [i|Package "#{pkg}" is already assigned to category "#{cat}"|]
+postPkgCategorizeR cat pkg = do
+    (admin, _) <- checkAdminAuth pkg
+    if admin
+        then runDB $ do
+            catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
+            _pkgEnt <- get (PkgRecordKey pkg) `orThrow` sendResponseText status404 [i|Package "#{pkg}" does not exist|]
+            now <- liftIO getCurrentTime
+            void $
+                insertUnique (PkgCategory now (PkgRecordKey pkg) (entityKey catEnt))
+                    `orThrow` sendResponseText
+                        status403
+                        [i|Package "#{pkg}" is already assigned to category "#{cat}"|]
 
+        else sendResponseText status401 "User not authorized to categorize this package."
 
 deletePkgCategorizeR :: Text -> PkgId -> Handler ()
-deletePkgCategorizeR cat pkg = runDB $ do
-    catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
-    deleteBy (UniquePkgCategory (PkgRecordKey pkg) (entityKey catEnt))
+deletePkgCategorizeR cat pkg = do
+    (admin, _) <- checkAdminAuth pkg
+    if admin
+        then runDB $ do
+            catEnt <- getBy (UniqueName cat) `orThrow` sendResponseText status404 [i|Category "#{cat}" does not exist|]
+            deleteBy (UniquePkgCategory (PkgRecordKey pkg) (entityKey catEnt))
+        else sendResponseText status401 "User not authorized to uncategorize this package."

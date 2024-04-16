@@ -153,6 +153,11 @@ Admin
     passHash (Digest SHA256)
     deletedAt UTCTime Maybe
 
+AdminPkgs
+    admin AdminId
+    pkgId PkgId
+    UniqueAdminPkg pkgId admin
+
 Upload
     uploader AdminId
     pkgId PkgRecordId
