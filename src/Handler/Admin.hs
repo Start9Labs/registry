@@ -167,7 +167,9 @@ postCheckPkgAuthR pkgId = do
                         then sendResponseText status200 "User authorized to upload this package."
                     else if authorized && newPkg
                         -- if pkg is whitelisted and a new upload, add as authorized for this admin user
-                        then runDB $ insert_ (AdminPkgs (AdminKey name) (PkgRecordKey pkgId))
+                        then do
+                            runDB $ insert_ (AdminPkgs (AdminKey name) (PkgRecordKey pkgId))
+                            sendResponseText status200 "User authorized to upload this package."
                     else sendResponseText status401 "User not authorized to upload this package."
                 else sendResponseText status500 "Package does not belong on this registry."
 
