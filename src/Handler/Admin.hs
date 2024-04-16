@@ -147,6 +147,7 @@ import Yesod.Core.Types (JSONResponse (JSONResponse))
 import Database.Persist.Sql (runSqlPool)
 import Database.Persist ((==.))
 import Network.HTTP.Types.Status (status401)
+import Control.Monad.Logger (logInfo)
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
@@ -161,6 +162,7 @@ postPkgUploadR = do
                 name <- checkAdminAuthUpload packageManifestId
                 finishUpload dir path name PackageManifest{..}
             Just pkgId -> do
+                $logInfo $ "VALID: " <> show pkgId
                 name <- checkAdminAuthUpload pkgId
                 PackageManifest{..} <- extractPackageManifest dir path
                 if packageManifestId /= pkgId
