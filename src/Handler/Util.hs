@@ -90,6 +90,8 @@ import Data.Bifunctor (Bifunctor(first))
 import qualified Data.MultiMap as MM
 import Startlude (bimap)
 import Data.List (length)
+import Control.Monad.Logger (logError)
+import Yesod.Auth (YesodAuth(maybeAuthId))
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other =
@@ -265,3 +267,14 @@ checkAdminAllowedPkgs pkgId adminId = do
             res <- runDB $ getAllowedPkgs pkgId (AdminKey adminId)
             pure $ if length res > 0 then (True, False) else (False, False)
         else pure (True, True)
+
+checkAdminAuth :: PkgId -> Handler (Bool, Text)
+checkAdminAuth pkgId = do
+    maybeAuthId >>= \case
+        Nothing -> do
+            $logError
+                "Impossible: an unauthenticated user has accessed an authenticated endpoint."
+            pure (False, "")
+        Just name -> do
+            (authorized, _) <- checkAdminAllowedPkgs pkgId name
+            pure (authorized, name)
