@@ -72,7 +72,7 @@ import Database.Esqueleto.Experimental (
     (:&) (..),
     (==.),
     (^.),
-    (||.), not_,
+    (||.),
  )
 import Database.Persist qualified as P
 import Database.Persist.Postgresql (
