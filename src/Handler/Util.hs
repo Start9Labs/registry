@@ -18,7 +18,7 @@ import Data.String.Interpolate.IsString (
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
-import Database.Queries (fetchAllPkgVersions, getVersionPlatform, getAllowedPkgs, getPkg)
+import Database.Queries (fetchAllPkgVersions, getVersionPlatform, getAllowedPkgs, getPkg, getPkgNew)
 import Foundation
 import Lib.PkgRepository (
     PkgRepo,
@@ -271,10 +271,13 @@ checkAdminAllowedPkgs :: PkgId -> Text -> Handler (Bool, Bool) -- (authorized, n
 checkAdminAllowedPkgs pkgId adminId = do
     -- if pkg does not exist yet, allow, because authorized by whitelist
     pkg <- runDB $ getPkg (PkgRecordKey pkgId)
+    pkgCreated <- runDB $ getPkgNew (PkgRecordKey pkgId)
     if length pkg > 0
         then do
             res <- runDB $ getAllowedPkgs pkgId (AdminKey adminId)
             pure $ if length res > 0 then (True, False) else (False, False)
+        else if length pkgCreated > 0
+            then pure (True, True)
         else pure (True, True)
 
 checkAdminAuth :: PkgId -> Handler (Bool, Text)

@@ -53,7 +53,7 @@ import Data.HashMap.Internal.Strict (
 import Data.String.Interpolate.IsString (
     i,
  )
-import Data.Text (toLower, splitOn, unpack)
+import Data.Text (toLower, splitOn)
 import Dhall (
     Encoder (embed),
     FromDhall (..),

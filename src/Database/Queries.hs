@@ -72,7 +72,7 @@ import Database.Esqueleto.Experimental (
     (:&) (..),
     (==.),
     (^.),
-    (||.),
+    (||.), not_,
  )
 import Database.Persist qualified as P
 import Database.Persist.Postgresql (
@@ -96,7 +96,7 @@ import Model (
         VersionRecordNumber,
         VersionRecordPkgId,
         VersionRecordTitle,
-        VersionRecordUpdatedAt, PkgRecordHidden, VersionPlatformRam
+        VersionRecordUpdatedAt, PkgRecordHidden, VersionPlatformRam, PkgRecordUpdatedAt
     ),
     Key (unPkgRecordKey),
     PkgCategory,
@@ -343,5 +343,14 @@ getPkg pkgId = do
     pkg <- select $ do
         p <- from $ table @PkgRecord
         where_ $ p ^. PkgRecordId ==. val pkgId
+        pure p
+    pure $ entityVal <$> pkg
+
+getPkgNew:: (Monad m, MonadIO m) => PkgRecordId -> ReaderT SqlBackend m [PkgRecord]
+getPkgNew pkgId = do
+    pkg <- select $ do
+        p <- from $ table @PkgRecord
+        where_ $ p ^. PkgRecordId ==. val pkgId
+        where_ $ isNothing $ p ^. PkgRecordUpdatedAt 
         pure p
     pure $ entityVal <$> pkg
