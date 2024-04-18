@@ -338,16 +338,16 @@ getAllowedPkgs pkgId adminId = do
         pure p
     pure $ entityVal <$> pkgs
 
-getPkg:: (Monad m, MonadIO m) => PkgRecordId -> ReaderT SqlBackend m [PkgRecord]
-getPkg pkgId = do
+getPkgById:: (Monad m, MonadIO m) => PkgRecordId -> ReaderT SqlBackend m [PkgRecord]
+getPkgById pkgId = do
     pkg <- select $ do
         p <- from $ table @PkgRecord
         where_ $ p ^. PkgRecordId ==. val pkgId
         pure p
     pure $ entityVal <$> pkg
 
-getPkgNew:: (Monad m, MonadIO m) => PkgRecordId -> ReaderT SqlBackend m [PkgRecord]
-getPkgNew pkgId = do
+getPkgOnlyCreated:: (Monad m, MonadIO m) => PkgRecordId -> ReaderT SqlBackend m [PkgRecord]
+getPkgOnlyCreated pkgId = do
     pkg <- select $ do
         p <- from $ table @PkgRecord
         where_ $ p ^. PkgRecordId ==. val pkgId

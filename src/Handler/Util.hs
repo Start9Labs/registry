@@ -18,7 +18,7 @@ import Data.String.Interpolate.IsString (
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
-import Database.Queries (fetchAllPkgVersions, getVersionPlatform, getAllowedPkgs, getPkg, getPkgNew)
+import Database.Queries (fetchAllPkgVersions, getVersionPlatform, getAllowedPkgs, getPkgById, getPkgOnlyCreated)
 import Foundation
 import Lib.PkgRepository (
     PkgRepo,
@@ -270,13 +270,13 @@ areRegexMatchesEqual textMap (PackageDevice regexMap) =
 checkAdminAllowedPkgs :: PkgId -> Text -> Handler (Bool, Bool) -- (authorized, newPkg)
 checkAdminAllowedPkgs pkgId adminId = do
     -- if pkg does not exist yet, allow, because authorized by whitelist
-    pkg <- runDB $ getPkg (PkgRecordKey pkgId)
-    pkgCreated <- runDB $ getPkgNew (PkgRecordKey pkgId)
+    pkg <- runDB $ getPkgById (PkgRecordKey pkgId)
+    pkgExtracted <- runDB $ getPkgOnlyCreated (PkgRecordKey pkgId)
     if length pkg > 0
         then do
             res <- runDB $ getAllowedPkgs pkgId (AdminKey adminId)
             pure $ if length res > 0 then (True, False) else (False, False)
-        else if length pkgCreated > 0
+        else if length pkgExtracted > 0
             then pure (True, True)
         else pure (True, True)
 
@@ -311,10 +311,5 @@ checkAdminAuthUpload pkgId = do
                     else sendResponseText status401 "User not authorized to upload this package."
                 else sendResponseText status401 "Package does not belong on this registry."
 
-getPkgIdParam :: MonadHandler m => m (Maybe PkgId)
-getPkgIdParam = do
-    lookupGetParam "id" >>= \case
-        Nothing -> pure Nothing
-        Just v -> case readMaybe v of
-            Nothing -> sendResponseStatus status400 ("Invalid PkgId" :: Text)
-            Just t -> pure (Just t)
+getPkgIdParam :: Handler (Maybe PkgId)
+getPkgIdParam = parseQueryParam "id" ((flip $ note . mappend "Invalid 'id': ") =<< readMaybe)

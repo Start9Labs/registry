@@ -147,14 +147,12 @@ import Yesod.Core.Types (JSONResponse (JSONResponse))
 import Database.Persist.Sql (runSqlPool)
 import Database.Persist ((==.))
 import Network.HTTP.Types.Status (status401)
-import Control.Monad.Logger (logInfo)
 
 postPkgUploadR :: Handler ()
 postPkgUploadR = do
     resourcesTemp <- getsYesod $ (</> "temp") . resourcesDir . appSettings
     createDirectoryIfMissing True resourcesTemp
     pkgId_ <- getPkgIdParam
-    $logInfo $ "PARAM: " <> show pkgId_
     withTempDirectory resourcesTemp "newpkg" $ \dir -> do
         let path = dir </> "temp" <.> "s9pk"
         case pkgId_ of
@@ -163,11 +161,10 @@ postPkgUploadR = do
                 name <- checkAdminAuthUpload packageManifestId
                 finishUpload dir path name PackageManifest{..}
             Just pkgId -> do
-                $logInfo $ "VALID: " <> show pkgId
                 name <- checkAdminAuthUpload pkgId
                 PackageManifest{..} <- extractPackageManifest dir path
                 if packageManifestId /= pkgId
-                    then sendResponseText status401 [i|Package id #{packageManifestId} does not match request id of #{pkgId}|]
+                    then sendResponseText status401 [i|Package id #{packageManifestId} does not match requested id #{pkgId}|]
                     else finishUpload dir path name PackageManifest{..}
     where
         retry m = runMaybeT . asum $ replicate 3 (MaybeT $ hush <$> try @_ @SomeException m)
