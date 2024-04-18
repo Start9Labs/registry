@@ -18,7 +18,7 @@ import Data.String.Interpolate.IsString (
 import Data.Text qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TB
-import Database.Queries (fetchAllPkgVersions, getVersionPlatform, getAllowedPkgs, getPkg)
+import Database.Queries (fetchAllPkgVersions, getVersionPlatform, getAllowedPkgs, getPkgById, getPkgOnlyCreated)
 import Foundation
 import Lib.PkgRepository (
     PkgRepo,
@@ -32,7 +32,7 @@ import Lib.Types.Emver (
  )
 import Model (
     UserActivity (..),
-    VersionRecord (versionRecordOsVersion, versionRecordDeprecatedAt, versionRecordPkgId), VersionPlatform (versionPlatformDevice), AdminId, Key (PkgRecordKey, AdminKey),
+    VersionRecord (versionRecordOsVersion, versionRecordDeprecatedAt, versionRecordPkgId), VersionPlatform (versionPlatformDevice), AdminId, Key (PkgRecordKey, AdminKey), AdminPkgs (AdminPkgs),
  )
 import Network.HTTP.Types (
     Status,
@@ -63,6 +63,9 @@ import Startlude (
     (.),
     (>),
     (<$>),
+    (&&),
+    (||),
+    (<=),
     (>>=), note, (=<<), catMaybes, all, encodeUtf8, toS, fmap, traceM, show, trace, any, or, (++), IO, putStrLn, map
  )
 import UnliftIO (MonadUnliftIO)
@@ -89,9 +92,15 @@ import Data.Aeson (eitherDecodeStrict)
 import Data.Bifunctor (Bifunctor(first))
 import qualified Data.MultiMap as MM
 import Startlude (bimap)
-import Data.List (length)
+import Data.List (elem, length)
 import Control.Monad.Logger (logError)
 import Yesod.Auth (YesodAuth(maybeAuthId))
+import Network.HTTP.Types.Status (status401)
+import Yesod (getsYesod)
+import Settings (AppSettings(whitelist))
+import Network.HTTP.Types (status200)
+import Database.Persist (insert_)
+import Yesod (lookupPostParam)
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other =
@@ -261,11 +270,14 @@ areRegexMatchesEqual textMap (PackageDevice regexMap) =
 checkAdminAllowedPkgs :: PkgId -> Text -> Handler (Bool, Bool) -- (authorized, newPkg)
 checkAdminAllowedPkgs pkgId adminId = do
     -- if pkg does not exist yet, allow, because authorized by whitelist
-    pkg <- runDB $ getPkg (PkgRecordKey pkgId)
+    pkg <- runDB $ getPkgById (PkgRecordKey pkgId)
+    pkgExtracted <- runDB $ getPkgOnlyCreated (PkgRecordKey pkgId)
     if length pkg > 0
         then do
             res <- runDB $ getAllowedPkgs pkgId (AdminKey adminId)
             pure $ if length res > 0 then (True, False) else (False, False)
+        else if length pkgExtracted > 0
+            then pure (True, True)
         else pure (True, True)
 
 checkAdminAuth :: PkgId -> Handler (Bool, Text)
@@ -278,3 +290,26 @@ checkAdminAuth pkgId = do
         Just name -> do
             (authorized, _) <- checkAdminAllowedPkgs pkgId name
             pure (authorized, name)
+
+checkAdminAuthUpload :: PkgId -> Handler Text
+checkAdminAuthUpload pkgId = do
+    whitelist <- getsYesod $ whitelist . appSettings
+    maybeAuthId >>= \case
+        Nothing -> do
+            sendResponseText status401 "User not an authorized admin."
+        Just name -> do
+            if ((length whitelist > 0 && (pkgId `elem` whitelist)) || length whitelist <= 0)
+                then do
+                    (authorized, newPkg) <- checkAdminAllowedPkgs pkgId name
+                    if authorized && not newPkg
+                        then pure name
+                    else if authorized && newPkg
+                        -- if pkg is whitelisted and a new upload, add as authorized for this admin user
+                        then do
+                            runDB $ insert_ (AdminPkgs (AdminKey name) pkgId)
+                            pure name
+                    else sendResponseText status401 "User not authorized to upload this package."
+                else sendResponseText status401 "Package does not belong on this registry."
+
+getPkgIdParam :: Handler (Maybe PkgId)
+getPkgIdParam = parseQueryParam "id" ((flip $ note . mappend "Invalid 'id': ") =<< readMaybe)

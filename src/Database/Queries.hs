@@ -96,7 +96,7 @@ import Model (
         VersionRecordNumber,
         VersionRecordPkgId,
         VersionRecordTitle,
-        VersionRecordUpdatedAt, PkgRecordHidden, VersionPlatformRam
+        VersionRecordUpdatedAt, PkgRecordHidden, VersionPlatformRam, PkgRecordUpdatedAt
     ),
     Key (unPkgRecordKey),
     PkgCategory,
@@ -338,10 +338,19 @@ getAllowedPkgs pkgId adminId = do
         pure p
     pure $ entityVal <$> pkgs
 
-getPkg:: (Monad m, MonadIO m) => PkgRecordId -> ReaderT SqlBackend m [PkgRecord]
-getPkg pkgId = do
+getPkgById:: (Monad m, MonadIO m) => PkgRecordId -> ReaderT SqlBackend m [PkgRecord]
+getPkgById pkgId = do
     pkg <- select $ do
         p <- from $ table @PkgRecord
         where_ $ p ^. PkgRecordId ==. val pkgId
+        pure p
+    pure $ entityVal <$> pkg
+
+getPkgOnlyCreated:: (Monad m, MonadIO m) => PkgRecordId -> ReaderT SqlBackend m [PkgRecord]
+getPkgOnlyCreated pkgId = do
+    pkg <- select $ do
+        p <- from $ table @PkgRecord
+        where_ $ p ^. PkgRecordId ==. val pkgId
+        where_ $ isNothing $ p ^. PkgRecordUpdatedAt 
         pure p
     pure $ entityVal <$> pkg
