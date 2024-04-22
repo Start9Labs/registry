@@ -272,12 +272,12 @@ checkAdminAllowedPkgs pkgId adminId = do
     -- if pkg does not exist yet, allow, because authorized by whitelist
     pkg <- runDB $ getPkgById (PkgRecordKey pkgId)
     pkgExtracted <- runDB $ getPkgOnlyCreated (PkgRecordKey pkgId)
-    if length pkg > 0
-        then do
+    if length pkgExtracted > 0
+        then pure (True, True)
+        else if length pkg > 0
+            then do
             res <- runDB $ getAllowedPkgs pkgId (AdminKey adminId)
             pure $ if length res > 0 then (True, False) else (False, False)
-        else if length pkgExtracted > 0
-            then pure (True, True)
         else pure (True, True)
 
 checkAdminAuth :: PkgId -> Handler (Bool, Text)
