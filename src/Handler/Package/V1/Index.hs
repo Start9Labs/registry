@@ -79,6 +79,7 @@ import Startlude (
     (<&>),
     (=<<),
     (>)
+    show
  )
 import UnliftIO (Concurrently (..), mapConcurrently)
 import Yesod (
@@ -93,7 +94,7 @@ import Database.Persist.Postgresql (entityVal)
 import Yesod.Core (getsYesod)
 import Data.List (head)
 import Yesod (YesodRequest(reqGetParams))
-import Yesod (getRequest)
+import Yesod (getRequest, logWarn)
 import Data.List (last)
 import Data.Text (isPrefixOf)
 import Startlude (length)
@@ -219,7 +220,12 @@ getPackageDependencies osPredicate PackageMetadata{packageMetadataPkgId = pkg, p
         pkgDepInfo' <- getPkgDependencyData pkg pkgVersion
         let pkgDepInfo = fmap (\a -> (entityVal $ fst a, entityVal $ snd a)) pkgDepInfo'
         pkgDepInfoWithVersions <- traverse getDependencyVersions (fst <$> pkgDepInfo)
-        let depMetadata = zipWith (selectDependencyBestVersion osPredicate) pkgDepInfo pkgDepInfoWithVersions 
+        $logWarn $ "***PKG DEP INFO WITH VERSIONS***"
+        $logWarn $ show pkgDepInfoWithVersions
+        let compatiblePkgDepInfo = fmap (filter (osPredicate . versionRecordOsVersion)) pkgDepInfoWithVersions
+        $logWarn $ "***COMPATIBLE PKG DEP INFO***"
+        $logWarn $ show compatiblePkgDepInfo
+        let depMetadata = zipWith selectDependencyBestVersion pkgDepInfo compatiblePkgDepInfo
         lift $
             fmap HM.fromList $
                 for depMetadata $ \(depId, title, v, isLocal) -> do
