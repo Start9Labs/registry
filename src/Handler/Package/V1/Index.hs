@@ -78,7 +78,8 @@ import Startlude (
     (<$>),
     (<&>),
     (=<<),
-    (>)
+    (>),
+    show,
  )
 import UnliftIO (Concurrently (..), mapConcurrently)
 import Yesod (
@@ -97,6 +98,7 @@ import Yesod (getRequest)
 import Data.List (last)
 import Data.Text (isPrefixOf)
 import Startlude (length)
+import Control.Monad.Logger (logWarn)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
@@ -129,6 +131,8 @@ getPackageIndexR = do
     ram <- getRamQuery
     hardwareDevices <- getHardwareDevicesQuery
     communityVersion <- getsYesod $ communityVersion . appSettings
+    $logWarn $ "***COMMUNITY"
+    $logWarn $ show $ osPredicate communityVersion
     pkgIds <- getPkgIdsQuery
     category <- getCategoryQuery
     page <- fromMaybe 1 <$> getPageQuery
