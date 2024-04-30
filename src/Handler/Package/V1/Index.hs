@@ -131,8 +131,6 @@ getPackageIndexR = do
     ram <- getRamQuery
     hardwareDevices <- getHardwareDevicesQuery
     communityVersion <- getsYesod $ communityVersion . appSettings
-    $logWarn $ "***COMMUNITY"
-    $logWarn $ show $ osPredicate communityVersion
     pkgIds <- getPkgIdsQuery
     category <- getCategoryQuery
     page <- fromMaybe 1 <$> getPageQuery
@@ -170,7 +168,7 @@ getPackageIndexR = do
                     .| sinkList
 
     -- NOTE: if a package's dependencies do not meet the system requirements, it is currently omitted from the list
-    pkgsWithDependencies <- runDB $ mapConcurrently (getPackageDependencies osPredicate) filteredPackages
+    pkgsWithDependencies <- runDB $ mapConcurrently getPackageDependencies filteredPackages
     PackageListRes <$> runConcurrently (zipWithM (Concurrently .* constructPackageListApiRes) filteredPackages pkgsWithDependencies)
 
 getPkgIdsQuery :: Handler (Maybe [PackageReq])
@@ -215,15 +213,14 @@ getRamQuery = parseQueryParam "hardware.ram" ((flip $ note . mappend "Invalid 'r
 
 getPackageDependencies ::
     (MonadIO m, MonadLogger m, MonadResource m, Has PkgRepo r, MonadReader r m) =>
-    (Version -> Bool) ->
     PackageMetadata ->
     ReaderT SqlBackend m (HashMap PkgId DependencyRes)
-getPackageDependencies osPredicate PackageMetadata{packageMetadataPkgId = pkg, packageMetadataPkgVersion = pkgVersion} =
+getPackageDependencies PackageMetadata{packageMetadataPkgId = pkg, packageMetadataPkgVersion = pkgVersion} =
     do
         pkgDepInfo' <- getPkgDependencyData pkg pkgVersion
         let pkgDepInfo = fmap (\a -> (entityVal $ fst a, entityVal $ snd a)) pkgDepInfo'
         pkgDepInfoWithVersions <- traverse getDependencyVersions (fst <$> pkgDepInfo)
-        let depMetadata = zipWith (selectDependencyBestVersion osPredicate) pkgDepInfo pkgDepInfoWithVersions 
+        let depMetadata = zipWith formatDependencyInfo pkgDepInfo pkgDepInfoWithVersions 
         lift $
             fmap HM.fromList $
                 for depMetadata $ \(depId, title, v, isLocal) -> do
@@ -297,3 +294,12 @@ selectDependencyBestVersion osPredicate pkgDepInfo depVersions = do
                 -- use latest version of dep for metadata info
                 Nothing -> (pkgId, versionRecordTitle latestDepVersion, versionRecordNumber latestDepVersion, isLocal)
         else (pkgId, versionRecordTitle latestDepVersion, versionRecordNumber latestDepVersion, isLocal)
+
+formatDependencyInfo :: (PkgDependency, PkgRecord) -> [VersionRecord] -> (PkgId, Text, Version, Bool)
+formatDependencyInfo pkgDepInfo depVersions = do
+    let pkgDepRecord = fst pkgDepInfo
+    let isLocal = pkgRecordHidden $ snd pkgDepInfo
+    let depId = pkgDependencyDepId pkgDepRecord
+    let pkgId = unPkgRecordKey depId
+    let latestDepVersion = head $ sortOn (Down . versionRecordNumber) depVersions
+    (pkgId, versionRecordTitle latestDepVersion, versionRecordNumber latestDepVersion, isLocal)
