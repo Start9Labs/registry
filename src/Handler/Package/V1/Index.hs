@@ -79,7 +79,6 @@ import Startlude (
     (<&>),
     (=<<),
     (>),
-    show,
  )
 import UnliftIO (Concurrently (..), mapConcurrently)
 import Yesod (
@@ -98,7 +97,6 @@ import Yesod (getRequest)
 import Data.List (last)
 import Data.Text (isPrefixOf)
 import Startlude (length)
-import Control.Monad.Logger (logWarn)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
