@@ -99,6 +99,8 @@ import Data.List (last)
 import Data.Text (isPrefixOf)
 import Startlude (length)
 import Control.Monad.Logger (logWarn)
+import Data.Bool (not)
+import Data.List (null)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
@@ -220,8 +222,7 @@ getPackageDependencies PackageMetadata{packageMetadataPkgId = pkg, packageMetada
         pkgDepInfo' <- getPkgDependencyData pkg pkgVersion
         let pkgDepInfo = fmap (\a -> (entityVal $ fst a, entityVal $ snd a)) pkgDepInfo'
         pkgDepInfoWithVersions <- traverse getDependencyVersions (fst <$> pkgDepInfo)
-        $logWarn $ show pkgDepInfoWithVersions
-        let depMetadata = zipWith formatDependencyInfo pkgDepInfo pkgDepInfoWithVersions 
+        let depMetadata = zipWith formatDependencyInfo pkgDepInfo $ filter (not . null) pkgDepInfoWithVersions 
         lift $
             fmap HM.fromList $
                 for depMetadata $ \(depId, title, v, isLocal) -> do
