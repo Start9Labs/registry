@@ -131,9 +131,9 @@ getPackageIndexR = do
     limit' <- fromMaybe 20 <$> getLimitQuery
     query <- T.strip . fromMaybe "" <$> lookupGetParam "query"
     let (source, packageRanges) = case pkgIds of
-            Nothing -> (Database.Queries.serviceQuerySource category query pkgArch ram, const Any)
+            Nothing -> (serviceQuerySource category query pkgArch ram, const Any)
             Just packages ->
-                let s = Database.Queries.getPkgDataSource (packageReqId <$> packages) pkgArch ram
+                let s = getPkgDataSource (packageReqId <$> packages) pkgArch ram
                     r = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages)
                 in (s, r)
     filteredPackages <-
@@ -141,7 +141,7 @@ getPackageIndexR = do
             runConduit $
                 source
                     -- group conduit pipeline by pkg id
-                    .| Database.Queries.collateVersions
+                    .| collateVersions
                     -- filter out versions of apps that are incompatible with the OS predicate
                     .| mapC (second (filter (osPredicate . versionRecordOsVersion . fst)))
                     -- filter hardware device compatability                        
@@ -156,7 +156,7 @@ getPackageIndexR = do
                     -- grab the latest matching version if it exists
                     .| concatMapC (\(a, b) -> (a,b,) <$> (selectLatestVersionFromSpec packageRanges b))
                     -- construct
-                    .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> Database.Queries.getCategoriesFor a)
+                    .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> getCategoriesFor a)
                     -- pages start at 1 for some reason. TODO: make pages start at 0
                     .| (dropC (limit' * (page - 1)) *> takeC limit')
                     .| sinkList
@@ -211,12 +211,12 @@ getPackageDependencies ::
     ReaderT SqlBackend m (HashMap PkgId DependencyRes)
 getPackageDependencies PackageMetadata{packageMetadataPkgId = pkg, packageMetadataPkgVersion = pkgVersion} =
     do
-        depPkgRecordEntities <- Database.Queries.getPkgDependencyData pkg pkgVersion
+        depPkgRecordEntities <- getPkgDependencyData pkg pkgVersion
         fmap HM.fromList $
             for depPkgRecordEntities $ \(pr) -> do
                 let depId = unPkgRecordKey $ entityKey pr
                 let depPkgRecord = entityVal pr
-                mVersionRecord <- Database.Queries.getLatestVersionRecord $ entityKey pr
+                mVersionRecord <- getLatestVersionRecord $ entityKey pr
                 case mVersionRecord of
                     Just VersionRecord{..} -> do
                         icon <- lift $ loadIcon depId versionRecordNumber
