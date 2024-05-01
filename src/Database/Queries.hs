@@ -19,7 +19,7 @@ import Model (
     Metric (Metric),
     PkgDependency (..),
     PkgRecord (PkgRecord),
-    VersionRecord (VersionRecord), VersionPlatform (VersionPlatform), EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch, AdminPkgsPkgId, AdminPkgsAdmin), PkgRecordId, AdminPkgs, AdminId,
+    VersionRecord (VersionRecord), VersionPlatform (VersionPlatform), EntityField (VersionPlatformPkgId, VersionPlatformVersionNumber, VersionPlatformArch, AdminPkgsPkgId, AdminPkgsAdmin, PkgDependencyDepId), PkgRecordId, AdminPkgs, AdminId,
  )
 import Orphans.Emver ()
 import Startlude (
@@ -73,6 +73,9 @@ import Database.Esqueleto.Experimental (
     (==.),
     (^.),
     (||.),
+    isNothing,
+    (<=.),
+    limit
  )
 import Database.Persist qualified as P
 import Database.Persist.Postgresql (
@@ -96,7 +99,7 @@ import Model (
         VersionRecordNumber,
         VersionRecordPkgId,
         VersionRecordTitle,
-        VersionRecordUpdatedAt, PkgRecordHidden, VersionPlatformRam, PkgRecordUpdatedAt
+        VersionRecordUpdatedAt, PkgRecordHidden, VersionPlatformRam, PkgRecordUpdatedAt, VersionRecordCreatedAt
     ),
     Key (unPkgRecordKey),
     PkgCategory,
@@ -113,10 +116,8 @@ import Startlude (
     snd,
     sortOn,
     ($>),
-    (<$>), Int,
+    (<$>), Int, listToMaybe,
  )
-import Database.Esqueleto.Experimental (isNothing)
-import Database.Esqueleto.Experimental ((<=.))
 
 serviceQuerySource ::
     (MonadResource m, MonadIO m) =>
@@ -182,16 +183,15 @@ getPkgDependencyData ::
     MonadIO m =>
     PkgId ->
     Version ->
-    ReaderT SqlBackend m [(P.Entity PkgDependency, P.Entity PkgRecord)]
-getPkgDependencyData pkgId pkgVersion = 
+    ReaderT SqlBackend m [P.Entity PkgRecord]
+getPkgDependencyData pkgId pkgVersion =
     select $
         from $ do
             (pkgDepRecord :& pr) <- from $ table @PkgDependency
-                `innerJoin` table @PkgRecord `on` (\(v :& p) -> (PkgRecordId === PkgDependencyPkgId) (p :& v))
+                `innerJoin` table @PkgRecord `on` (\(pd :& pr) -> (PkgRecordId === PkgDependencyDepId) (pr :& pd))
             where_ (pkgDepRecord ^. PkgDependencyPkgId ==. val (PkgRecordKey pkgId))
             where_ (pkgDepRecord ^. PkgDependencyPkgVersion ==. val pkgVersion)
-            pure (pkgDepRecord, pr)
-
+            pure pr
 
 (===) ::
     (PersistEntity val1, PersistEntity val2, P.PersistField typ) =>
@@ -200,6 +200,19 @@ getPkgDependencyData pkgId pkgVersion =
     (SqlExpr (Entity val1) :& SqlExpr (Entity val2)) ->
     SqlExpr (Value Bool)
 (===) a' b' (a :& b) = a ^. a' ==. b ^. b'
+
+getLatestVersionRecord ::
+    MonadIO m =>
+    Key PkgRecord ->
+    ReaderT SqlBackend m (Maybe VersionRecord)
+getLatestVersionRecord pkgId = do
+    vrs <- select $ do
+        v <- from $ table @VersionRecord
+        where_ $ v ^. VersionRecordPkgId ==. val pkgId
+        orderBy [desc (v ^. VersionRecordCreatedAt)]
+        limit 1
+        pure v
+    pure $ entityVal <$> listToMaybe vrs
 
 
 getCategoriesFor ::

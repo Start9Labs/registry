@@ -101,6 +101,7 @@ import Settings (AppSettings(whitelist))
 import Network.HTTP.Types (status200)
 import Database.Persist (insert_)
 import Yesod (lookupPostParam)
+import Data.Maybe (isNothing)
 
 orThrow :: MonadHandler m => m (Maybe a) -> m a -> m a
 orThrow action other =
@@ -240,7 +241,7 @@ getPkgArch = do
 filterDeprecatedVersions :: Version -> (Version -> Bool) -> [VersionRecord] -> [VersionRecord]
 filterDeprecatedVersions communityVersion osPredicate vrs = do
     if (osPredicate communityVersion)
-        then filter (\v -> not $ isJust $ versionRecordDeprecatedAt v) $ vrs
+        then filter (\v -> isNothing $ versionRecordDeprecatedAt v) $ vrs
         else vrs
 
 filterDevices :: (MonadUnliftIO m) => (MM.MultiMap Text Text) -> [(VersionRecord, VersionPlatform)] -> m [VersionRecord]
