@@ -21,19 +21,18 @@ import Database.Persist.Sql (SqlBackend)
 import Database.Queries (
     collateVersions,
     getCategoriesFor,
-    getDependencyVersions,
     getPkgDataSource,
     getPkgDependencyData,
-    serviceQuerySource,
+    serviceQuerySource, getLatestVersionRecord,
  )
 import Foundation (Handler, Route (InstructionsR, LicenseR), RegistryCtx (appSettings))
 import Handler.Package.Api (DependencyRes (..), PackageListRes (..), PackageRes (..))
 import Handler.Types.Api (ApiVersion (..))
 import Handler.Util (basicRender, parseQueryParam, filterDeprecatedVersions, filterDevices, getPkgArch)
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
-import Lib.Types.Core (PkgId)
-import Lib.Types.Emver (Version, VersionRange (..), parseRange, satisfies, (<||))
-import Model (Category (..), Key (..), PkgDependency (..), VersionRecord (..), PkgRecord (pkgRecordHidden))
+import Lib.Types.Core (PkgId, PkgId(PkgId))
+import Lib.Types.Emver (Version, Version(Version), VersionRange (..), parseRange, satisfies, (<||))
+import Model (Category (..), Key (..), VersionRecord (..), PkgRecord (..), PkgDependency (..))
 import Protolude.Unsafe (unsafeFromJust)
 import Settings (AppSettings (communityVersion))
 import Startlude (
@@ -51,7 +50,6 @@ import Startlude (
     Num ((*), (-)),
     Show,
     Text,
-    Traversable (traverse),
     const,
     encodeUtf8,
     filter,
@@ -69,7 +67,6 @@ import Startlude (
     readMaybe,
     snd,
     sortOn,
-    zipWith,
     zipWithM,
     ($),
     (&&&),
@@ -78,8 +75,7 @@ import Startlude (
     (<$>),
     (<&>),
     (=<<),
-    (>),
-    show
+    (>)
  )
 import UnliftIO (Concurrently (..), mapConcurrently)
 import Yesod (
@@ -90,7 +86,7 @@ import Yesod (
     lookupGetParam,
  )
 import Data.Tuple (fst)
-import Database.Persist.Postgresql (entityVal)
+import Database.Persist.Postgresql (entityVal, entityKey)
 import Yesod.Core (getsYesod)
 import Data.List (head)
 import Yesod (YesodRequest(reqGetParams))
@@ -99,9 +95,9 @@ import Data.List (last)
 import Data.Text (isPrefixOf)
 import Startlude (length)
 import Control.Monad.Logger (logWarn)
-import Data.Bool (not)
-import Data.List (null)
-
+import Data.String.Interpolate.IsString (
+    i,
+ )
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
     , packageReqVersion :: !VersionRange
@@ -139,9 +135,9 @@ getPackageIndexR = do
     limit' <- fromMaybe 20 <$> getLimitQuery
     query <- T.strip . fromMaybe "" <$> lookupGetParam "query"
     let (source, packageRanges) = case pkgIds of
-            Nothing -> (serviceQuerySource category query pkgArch ram, const Any)
+            Nothing -> (Database.Queries.serviceQuerySource category query pkgArch ram, const Any)
             Just packages ->
-                let s = getPkgDataSource (packageReqId <$> packages) pkgArch ram
+                let s = Database.Queries.getPkgDataSource (packageReqId <$> packages) pkgArch ram
                     r = fromMaybe None . (flip lookup $ (packageReqId &&& packageReqVersion) <$> packages)
                 in (s, r)
     filteredPackages <-
@@ -149,7 +145,7 @@ getPackageIndexR = do
             runConduit $
                 source
                     -- group conduit pipeline by pkg id
-                    .| collateVersions
+                    .| Database.Queries.collateVersions
                     -- filter out versions of apps that are incompatible with the OS predicate
                     .| mapC (second (filter (osPredicate . versionRecordOsVersion . fst)))
                     -- filter hardware device compatability                        
@@ -164,7 +160,7 @@ getPackageIndexR = do
                     -- grab the latest matching version if it exists
                     .| concatMapC (\(a, b) -> (a,b,) <$> (selectLatestVersionFromSpec packageRanges b))
                     -- construct
-                    .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> getCategoriesFor a)
+                    .| mapMC (\(a, b, c) -> PackageMetadata a b (versionRecordNumber c) <$> Database.Queries.getCategoriesFor a)
                     -- pages start at 1 for some reason. TODO: make pages start at 0
                     .| (dropC (limit' * (page - 1)) *> takeC limit')
                     .| sinkList
@@ -219,16 +215,20 @@ getPackageDependencies ::
     ReaderT SqlBackend m (HashMap PkgId DependencyRes)
 getPackageDependencies PackageMetadata{packageMetadataPkgId = pkg, packageMetadataPkgVersion = pkgVersion} =
     do
-        pkgDepInfo' <- getPkgDependencyData pkg pkgVersion
-        let pkgDepInfo = fmap (\a -> (entityVal $ fst a, entityVal $ snd a)) pkgDepInfo'
-        pkgDepInfoWithVersions <- traverse getDependencyVersions (fst <$> pkgDepInfo)
-        let depMetadata = zipWith formatDependencyInfo pkgDepInfo $ filter (not . null) pkgDepInfoWithVersions 
-        lift $
-            fmap HM.fromList $
-                for depMetadata $ \(depId, title, v, isLocal) -> do
-                    icon <- loadIcon depId v
-                    pure $ (depId, DependencyRes title icon isLocal)
-
+        depPkgRecordEntities <- Database.Queries.getPkgDependencyData pkg pkgVersion
+        fmap HM.fromList $
+            for depPkgRecordEntities $ \(pr) -> do
+                let depId = unPkgRecordKey $ entityKey pr
+                let depPkgRecord = entityVal pr
+                mVersionRecord <- Database.Queries.getLatestVersionRecord $ entityKey pr
+                case mVersionRecord of
+                    Just VersionRecord{..} -> do
+                        icon <- lift $ loadIcon depId versionRecordNumber
+                        pure $ (depId, DependencyRes versionRecordTitle icon $ pkgRecordHidden depPkgRecord)
+                    Nothing -> do
+                        $logWarn [i|No latest version record found for #{depId} while getting dependency metadata for #{pkg}. Using fallback package.|]
+                        icon <- lift $ loadIcon (PkgId "fallback") $ Version(1,0,0,0)
+                        pure $ (depId, DependencyRes "Unknown" icon $ pkgRecordHidden depPkgRecord)
 
 constructPackageListApiRes ::
     (MonadResource m, MonadReader r m, Has AppSettings r, Has PkgRepo r) =>
@@ -296,12 +296,3 @@ selectDependencyBestVersion osPredicate pkgDepInfo depVersions = do
                 -- use latest version of dep for metadata info
                 Nothing -> (pkgId, versionRecordTitle latestDepVersion, versionRecordNumber latestDepVersion, isLocal)
         else (pkgId, versionRecordTitle latestDepVersion, versionRecordNumber latestDepVersion, isLocal)
-
-formatDependencyInfo :: (PkgDependency, PkgRecord) -> [VersionRecord] -> (PkgId, Text, Version, Bool)
-formatDependencyInfo pkgDepInfo depVersions = do
-    let pkgDepRecord = fst pkgDepInfo
-    let isLocal = pkgRecordHidden $ snd pkgDepInfo
-    let depId = pkgDependencyDepId pkgDepRecord
-    let pkgId = unPkgRecordKey depId
-    let latestDepVersion = head $ sortOn (Down . versionRecordNumber) depVersions
-    (pkgId, versionRecordTitle latestDepVersion, versionRecordNumber latestDepVersion, isLocal)
