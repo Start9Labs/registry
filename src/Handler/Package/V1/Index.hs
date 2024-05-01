@@ -226,7 +226,7 @@ getPackageDependencies PackageMetadata{packageMetadataPkgId = pkg, packageMetada
                         icon <- lift $ loadIcon depId versionRecordNumber
                         pure $ (depId, DependencyRes versionRecordTitle icon $ pkgRecordHidden depPkgRecord)
                     Nothing -> do
-                        $logWarn [i|No latest version record found for #{depId} while getting dependency metadata for #{pkg}. Using fallback package.|]
+                        $logWarn [i|No latest version record found for #{depId} while getting dependency metadata for #{pkg}@#{pkgVersion}. Using fallback package.|]
                         icon <- lift $ loadIcon (PkgId "fallback") $ Version(1,0,0,0)
                         pure $ (depId, DependencyRes "Unknown" icon $ pkgRecordHidden depPkgRecord)
 
