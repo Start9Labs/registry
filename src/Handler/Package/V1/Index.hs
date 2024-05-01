@@ -31,8 +31,8 @@ import Handler.Types.Api (ApiVersion (..))
 import Handler.Util (basicRender, parseQueryParam, filterDeprecatedVersions, filterDevices, getPkgArch)
 import Lib.PkgRepository (PkgRepo, getIcon, getManifest)
 import Lib.Types.Core (PkgId, PkgId(PkgId))
-import Lib.Types.Emver (Version, Version(Version), VersionRange (..), parseRange, satisfies, (<||))
-import Model (Category (..), Key (..), VersionRecord (..), PkgRecord (..), PkgDependency (..))
+import Lib.Types.Emver (Version, Version(Version), VersionRange (..), parseRange, satisfies)
+import Model (Category (..), Key (..), VersionRecord (..), PkgRecord (..))
 import Protolude.Unsafe (unsafeFromJust)
 import Settings (AppSettings (communityVersion))
 import Startlude (
@@ -60,7 +60,6 @@ import Startlude (
     id,
     liftA2,
     mappend,
-    maximumOn,
     nonEmpty,
     note,
     pure,
@@ -74,8 +73,7 @@ import Startlude (
     (.*),
     (<$>),
     (<&>),
-    (=<<),
-    (>)
+    (=<<)
  )
 import UnliftIO (Concurrently (..), mapConcurrently)
 import Yesod (
@@ -88,12 +86,10 @@ import Yesod (
 import Data.Tuple (fst)
 import Database.Persist.Postgresql (entityVal, entityKey)
 import Yesod.Core (getsYesod)
-import Data.List (head)
 import Yesod (YesodRequest(reqGetParams))
 import Yesod (getRequest)
 import Data.List (last)
 import Data.Text (isPrefixOf)
-import Startlude (length)
 import Control.Monad.Logger (logWarn)
 import Data.String.Interpolate.IsString (
     i,
@@ -276,23 +272,3 @@ selectLatestVersionFromSpec pkgRanges vs =
     let pkgId = NE.head $ versionRecordPkgId <$> vs
         spec = pkgRanges (unPkgRecordKey pkgId)
      in headMay . sortOn (Down . versionRecordNumber) $ NE.filter ((`satisfies` spec) . versionRecordNumber) vs
-
-
--- get best version of the dependency based on what is specified in the db (ie. what is specified in the manifest for the package)
-selectDependencyBestVersion :: (Version -> Bool) -> (PkgDependency, PkgRecord) -> [VersionRecord] -> (PkgId, Text, Version, Bool)
-selectDependencyBestVersion osPredicate pkgDepInfo depVersions = do
-    let pkgDepRecord = fst pkgDepInfo
-    let isLocal = pkgRecordHidden $ snd pkgDepInfo
-    let depId = pkgDependencyDepId pkgDepRecord
-    let pkgId = unPkgRecordKey depId
-    let versionRequirement = pkgDependencyDepVersionRange pkgDepRecord
-    let latestDepVersion = head $ sortOn (Down . versionRecordNumber) depVersions
-    let compatiblePkgDepInfo = (filter (osPredicate . versionRecordOsVersion)) depVersions
-    if (length compatiblePkgDepInfo > 0)
-        then do
-            let satisfactory = filter ((<|| versionRequirement) . versionRecordNumber) compatiblePkgDepInfo
-            case maximumOn versionRecordNumber satisfactory of
-                Just bestVersion -> (pkgId, versionRecordTitle bestVersion, versionRecordNumber bestVersion, isLocal)
-                -- use latest version of dep for metadata info
-                Nothing -> (pkgId, versionRecordTitle latestDepVersion, versionRecordNumber latestDepVersion, isLocal)
-        else (pkgId, versionRecordTitle latestDepVersion, versionRecordNumber latestDepVersion, isLocal)
