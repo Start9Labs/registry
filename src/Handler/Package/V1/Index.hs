@@ -79,6 +79,7 @@ import Startlude (
     (<&>),
     (=<<),
     (>),
+    show
  )
 import UnliftIO (Concurrently (..), mapConcurrently)
 import Yesod (
@@ -97,6 +98,7 @@ import Yesod (getRequest)
 import Data.List (last)
 import Data.Text (isPrefixOf)
 import Startlude (length)
+import Control.Monad.Logger (logWarn)
 
 data PackageReq = PackageReq
     { packageReqId :: !PkgId
@@ -218,6 +220,7 @@ getPackageDependencies PackageMetadata{packageMetadataPkgId = pkg, packageMetada
         pkgDepInfo' <- getPkgDependencyData pkg pkgVersion
         let pkgDepInfo = fmap (\a -> (entityVal $ fst a, entityVal $ snd a)) pkgDepInfo'
         pkgDepInfoWithVersions <- traverse getDependencyVersions (fst <$> pkgDepInfo)
+        $logWarn $ show pkgDepInfoWithVersions
         let depMetadata = zipWith formatDependencyInfo pkgDepInfo pkgDepInfoWithVersions 
         lift $
             fmap HM.fromList $
