@@ -187,7 +187,7 @@ raw icon binary of the package
 
 #### Query Params
 
-- (Optional) "spec": Emver
+- (Optional) "spec": EmverRange
 - (Optional) "version-priority": "min" OR "max"
 
 #### Returns
