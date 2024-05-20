@@ -74,7 +74,7 @@ NONE
 
 #### Requirements
 
-- if "ids" is specified, MUST NOT return packages not in that list
+- if "ids" is specified, MUST only return packages in that list
 - if "category" is specified, MUST NOT return packages that do not fit in that category
 - MUST NOT return more than "per-page" number of packages
 - all packages returned MUST be packed by an OS satisfying "eos-version-compat"
