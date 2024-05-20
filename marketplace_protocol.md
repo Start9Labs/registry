@@ -80,7 +80,7 @@ NONE
 - all packages returned MUST be packed by an OS satisfying "eos-version-compat"
 - icon MUST be a data url of the icon data
 - dependency entries MUST be specified in the manifest of the package
-- categories SHOULD include the categories specified but the package
+- categories SHOULD include the categories specified by the package
 - categories MAY be at the discretion of the marketplace maintainer
 
 ### GET /latest
