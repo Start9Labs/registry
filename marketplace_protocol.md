@@ -102,7 +102,7 @@ NONE
 
 - set of package ids in the response key set MUST be the same as the set of package ids in the query string
 - if the package is not available on the marketplace its entry MUST be `null`
-- if the package is available on the marketplace then its entry MUST be the highest Emver for that package
+- if the package is available on the marketplace then its entry MUST be the highest compatible Emver for that package
 
 ### GET /:S9PK
 
