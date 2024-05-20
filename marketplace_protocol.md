@@ -127,7 +127,7 @@ binary stream of the s9pk package data
 
 #### Query Params
 
-- (Optional) "spec": Emver
+- (Optional) "spec": EmverRange
 - (Optional) "version-priority": "min" OR "max"
 
 #### Returns
