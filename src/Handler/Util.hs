@@ -99,7 +99,7 @@ import Network.HTTP.Types.Status (status401)
 import Yesod (getsYesod)
 import Settings (AppSettings(whitelist))
 import Network.HTTP.Types (status200)
-import Database.Persist (insert_)
+import Database.Persist (insert_, insertBy)
 import Yesod (lookupPostParam)
 import Data.Maybe (isNothing)
 
@@ -307,7 +307,7 @@ checkAdminAuthUpload pkgId = do
                     else if authorized && newPkg
                         -- if pkg is whitelisted and a new upload, add as authorized for this admin user
                         then do
-                            runDB $ insert_ (AdminPkgs (AdminKey name) pkgId)
+                            _ <- runDB $ insertBy (AdminPkgs (AdminKey name) pkgId)
                             pure name
                     else sendResponseText status401 "User not authorized to upload this package."
                 else sendResponseText status401 "Package does not belong on this registry."
