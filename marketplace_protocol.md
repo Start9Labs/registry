@@ -35,7 +35,13 @@ NONE
 
 #### Query Params
 
-- (Required) "eos-version-compat": EmverRange specifying what versions of the OS that pack the packages are valid response items
+- (Legacy) "eos-version-compat": EmverRange specifying what versions of the OS that pack the packages are valid response items
+- (Required) "os.compat": EmverRange specifying what versions of the OS that pack the packages are valid response items
+- (Required): "hardware.ram":
+- (Required): "hardware.device":
+- (Required): "hardware.arch":
+- (Required): "os.arch":
+- (Legacy): "arch":
 - (Optional) "ids": json array of package ids
 - (Optional) "category": string representing
 - (Optional) "page": which page of the index you want (NOTE: starts at 1) (Default: 1)
@@ -63,7 +69,7 @@ NONE
                 // name of dependency
                 "title": "<STRING>",
                 // icon of dependency
-                "icon": "<DATAURL>"
+                "icon": "<URL>"
             },
             ...
         }
